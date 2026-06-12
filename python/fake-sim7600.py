@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # Emulates a SIM7600 AT port on a pty. Prints the slave path on stdout.
+# Set FAKE_SIM7600_ERROR=1 to answer every command with ERROR instead of OK.
 import os, pty, sys
 
 RESPONSES = {
     "ATE0": [],
     "AT+CGMM": ["SIMCOM_SIM7600G-H"],
-    "AT+CGMI": ["SIMCOM INCORPORATED"],
+    # the stray whitespace-only line exercises the parsers' blank-line guards
+    "AT+CGMI": [" ", "SIMCOM INCORPORATED"],
     "AT+CPIN?": ["+CPIN: READY"],
     "AT+CSQ": ["+CSQ: 21,99"],
     "AT+CREG?": ["+CREG: 0,1"],
@@ -34,8 +36,12 @@ while True:
             continue
         sys.stderr.write("CMD: " + cmd + "\n"); sys.stderr.flush()
         lines = RESPONSES.get(cmd, [])
-        out = ""
+        out = "\r\n"  # real SIM7600s prefix responses with a blank line
         for l in lines:
             out += l + "\r\n"
-        out += "OK\r\n"
+        out += "ERROR\r\n" if os.environ.get("FAKE_SIM7600_ERROR") == "1" else "OK\r\n"
+        if cmd == "ATE0":
+            # a real SIM7600 emits unsolicited result codes after boot -
+            # clients must ignore lines that arrive with no command pending
+            out += "SMS DONE\r\n"
         os.write(master, out.encode())

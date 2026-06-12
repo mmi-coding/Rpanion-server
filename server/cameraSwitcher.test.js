@@ -1,4 +1,5 @@
 const assert = require('assert')
+const sinon = require('sinon')
 const settings = require('settings-store')
 const CameraSwitcher = require('./cameraSwitcher')
 
@@ -172,5 +173,123 @@ describe('Camera Switcher Functions', function () {
     sw.streamRequested = true
     sw.resetLink()
     assert.equal(sw.streamRequested, false)
+  })
+
+  it('#saveSettingsSwallowsErrors()', function () {
+    settings.clear()
+    const sw = new CameraSwitcher(settings)
+    // a broken settings store must not crash the switcher
+    sw.settings = { setValue: () => { throw new Error('disk full') } }
+    const errSpy = sinon.spy(console, 'error')
+    try {
+      sw.saveSettings()
+      assert.ok(errSpy.calledWithMatch('Error saving cameraSwitcher settings:'))
+    } finally {
+      errSpy.restore()
+    }
+  })
+
+  it('#getSettingsCopies()', function () {
+    settings.clear()
+    const sw = new CameraSwitcher(settings)
+    const opts = sw.getSettings()
+    assert.equal(opts.rcChannel, sw.options.rcChannel)
+    // mutating the copy must not touch the live options
+    opts.rcChannel = 12
+    assert.equal(sw.options.rcChannel, 7)
+  })
+
+  it('#setSettingsMoreValidation()', function (done) {
+    settings.clear()
+    const sw = new CameraSwitcher(settings)
+
+    // hysteresis out of range, both directions
+    sw.setSettings({ hysteresis: -1 }, (err) => {
+      assert.notEqual(err, null)
+      assert.ok(err.message.includes('Hysteresis'))
+
+      sw.setSettings({ hysteresis: 501 }, (err2) => {
+        assert.notEqual(err2, null)
+
+        // unknown switch mode
+        sw.setSettings({ switchMode: 'sorcery' }, (err3) => {
+          assert.notEqual(err3, null)
+          assert.ok(err3.message.includes('switch mode'))
+
+          // command mode with only commandB missing
+          sw.setSettings({ enabled: true, switchMode: 'command', commandA: 'x', commandB: '' }, (err4) => {
+            assert.notEqual(err4, null)
+            done()
+          })
+        })
+      })
+    })
+  })
+
+  it('#setSettingsWhileEnabled()', function (done) {
+    settings.clear()
+    const sw = new CameraSwitcher(settings)
+
+    sw.setSettings({ enabled: true, switchMode: 'gstreamer', secDevice: '/dev/video1' }, (err) => {
+      assert.equal(err, null)
+      sw.streamRequested = true
+
+      // changing settings while already enabled keeps the RC stream request
+      sw.setSettings({ threshold: 1600 }, (err2) => {
+        assert.equal(err2, null)
+        assert.equal(sw.options.threshold, 1600)
+        assert.equal(sw.streamRequested, true)
+        done()
+      })
+    })
+  })
+
+  it('#doSwitchCommandMode()', function (done) {
+    this.timeout(5000)
+    settings.clear()
+    const sw = new CameraSwitcher(settings)
+    sw.options.switchMode = 'command'
+    sw.options.commandA = 'true'
+    sw.options.commandB = ''
+
+    // empty command: nothing run, switch still committed
+    assert.equal(sw.doSwitch('B'), true)
+    assert.equal(sw.activeSource, 'B')
+
+    // command success (also picks the source-A side of the command choice)
+    assert.equal(sw.doSwitch('A'), true)
+
+    // command failure: its stderr is logged
+    const errSpy = sinon.spy(console, 'error')
+    sw.options.commandB = '>&2 echo boom; exit 1'
+    assert.equal(sw.doSwitch('B'), true)
+    const deadline = Date.now() + 3000
+    const check = () => {
+      if (errSpy.getCalls().some(c => String(c.args[0]).includes('Camera switch command failed'))) {
+        errSpy.restore()
+        return done()
+      }
+      if (Date.now() > deadline) {
+        errSpy.restore()
+        return done(new Error('command failure was not logged'))
+      }
+      setTimeout(check, 25)
+    }
+    check()
+  })
+
+  it('#onMavPacketMissingChannel()', function () {
+    settings.clear()
+    const sw = new CameraSwitcher(settings)
+    sw.options.enabled = true
+
+    // null data (decode failure upstream) is ignored
+    sw.onMavPacket({ header: { msgid: 65 } }, null)
+    assert.equal(sw.lastRcValue, null)
+
+    // RC channel not present in the message: ignored
+    sw.options.rcChannel = 16
+    sw.onMavPacket({ header: { msgid: 65 } }, { chan7Raw: 1900 })
+    assert.equal(sw.lastRcValue, null)
   })
 })

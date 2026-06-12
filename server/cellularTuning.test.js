@@ -1,4 +1,5 @@
 const assert = require('assert')
+const sinon = require('sinon')
 const settings = require('settings-store')
 const CellularTuning = require('./cellularTuning')
 
@@ -217,5 +218,76 @@ describe('Cellular Tuning Functions', function () {
     assert.notEqual(tuner.pollTimer, null)
     tuner.quitting()
     assert.equal(tuner.pollTimer, null)
+  })
+
+  it('#evaluateNoConfiguredBitrate()', function () {
+    // video server not configured yet - nothing to scale
+    settings.clear()
+    settings.setValue('cellularTuning.adaptiveBitrate', true)
+    const { tuner, state } = makeTuner({ configuredBitrate: 0 })
+    tuner.stopLoop()
+
+    state.signal = { rsrp: -110 }
+    tuner.evaluate()
+    tuner.evaluate()
+    assert.equal(state.setCalls.length, 0)
+    assert.equal(tuner.appliedTier, null)
+  })
+
+  it('#evaluateSetBitrateRejected()', function () {
+    // the video manager refusing the change must not mark the tier applied
+    settings.clear()
+    settings.setValue('cellularTuning.adaptiveBitrate', true)
+    const { tuner, state } = makeTuner({ setResult: false })
+    tuner.stopLoop()
+
+    state.signal = { rsrp: -110 }
+    tuner.evaluate()
+    tuner.evaluate()
+    assert.deepEqual(state.setCalls, [700])
+    assert.equal(tuner.appliedTier, null)
+    assert.equal(tuner.targetBitrate, null)
+  })
+
+  it('#pollLoopTimerFires()', function () {
+    settings.clear()
+    const { tuner } = makeTuner()
+    const clock = sinon.useFakeTimers()
+    try {
+      let evaluations = 0
+      tuner.evaluate = () => { evaluations += 1 }
+      tuner.startLoop()
+      clock.tick(5000)
+      assert.equal(evaluations, 1)
+      clock.tick(5000)
+      assert.equal(evaluations, 2)
+      tuner.stopLoop()
+      clock.tick(10000)
+      assert.equal(evaluations, 2)
+    } finally {
+      clock.restore()
+    }
+  })
+
+  it('#getSettingsCopies()', function () {
+    settings.clear()
+    const { tuner } = makeTuner()
+    const opts = tuner.getSettings()
+    assert.equal(opts.minBitrate, tuner.options.minBitrate)
+    opts.minBitrate = 9999
+    assert.notEqual(tuner.options.minBitrate, 9999)
+  })
+
+  it('#setSettingsNoLoopTransition()', function (done) {
+    // changing an unrelated option with adaptation off touches no loop
+    settings.clear()
+    const { tuner, state } = makeTuner()
+
+    tuner.setSettings({ lowLatency: true }, (err) => {
+      assert.equal(err, null)
+      assert.equal(tuner.pollTimer, null)
+      assert.equal(state.setCalls.length, 0)
+      done()
+    })
   })
 })

@@ -59,11 +59,43 @@ fake.cleanup()                       // after(): restores PATH, removes dir
 A fake `sudo` that `exec "$@"`s by default (with cases for the commands under
 test) covers the `sudo <tool>` call sites.
 
+### Live serial devices on a pty (`test/fakeModemPty.js`)
+
+Serial-stack code (open/parser/write/timeout/close in `server/ltemodem.js`)
+runs against a **real `SerialPort`** opened on a pty created by
+`python/fake-sim7600.py` — canned AT responses, no hardware:
+
+```js
+const { startFakeModem, startSilentPty } = require('../test/fakeModemPty')
+const fake = await startFakeModem()            // resolves { path, proc, stop() }
+// new LTEModem(settings) with atPort = fake.path → full live round trips
+fake.stop()                                    // after()
+```
+
+- `startSilentPty()` gives a pty that never answers — probe/AT-timeout paths.
+- serialport **locks** devices: two concurrent opens of one pty fail with
+  "Cannot lock port". Use a separate pty per concurrently-open port.
+- The emulator mimics real-modem quirks deliberately: a blank line before
+  each response, a whitespace-only line in `AT+CGMI` (blank-line guards —
+  `ReadlineParser` drops truly empty tokens, so only whitespace lines reach
+  them), an unsolicited "SMS DONE" after `ATE0` (no-command-pending paths),
+  and `FAKE_SIM7600_ERROR=1` to answer everything with `ERROR`.
+
+### Fake validator/interpreter scripts
+
+`server/customPipelines.js` resolves Python via `logpaths.getPythonPath()`;
+stubbing it with sinon to point at tiny `#!/bin/sh` scripts in a temp dir
+drives every validator outcome (stderr+exit 1, garbage stdout, verdict then
+crash, ENOENT) — see `server/customPipelines.test.js`.
+
 ### Injected seams
 
 Fork modules already expose seams (`sendAT` fixtures, `_ping`,
 `listNetInterfaces` overrides in `server/ltemodem.js`); prefer those where
 they exist. `sinon` is available for stubbing module methods and timers.
+Where a destructured import blocks stubbing, convert it to an object import
+(`const serialDetection = require('./serialDetection.js')`) — a 2-line seam,
+no behaviour change.
 
 ## Frontend patterns (`test/ui.jsx`, `test/socketMock.js`)
 
