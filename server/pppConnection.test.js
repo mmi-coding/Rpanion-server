@@ -218,6 +218,10 @@ describe('PPPConnection', function () {
   // ── quitting ────────────────────────────────────────────────────────────────
 
   describe('quitting', function () {
+    // quitting() shells out via execSync; spawning the fake sudo can exceed
+    // mocha's 2s default when the box is under load (flaked ~1 in 3 runs)
+    this.timeout(10000);
+
     it('sets isQuitting=true and is a no-op when pppProcess is null', function () {
       const ppp = new PPPConnection(mockSettings);
       ppp.pppProcess = null;
