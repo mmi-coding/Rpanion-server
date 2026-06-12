@@ -81,3 +81,11 @@ its items here. Tick on the bench, note board + date.
 - [ ] Connection test failure modes: SIM removed (SIM step fails with "SIM not inserted"), antenna off (signal step), wrong APN (data call step), USB data cable pulled with UART control connected (interface step shows the UART-only hint)
 - [ ] Ping with the VPN up: confirm `-I usb0` bypasses the VPN default route as intended
 - [ ] Pi Zero 2 W: scan + test CPU/time acceptable
+
+## Feature 7: Self-documenting UI (feature/self-documenting-ui)
+
+Needs any real browser (desktop or the Pi's webUI from a phone) - WSL has none:
+
+- [ ] Tooltips ("?") show on hover and on keyboard focus on all four fork pages; no viewport clipping (HelpTip placement defaults to right)
+- [ ] HelpSections expand/collapse; the RSRP tier table renders inside the Cellular Tuning section
+- [ ] Phone-sized screen: pages read compact with sections collapsed; "?" markers are tappable (touch shows the tooltip)
