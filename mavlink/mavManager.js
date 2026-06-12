@@ -338,6 +338,16 @@ class mavManager {
     this.sendData(command)
   }
 
+  sendSetMessageInterval (msgId, intervalUsec) {
+    // ask the FC to stream a specific message at a fixed interval
+    // (MAV_CMD_SET_MESSAGE_INTERVAL). intervalUsec = -1 disables, 0 = default rate
+    const command = new common.SetMessageIntervalCommand(this.targetSystem, this.targetComponent)
+    command.messageId = msgId
+    command.interval = intervalUsec
+    command.confirmation = 1
+    this.sendData(command)
+  }
+
   sendRTCMMessage (gpmessage, seq) {
     // create a rtcm message for the flight controller
     let flags = 0

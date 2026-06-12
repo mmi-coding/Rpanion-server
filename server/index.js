@@ -19,6 +19,7 @@ const VPNManager = require('./vpn')
 const logConversionManager = require('./logConverter.js')
 const userLogin = require('./userLogin.js')
 const logpaths = require('./paths.js')
+const CameraSwitcher = require('./cameraSwitcher.js')
 
 const settings = require('settings-store')
 
@@ -74,6 +75,7 @@ const logConversion = new logConversionManager(settings)
 const adhocManager = new Adhoc(settings)
 const userMgmt = new userLogin()
 const pppConnectionManager = new pppConnection(settings)
+const camSwitcher = new CameraSwitcher(settings)
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -319,8 +321,28 @@ fcManager.eventEmitter.on('gotMessage', (packet, data) => {
   try {
     ntripClient.onMavPacket(packet, data)
     vManager.onMavPacket(packet, data)
+    camSwitcher.onMavPacket(packet, data)
+    // ask the FC to stream RC_CHANNELS (2 Hz), once per link, if the
+    // camera switcher needs it
+    if (camSwitcher.getSettings().enabled && !camSwitcher.streamRequested &&
+        fcManager.m && fcManager.m.targetSystem !== null) {
+      camSwitcher.streamRequested = true
+      fcManager.m.sendSetMessageInterval(common.RcChannels.MSG_ID, 500000)
+    }
   } catch (err) {
     console.log('Error processing MAVLink message in listener:', err);
+  }
+})
+
+// Camera switcher decided to switch - flip the video pipeline source.
+// In 'command' mode the switch command has already been run by the switcher
+camSwitcher.eventEmitter.on('switch', (source, switchMode) => {
+  try {
+    if (switchMode === 'gstreamer') {
+      vManager.switchSource(source)
+    }
+  } catch (err) {
+    console.log('Error switching video source:', err);
   }
 })
 
@@ -328,6 +350,8 @@ fcManager.eventEmitter.on('newLink', () => {
 })
 
 fcManager.eventEmitter.on('stopLink', () => {
+  // re-request the RC_CHANNELS stream on the next link
+  camSwitcher.resetLink()
 })
 
 fcManager.eventEmitter.on('armed', () => {
@@ -826,6 +850,71 @@ app.post('/api/ntripmodify', authenticateToken, [check('active').isBoolean(),
   })
 })
 
+// Serve the camera switcher config and status
+app.get('/api/cameraswitcher', authenticateToken, (req, res) => {
+  res.setHeader('Content-Type', 'application/json')
+  res.send(JSON.stringify({ settings: camSwitcher.getSettings(), status: camSwitcher.getStatus() }))
+})
+
+// change camera switcher settings
+app.post('/api/cameraswitchermodify', authenticateToken, [
+  check('enabled').isBoolean(),
+  check('rcChannel').isInt({ min: 1, max: 18 }),
+  check('threshold').isInt({ min: 800, max: 2200 }),
+  check('hysteresis').isInt({ min: 0, max: 500 }),
+  check('minHoldMs').isInt({ min: 0, max: 5000 }),
+  check('switchMode').isIn(['gstreamer', 'command']),
+  check('secDevice').optional({ checkFalsy: true }).isString().not().contains(';').not().contains('\'').not().contains('"').trim(),
+  check('secFormat').optional({ checkFalsy: true }).isIn(['video/x-raw', 'image/jpeg']),
+  check('secWidth').optional().isInt({ min: 0, max: 4096 }),
+  check('secHeight').optional().isInt({ min: 0, max: 4096 }),
+  check('secFps').optional().isInt({ min: -1, max: 120 }),
+  check('commandA').optional({ checkFalsy: true }).isString(),
+  check('commandB').optional({ checkFalsy: true }).isString()
+], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/cameraswitchermodify', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  camSwitcher.setSettings({
+    enabled: req.body.enabled === true || req.body.enabled === 'true',
+    rcChannel: parseInt(req.body.rcChannel, 10),
+    threshold: parseInt(req.body.threshold, 10),
+    hysteresis: parseInt(req.body.hysteresis, 10),
+    minHoldMs: parseInt(req.body.minHoldMs, 10),
+    switchMode: req.body.switchMode,
+    secDevice: req.body.secDevice || '',
+    secFormat: req.body.secFormat || 'video/x-raw',
+    secWidth: parseInt(req.body.secWidth, 10) || 0,
+    secHeight: parseInt(req.body.secHeight, 10) || 0,
+    secFps: parseInt(req.body.secFps, 10) || -1,
+    commandA: req.body.commandA || '',
+    commandB: req.body.commandB || ''
+  }, (err) => {
+    res.setHeader('Content-Type', 'application/json')
+    if (err) {
+      res.status(422).send(JSON.stringify({ error: err.message, settings: camSwitcher.getSettings() }))
+    } else {
+      res.send(JSON.stringify({ error: null, settings: camSwitcher.getSettings() }))
+    }
+  })
+})
+
+// manually switch the active camera source
+app.post('/api/cameraswitcherswitch', authenticateToken, [check('source').isIn(['A', 'B'])], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/cameraswitcherswitch', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  camSwitcher.doSwitch(req.body.source)
+  res.setHeader('Content-Type', 'application/json')
+  res.send(JSON.stringify({ error: null, status: camSwitcher.getStatus() }))
+})
+
 // Serve the AP clients info
 app.get('/api/networkclients', authenticateToken, (req, res) => {
   networkClients.getClients((err, apnamev, apclientsv) => {
@@ -1105,6 +1194,7 @@ io.on('connection', function () {
     io.sockets.emit('LogConversionStatus', logConversion.conStatusLogStr())
     io.sockets.emit('PPPStatus', pppConnectionManager.conStatusStr())
     io.sockets.emit('VideoStreamStatus', vManager.getStreamingStatus())
+    io.sockets.emit('CameraSwitcherStatus', camSwitcher.getStatus())
   }, 1000)
 })
 
@@ -1304,6 +1394,12 @@ app.post('/api/camera/start', authenticateToken, [
 
   // Persist the selected media destination and mode settings immediately.
   vManager.saveSettings();
+
+  // The dual-source video pipeline always starts on source A - keep the
+  // switcher state in sync. The RC logic will re-switch if needed
+  if (mode === 'streaming' && camSwitcher.getSettings().switchMode === 'gstreamer') {
+    camSwitcher.activeSource = 'A'
+  }
 
   vManager.startCamera((err, result) => {
     res.setHeader('Content-Type', 'application/json');

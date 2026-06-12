@@ -33,5 +33,7 @@ settingsTest.json
 /rpanion-server_*
 
 /python/.venv
+/python/.venv-dev
+__pycache__/
 
 /media

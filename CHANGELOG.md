@@ -1,4 +1,11 @@
 ### Changelog
+#### Unreleased (fork)
+ - Video: Add dual-camera switching driven by a MAVLink RC channel (RC_CHANNELS), with configurable channel/threshold/hysteresis/debounce
+ - Video: Runtime source switching without restarting the stream (GStreamer input-selector dual-source pipeline, RTSP and RTP)
+ - Video: 'Command' switch mode for CSI multiplexer boards (user-defined per-source shell commands)
+ - Video: Manual source switching from the new Camera Switcher page
+ - MAVLink: Request RC_CHANNELS stream via MAV_CMD_SET_MESSAGE_INTERVAL when the camera switcher is enabled
+
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support
  - PPP: Add PPP link management to flight controller

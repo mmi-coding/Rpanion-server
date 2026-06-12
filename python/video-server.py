@@ -5,8 +5,10 @@
 # gst-launch-1.0 rtspsrc location=rtsp://127.0.0.1:8554/video latency=0 ! decodebin ! autovideosink
 
 import argparse
+import json
 import platform
 import ipaddress
+import sys
 from typing import List
 import subprocess
 import gi
@@ -220,6 +222,232 @@ def getPipeline(device, height, width, bitrate, format, rotation, framerate, tim
     return " ! ".join(pipeline)
 
 
+# ---- Runtime source switching (camera switcher) ----
+# Shared state between the stdin control channel and the pipelines.
+# switch_state holds the desired source; live_selectors holds the
+# input-selector elements of all currently-running pipelines.
+switch_state = {"source": "A"}
+live_selectors = []
+
+
+def applySwitchToSelector(sel):
+    # point one input-selector at the currently desired source
+    padname = "sink_0" if switch_state["source"] == "A" else "sink_1"
+    pad = sel.get_static_pad(padname)
+    if pad is not None:
+        sel.set_property("active-pad", pad)
+
+
+def doSwitch(source):
+    # change the desired source and apply to all running pipelines
+    switch_state["source"] = source
+    for sel in list(live_selectors):
+        try:
+            applySwitchToSelector(sel)
+        except Exception as e:
+            print("Switch error: {0}".format(e))
+    print("SWITCHED:{0}".format(source), flush=True)
+
+
+def stdinWatch(fd, condition):
+    # control channel from the Node server. One JSON object per line:
+    # {"cmd": "switch", "source": "A"|"B"}
+    line = sys.stdin.readline()
+    if line == "":
+        # EOF - parent has gone away. Stop watching
+        return False
+    try:
+        cmd = json.loads(line)
+        if cmd.get("cmd") == "switch" and cmd.get("source") in ("A", "B"):
+            doSwitch(cmd.get("source"))
+        else:
+            print("Unknown control command: {0}".format(line.strip()))
+    except ValueError:
+        print("Bad control command: {0}".format(line.strip()))
+    return True
+
+
+def getNormalizedSourceBin(device, height, width, format, framerate, out_width, out_height, out_framerate) -> List[str]:
+    """Build a source branch that always outputs fixed-caps raw video
+    (I420, out_width x out_height), suitable for one input of an
+    input-selector. Both branches having identical caps means the
+    selector can switch without the encoder renegotiating."""
+    bin: List[str] = []
+
+    if framerate == -1:
+        framestr = ""
+    else:
+        framestr = ",framerate={0}/1".format(framerate)
+
+    if device == "testsrc":
+        bin.append("videotestsrc is-live=true pattern=ball")
+        bin.append("video/x-raw,width={0},height={1}{2}".format(width, height, framestr))
+    elif device == "testsrc2":
+        # a visually distinct second test pattern, for bench testing the switcher
+        bin.append("videotestsrc is-live=true pattern=smpte")
+        bin.append("video/x-raw,width={0},height={1}{2}".format(width, height, framestr))
+    elif device.startswith("/base/soc/i2c") or device.startswith("/base/axi/pcie"):
+        # libcamera (CSI) source
+        if is_pi_5_or_later():
+            srcformat = "RGBx"
+        else:
+            srcformat = "I420"
+        bin.append("libcamerasrc camera-name={0}".format(device))
+        bin.append("capsfilter caps=video/x-raw,width={0},height={1},format={3}{2}".format(width, height, framestr, srcformat))
+        bin.append("queue max-size-buffers=3 leaky=downstream")
+    elif format == "image/jpeg":
+        # USB camera, MJPEG
+        bin.append("v4l2src device={0} io-mode=2".format(device))
+        bin.append("videorate drop-only=true max-rate={0}".format(framerate if framerate != -1 else 30))
+        bin.append("image/jpeg,width={0},height={1}{2}".format(width, height, framestr))
+        bin.append("queue max-size-buffers=2 leaky=downstream")
+        if Gst.ElementFactory.find("v4l2jpegdec"):
+            bin.append("v4l2jpegdec capture-io-mode=4")
+        else:
+            bin.append("jpegdec max-errors=-1")
+    elif format == "video/x-raw":
+        # USB camera, raw
+        bin.append("v4l2src device={0} io-mode=2".format(device))
+        bin.append("videorate drop-only=true")
+        bin.append("video/x-raw,width={0},height={1}{2}".format(width, height, framestr))
+        bin.append("queue max-size-buffers=2 leaky=downstream")
+    else:
+        print("Bad switcher source: {0} ({1})".format(device, format))
+        return []
+
+    # normalize both branches to identical caps
+    bin.append("videoconvert")
+    bin.append("videoscale")
+    if out_framerate != -1:
+        bin.append("videorate")
+        bin.append("video/x-raw,format=I420,width={0},height={1},framerate={2}/1".format(out_width, out_height, out_framerate))
+    else:
+        bin.append("video/x-raw,format=I420,width={0},height={1}".format(out_width, out_height))
+    return bin
+
+
+def getEncodeTail(primary_device, bitrate, compression) -> List[str]:
+    """Encoder + RTP payloader for the switched (raw I420) stream. Mirrors the
+    encoder selection logic of getPipeline()."""
+    tail: List[str] = []
+
+    if (Gst.ElementFactory.find("nvv4l2h264enc") and compression == "H264") or (Gst.ElementFactory.find("nvv4l2h265enc") and compression == "H265"):
+        # Jetson hardware encoder
+        tail.append("nvvidconv")
+        if compression == "H265":
+            tail.append("nvv4l2h265enc bitrate={0} iframeinterval=5 preset-level=1 insert-sps-pps=true".format(bitrate*1000))
+            tail.append("h265parse")
+        else:
+            tail.append("nvv4l2h264enc bitrate={0} iframeinterval=5 preset-level=1 insert-sps-pps=true".format(bitrate*1000))
+            tail.append("h264parse")
+    elif Gst.ElementFactory.find("v4l2h264enc") and compression == "H264" and not is_pi_5_or_later() and \
+            (primary_device.startswith("/base/soc/i2c") or primary_device.startswith("/base/axi/pcie")):
+        # Pi hardware encoder (Pi4/Zero 2 W and earlier). Same usage restrictions
+        # as getPipeline(): only used when the primary source is a CSI camera
+        if bitrate > 20000:
+            level = "4.1"
+        else:
+            level = "4"
+        tail.append("videoconvert")
+        tail.append("v4l2h264enc extra-controls=\"controls,repeat_sequence_header=1,h264_profile=4,video_bitrate={0},h264_i_frame_period=5\"".format(bitrate*1000))
+        tail.append("video/x-h264,profile=high,level=(string){0}".format(level))
+        tail.append("h264parse")
+    else:
+        # software encoder - x86, Pi5, etc
+        tail.append("videoconvert")
+        if is_pi_5_or_later() and compression == "H264":
+            tail.append("video/x-raw,format=NV12")
+        else:
+            tail.append("video/x-raw,format=I420")
+        tail.append("queue max-size-buffers=2 leaky=downstream")
+        if compression == "H264":
+            tail.append("x264enc tune=zerolatency bitrate={0} speed-preset=superfast key-int-max=25 threads=0".format(bitrate))
+        elif compression == "H265":
+            tail.append("x265enc tune=zerolatency bitrate={0} speed-preset=superfast key-int-max=25".format(bitrate))
+
+    tail.append("queue")
+    if compression == "H264":
+        tail.append("rtph264pay config-interval=1 name=pay0 pt=96")
+    elif compression == "H265":
+        tail.append("rtph265pay config-interval=1 name=pay0 pt=96")
+    return tail
+
+
+def getDualPipeline(primary_device, primary_format, height, width, framerate,
+                    secondary_device, secondary_format, sec_height, sec_width, sec_framerate,
+                    bitrate, rotation, timestamp, compression, udp_sink="") -> str:
+    """Build a dual-source pipeline with an input-selector, allowing runtime
+    switching between the two sources without restarting the stream. The
+    output caps follow the primary source's resolution/framerate."""
+    # secondary capture size defaults to the primary's
+    if sec_width == 0:
+        sec_width = width
+    if sec_height == 0:
+        sec_height = height
+
+    binA = getNormalizedSourceBin(primary_device, height, width, primary_format,
+                                  framerate, width, height, framerate)
+    binB = getNormalizedSourceBin(secondary_device, sec_height, sec_width, secondary_format,
+                                  sec_framerate, width, height, framerate)
+    if not binA or not binB:
+        return ""
+
+    # selected stream -> rotation -> timestamp -> encoder -> RTP
+    tail: List[str] = ["input-selector name=sel sync-streams=false"]
+    if rotation == 90:
+        tail.append("videoflip video-direction=90r")
+    elif rotation == 180:
+        tail.append("videoflip video-direction=180")
+    elif rotation == 270:
+        tail.append("videoflip video-direction=90l")
+    if timestamp:
+        tail.append("videoconvert")
+        tail.append("clockoverlay time-format=\"%d-%b-%Y %H:%M:%S\"")
+    tail.extend(getEncodeTail(primary_device, bitrate, compression))
+    if udp_sink != "":
+        tail.append(udp_sink)
+
+    pipeline = " ! ".join(tail)
+    pipeline += "  " + " ! ".join(binA + ["sel.sink_0"])
+    pipeline += "  " + " ! ".join(binB + ["sel.sink_1"])
+
+    print(pipeline)
+    return pipeline
+
+
+class SwitcherFactory(GstRtspServer.RTSPMediaFactory):
+    """RTSP factory for the dual-source (switchable) pipeline. The pipeline is
+    shared between clients (one set of cameras), and every prepared media
+    registers its input-selector for runtime switching."""
+
+    def __init__(self, pipeline_str):
+        GstRtspServer.RTSPMediaFactory.__init__(self)
+        self.pipeline_str = pipeline_str
+
+        self.set_latency(0)
+        self.set_buffer_size(0)
+        self.set_transport_mode(GstRtspServer.RTSPTransportMode.PLAY)
+        # share one pipeline between all clients - the cameras can only be opened once
+        self.set_shared(True)
+
+    def do_create_element(self, url):
+        return Gst.parse_launch(self.pipeline_str)
+
+    def do_configure(self, media):
+        self.set_eos_shutdown(True)
+        element = media.get_element()
+        sel = element.get_by_name("sel")
+        if sel is not None:
+            live_selectors.append(sel)
+            # apply the current switch state to the new pipeline
+            applySwitchToSelector(sel)
+            media.connect("unprepared", self.onMediaUnprepared, sel)
+
+    def onMediaUnprepared(self, media, sel):
+        if sel in live_selectors:
+            live_selectors.remove(sel)
+
+
 class MyFactory(GstRtspServer.RTSPMediaFactory):
     def __init__(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression):
         GstRtspServer.RTSPMediaFactory.__init__(self)
@@ -287,6 +515,19 @@ class GstServer():
         print("Use: gst-launch-1.0 rtspsrc location=rtsp://<IP>:8554/" +
               name + " latency=0 ! queue ! decodebin ! autovideosink sync=false")
 
+    def addSwitcherStream(self, device, pipeline_str):
+        # Dual-source (switchable) stream. Mounted under the primary device's
+        # name, so client URLs are identical to single-source mode
+        f = SwitcherFactory(pipeline_str)
+
+        m = self.server.get_mount_points()
+        name = ''.join(filter(str.isalnum, device))
+        m.add_factory("/" + name, f)
+
+        print("Added switchable " + "rtsp://<IP>:8554/" + name)
+        print("Use: gst-launch-1.0 rtspsrc location=rtsp://<IP>:8554/" +
+              name + " latency=0 ! queue ! decodebin ! autovideosink sync=false")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="RTSP Server using Gstreamer")
@@ -311,6 +552,16 @@ if __name__ == '__main__':
         "--multirtsp", help="CSV of multi-camera RTSP setup. Format is videosource,height,width,bitrate,formatstr,rotation, fps;source2,etc", default="", type=str)
     parser.add_argument("--timestamp", help="add timestamp",
                         default=False, action='store_true')
+    parser.add_argument(
+        "--secondary", help="Secondary video device for runtime source switching", default="", type=str)
+    parser.add_argument("--secondary-format", help="Secondary video format",
+                        default="video/x-raw", type=str)
+    parser.add_argument(
+        "--secondary-width", help="Secondary capture width", default=0, type=int)
+    parser.add_argument(
+        "--secondary-height", help="Secondary capture height", default=0, type=int)
+    parser.add_argument(
+        "--secondary-fps", help="Secondary capture framerate", default=-1, type=int)
     args = parser.parse_args()
 
     loop = GLib.MainLoop()
@@ -318,6 +569,12 @@ if __name__ == '__main__':
 
     Gst.debug_set_active(True)
     Gst.debug_set_default_threshold(3)
+
+    secondary_active = args.secondary != "" and args.multirtsp == ""
+    if secondary_active:
+        # control channel from the Node server for runtime source switching
+        GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN |
+                          GLib.IO_HUP, stdinWatch)
 
     if args.multirtsp != "":
         # Multi-camera streaming, delimited via ';'
@@ -345,6 +602,52 @@ if __name__ == '__main__':
             loop.run()
         except:
             print("Exiting RTSP Server")
+            loop.quit()
+    elif secondary_active and args.transport == "RTSP":
+        # Dual-source RTSP with runtime switching
+        pipeline_str = getDualPipeline(args.videosource, args.format, args.height, args.width, args.fps,
+                                       args.secondary, args.secondary_format, args.secondary_height,
+                                       args.secondary_width, args.secondary_fps,
+                                       args.bitrate, args.rotation, args.timestamp, args.compression)
+        if pipeline_str == "":
+            print("Unable to build dual-source pipeline")
+            sys.exit(1)
+        s = GstServer()
+        s.addSwitcherStream(args.videosource, pipeline_str)
+
+        try:
+            loop.run()
+        except:
+            print("Exiting RTSP Server")
+            loop.quit()
+    elif secondary_active and args.transport == "RTP":
+        # Dual-source RTP with runtime switching
+        udp_sink = "udpsink host={0} port={1}".format(
+            args.udp.split(':')[0], args.udp.split(':')[1])
+        if is_multicast(args.udp.split(':')[0]):
+            udp_sink += " auto-multicast=true"
+        pipeline_str = getDualPipeline(args.videosource, args.format, args.height, args.width, args.fps,
+                                       args.secondary, args.secondary_format, args.secondary_height,
+                                       args.secondary_width, args.secondary_fps,
+                                       args.bitrate, args.rotation, args.timestamp, args.compression,
+                                       udp_sink=udp_sink)
+        if pipeline_str == "":
+            print("Unable to build dual-source pipeline")
+            sys.exit(1)
+        pipeline = Gst.parse_launch(pipeline_str)
+        sel = pipeline.get_by_name("sel")
+        if sel is not None:
+            live_selectors.append(sel)
+            applySwitchToSelector(sel)
+        pipeline.set_state(Gst.State.PLAYING)
+
+        print("Server sending UDP stream to " + args.udp)
+
+        try:
+            loop.run()
+        except:
+            print("Exiting UDP Server")
+            pipeline.set_state(Gst.State.NULL)
             loop.quit()
     elif args.transport == "RTSP":
         # RTSP
