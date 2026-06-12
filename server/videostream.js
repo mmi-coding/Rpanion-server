@@ -33,6 +33,10 @@ class videoStream {
     this.lastPipeline = '';
     this.customPipelineFallback = '';
 
+    // last runtime bitrate (kbps) acknowledged by the video server, or
+    // null if the stream is running at its configured bitrate
+    this.currentBitrate = null;
+
     // Load saved settings from the 'camera' namespace
     this.active = this.settings.value('camera.active', false);
     this.cameraMode = this.settings.value('camera.mode', 'streaming');
@@ -493,6 +497,33 @@ class videoStream {
     return ['--transport=RTSP', '--udp=0']
   }
 
+  // Cellular low-latency preset: pass --lowlatency to the video server so
+  // the generated pipeline is tuned for constrained 4G links (1s GOP,
+  // CBR-ish rate control, leaky queues, non-blocking udpsink)
+  getCellularTuningArgs() {
+    if (this.settings.value('cellularTuning.lowLatency', false)) {
+      return ['--lowlatency']
+    }
+    return []
+  }
+
+  // Retune the encoder bitrate (kbps) on a running stream via the video
+  // server's stdin control channel. Returns true if the command was sent;
+  // the BITRATE: ack from the video server updates this.currentBitrate
+  setBitrate(kbps) {
+    if (!Number.isInteger(kbps) || kbps < 50 || kbps > 100000) {
+      return false
+    }
+    if (this.deviceStream === null || this.cameraMode !== 'streaming') {
+      return false
+    }
+    if (this.deviceStream.stdin && this.deviceStream.stdin.writable) {
+      this.deviceStream.stdin.write(JSON.stringify({ cmd: 'bitrate', kbps }) + '\n')
+      return true
+    }
+    return false
+  }
+
   // Flip the active source on a running dual-source stream.
   // Returns true if the switch command was sent to the video server.
   switchSource(source) {
@@ -534,7 +565,8 @@ class videoStream {
       '--rotation=' + this.videoSettings.rotation,
       '--fps=' + this.videoSettings.fps,
       ...this.getTransportArgs(),
-      '--compression=' + this.videoSettings.compression
+      '--compression=' + this.videoSettings.compression,
+      ...this.getCellularTuningArgs()
     ];
 
     if (this.videoSettings.useTimestamp) args.push('--timestamp');
@@ -554,6 +586,7 @@ class videoStream {
     // reset pipeline tracking for this run
     this.lastPipeline = '';
     this.customPipelineFallback = '';
+    this.currentBitrate = null;
 
     const pythonPath = logpaths.getPythonPath()
     this.deviceStream = spawn(pythonPath, args)
@@ -706,6 +739,13 @@ class videoStream {
       if (fallbackMatch) {
         this.customPipelineFallback = fallbackMatch[1].trim();
         console.log('Custom pipeline rejected, fell back to generated pipeline: ' + this.customPipelineFallback);
+      }
+
+      // runtime bitrate change acknowledgements from video-server.py
+      const bitrateMatch = chunk.match(/^BITRATE:(\d+)$/m);
+      if (bitrateMatch) {
+        this.currentBitrate = parseInt(bitrateMatch[1], 10);
+        console.log('Video server acknowledged bitrate change: ' + this.currentBitrate + ' kbps');
       }
 
       // find file paths printed by photovideo.py

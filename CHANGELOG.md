@@ -14,6 +14,11 @@
  - LTE: Persistent data usage accounting on the modem's RNDIS network interface, with session counters and reset
  - LTE: Optional auto-reconnect - restart the data call (AT+CGDCONT / AT$QCRMCALL) when registered but no IP is assigned
  - LTE: Raw AT command console on the LTE Modem page
+ - Video: Low-latency cellular preset (`--lowlatency`) - 1 second keyframe interval, CBR-style rate control (x264 VBV capping / v4l2h264enc CBR mode), leaky single-buffer queues before the payloader, and non-blocking UDP send
+ - Video: Runtime encoder bitrate retuning over a stdin control channel (`{"cmd":"bitrate","kbps":N}`) without restarting the stream - works with x264/x265, NVIDIA and Pi (`v4l2h264enc`) encoders; custom pipelines opt in by naming their encoder `enc0`
+ - Video: Signal-adaptive bitrate - scales the stream bitrate with the LTE modem's RSRP/RSSI (good 100% / fair 60% / poor 35%) with hysteresis and a configurable minimum-bitrate floor; restores the configured bitrate on recovery
+ - Video: New Cellular Video Tuning page (live tier/bitrate status + settings)
+ - Video: Fix video server stdin control handling losing commands when multiple lines arrive in one chunk
 
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support

@@ -26,6 +26,11 @@ hybrids, etc.
 - The pipeline is keyed by **camera device name** and must exactly match the
   device string used on the *Photo and Video* page (e.g. `/dev/video0` or
   `/base/soc/i2c0mux/i2c@1/imx708@1a`).
+- Optional: name your encoder **`enc0`** (e.g. `x264enc name=enc0 ...`) to
+  opt in to runtime bitrate changes — used by the adaptive bitrate feature on
+  the [Cellular Video Tuning](CELLULAR-TUNING.md) page. Without it the stream
+  works fine but bitrate retune requests are answered with
+  `BITRATE-NOENCODER`.
 
 ## Validation and fallback (three layers)
 

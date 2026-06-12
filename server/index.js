@@ -22,6 +22,7 @@ const logpaths = require('./paths.js')
 const CameraSwitcher = require('./cameraSwitcher.js')
 const CustomPipelines = require('./customPipelines.js')
 const LTEModem = require('./ltemodem.js')
+const CellularTuning = require('./cellularTuning.js')
 
 const settings = require('settings-store')
 
@@ -80,6 +81,18 @@ const pppConnectionManager = new pppConnection(settings)
 const camSwitcher = new CameraSwitcher(settings)
 const customPipelines = new CustomPipelines(settings)
 const lteModem = new LTEModem(settings)
+// cellular video tuning: ties the LTE modem's signal quality to the video
+// stream's encoder bitrate
+const cellularTuning = new CellularTuning(settings, {
+  getSignal: () => {
+    const ltestatus = lteModem.getStatus()
+    return ltestatus.available ? ltestatus.signal : null
+  },
+  isStreaming: () => vManager.active && vManager.cameraMode === 'streaming' && vManager.deviceStream !== null,
+  getConfiguredBitrate: () => (vManager.videoSettings && vManager.videoSettings.bitrate) || null,
+  setBitrate: (kbps) => vManager.setBitrate(kbps),
+  getAckBitrate: () => vManager.currentBitrate
+})
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -144,6 +157,7 @@ async function gracefulShutdown(signal, exitCode = 0) {
     cloud.quitting()
     logConversion.quitting()
     lteModem.quitting()
+    cellularTuning.quitting()
     console.log('All services stopped')
     
     clearTimeout(forceShutdownTimer)
@@ -1048,6 +1062,38 @@ app.post('/api/ltemodemcommand', authenticateToken, [
   })
 })
 
+// cellular video tuning settings and status
+app.get('/api/cellulartuning', authenticateToken, (req, res) => {
+  res.setHeader('Content-Type', 'application/json')
+  res.send(JSON.stringify({ settings: cellularTuning.getSettings(), status: cellularTuning.getStatus() }))
+})
+
+// change cellular video tuning settings
+app.post('/api/cellulartuningmodify', authenticateToken, [
+  check('lowLatency').isBoolean(),
+  check('adaptiveBitrate').isBoolean(),
+  check('minBitrate').isInt({ min: 50, max: 10000 })
+], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/cellulartuningmodify', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  cellularTuning.setSettings({
+    lowLatency: req.body.lowLatency === true || req.body.lowLatency === 'true',
+    adaptiveBitrate: req.body.adaptiveBitrate === true || req.body.adaptiveBitrate === 'true',
+    minBitrate: parseInt(req.body.minBitrate, 10)
+  }, (err) => {
+    res.setHeader('Content-Type', 'application/json')
+    if (err) {
+      res.status(422).send(JSON.stringify({ error: err.message, settings: cellularTuning.getSettings() }))
+    } else {
+      res.send(JSON.stringify({ error: null, settings: cellularTuning.getSettings() }))
+    }
+  })
+})
+
 // Serve the AP clients info
 app.get('/api/networkclients', authenticateToken, (req, res) => {
   networkClients.getClients((err, apnamev, apclientsv) => {
@@ -1329,6 +1375,7 @@ io.on('connection', function () {
     io.sockets.emit('VideoStreamStatus', vManager.getStreamingStatus())
     io.sockets.emit('CameraSwitcherStatus', camSwitcher.getStatus())
     io.sockets.emit('LTEStatus', lteModem.getStatus())
+    io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
   }, 1000)
 })
 

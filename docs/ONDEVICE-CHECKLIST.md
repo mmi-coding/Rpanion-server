@@ -57,3 +57,15 @@ its items here. Tick on the bench, note board + date.
 - [ ] Port contention: mavlink-router and PPP are not configured on the modem's AT ports; monitor + Mission Planner telemetry run simultaneously
 - [ ] Monitor auto-starts on boot when enabled; status correct after modem USB replug (lazy port reopen)
 - [ ] Pi Zero 2 W: AT polling at 5 s has no impact on stream CPU
+
+## Feature 5: Cellular Video Tuning (feature/cellular-tuning)
+
+- [ ] Low-latency preset with IMX708 + `v4l2h264enc` on Pi 4: stream starts, pipeline print shows `h264_i_frame_period=<fps>`, `video_bitrate_mode=1` and the leaky payloader queue; encoder accepts the CBR control (no `extra-controls` error in the service log)
+- [ ] Runtime bitrate change on the real hardware encoder: with a stream running, change the LTE signal tier (or use the bench stdin command) → `BITRATE:` ack and a visible wire-rate change (`iftop`/`nload` on the VPN interface) — `v4l2h264enc` runtime `extra-controls` retuning is the one path WSL could not exercise
+- [ ] Glass-to-glass latency with and without the preset (phone stopwatch in frame, Mission Planner HUD over VPN on LTE) — expect a measurable drop with the preset on
+- [ ] Adaptive bitrate against the real SIM7600: enable modem monitoring + adaptive bitrate, attenuate the antenna (or drive into weak coverage) → tier drops after 2 polls, bitrate steps down, stream stays up; signal recovery restores the configured bitrate
+- [ ] Tier boundaries sane for the actual carrier/band (RSRP −95/−105 defaults) — adjust thresholds in `server/cellularTuning.js` if the local network behaves differently
+- [ ] RTSP mode: bitrate retune with a connected client (Mission Planner/VLC) — ack flips from `BITRATE-NOENCODER` to `BITRATE:` once a client is connected
+- [ ] Dual-camera switcher + low-latency preset together: A↔B switch and a bitrate retune on the same stdin channel mid-stream
+- [ ] Custom pipeline with `enc0`-named hardware encoder: runtime retune works (x264 path verified in WSL; verify `v4l2h264enc` on device)
+- [ ] Pi Zero 2 W: CPU headroom with the preset at 1080p30 (CBR + 1 s GOP costs a little more encoder work); adaptive loop adds no measurable CPU
