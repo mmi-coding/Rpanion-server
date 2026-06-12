@@ -10,6 +10,10 @@
  - Video: Runtime fallback to the auto-generated pipeline if a custom pipeline fails to load - the stream never bricks
  - Video: Report the actually-used pipeline string back to the UI as an editing starting point
  - Video: Fix RTP/UDP transport mode - the RTP selection never reached the video server (missing --transport=RTP), so an RTSP server was started instead of sending RTP to the configured UDP destination
+ - LTE: New LTE Modem page for SimCom SIM7600-series modems - AT-port driven signal/registration/operator/band/IP monitoring (data path stays on USB RNDIS; ModemManager not used)
+ - LTE: Persistent data usage accounting on the modem's RNDIS network interface, with session counters and reset
+ - LTE: Optional auto-reconnect - restart the data call (AT+CGDCONT / AT$QCRMCALL) when registered but no IP is assigned
+ - LTE: Raw AT command console on the LTE Modem page
 
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support

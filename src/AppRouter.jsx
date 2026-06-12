@@ -17,6 +17,7 @@ import UserManagement from './userManagement.jsx'
 import PPPPage from './ppp.jsx'
 import CameraSwitcherPage from './cameraswitcher.jsx'
 import PipelineEditorPage from './pipelineeditor.jsx'
+import LTEModemPage from './ltemodem.jsx'
 
 function AppRouter () {
   const [isAuthenticated, setIsAuthenticated] = useState(null)
@@ -78,6 +79,7 @@ function AppRouter () {
           <Link className='list-group-item list-group-item-action bg-light' to="/video">Photo and Video</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/cameraswitcher">Camera Switcher</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/pipelineeditor">Video Pipeline Editor</Link>
+          <Link className='list-group-item list-group-item-action bg-light' to="/ltemodem">LTE Modem</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/cloud">Cloud Upload</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/vpn">VPN Config</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/about">About</Link>
@@ -99,6 +101,7 @@ function AppRouter () {
             <Route exact path="/video" element={<VideoPage />} />
             <Route exact path="/cameraswitcher" element={<CameraSwitcherPage />} />
             <Route exact path="/pipelineeditor" element={<PipelineEditorPage />} />
+            <Route exact path="/ltemodem" element={<LTEModemPage />} />
             <Route exact path="/flightlogs" element={<LogBrowser />} />
             <Route exact path="/apclients" element={<NetworkClients />} />
             <Route exact path="/ntrip" element={<NTRIPPage />} />
