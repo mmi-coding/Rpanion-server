@@ -9,6 +9,7 @@
  - Video: Validate custom pipelines via a GStreamer dry-run (parse + `pay0` payloader check) before saving
  - Video: Runtime fallback to the auto-generated pipeline if a custom pipeline fails to load - the stream never bricks
  - Video: Report the actually-used pipeline string back to the UI as an editing starting point
+ - Video: Fix RTP/UDP transport mode - the RTP selection never reached the video server (missing --transport=RTP), so an RTSP server was started instead of sending RTP to the configured UDP destination
 
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support

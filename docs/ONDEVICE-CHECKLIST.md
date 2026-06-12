@@ -34,3 +34,14 @@ its items here. Tick on the bench, note board + date.
 - [ ] Runtime fallback on device: enable a deliberately broken pipeline, start stream → `CUSTOM-PIPELINE-FALLBACK` warning appears on the Pipeline Editor page and the generated pipeline streams
 - [ ] "Last used pipeline" populated after a real IMX708 stream; Copy-into-editor → tweak (e.g. bitrate) → save → restart → new value in effect
 - [ ] Custom pipeline correctly suppresses camera-switcher dual-source mode when both are configured for the same device
+
+## Feature 3: UDP/RTP video sink (feature/udp-rtp-sink)
+
+- [ ] RTP mode from the Photo and Video page with IMX708 + `v4l2h264enc` on Pi 4: packets arrive at the configured destination (verify with the gst receive string from the page)
+- [ ] RTP into Mission Planner over the WireGuard/ZeroTier VPN on LTE (destination = GCS VPN address) — video latency acceptable
+- [ ] RTP into QGroundControl (UDP h.264 source, matching port)
+- [ ] RTSP mode still works after the transport fix (regression)
+- [ ] RTP + camera switcher dual-source: runtime A↔B switch while pushing UDP through the VPN
+- [ ] RTP + custom pipeline: udpsink auto-appended, hardware encode confirmed
+- [ ] Multicast destination address (if used on the local network)
+- [ ] Camera heartbeat enabled: GCS auto-discovers the RTP stream via VIDEO_STREAM_INFORMATION (type RTPUDP, destination port)

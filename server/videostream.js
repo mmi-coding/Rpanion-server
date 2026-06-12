@@ -479,6 +479,20 @@ class videoStream {
     ]
   }
 
+  // Build the transport args for the video server. The UI's RTP/RTSP
+  // transport selection arrives as videoSettings.useUDP - without an
+  // explicit --transport the video server defaults to RTSP and silently
+  // ignores the --udp destination
+  getTransportArgs() {
+    if (this.videoSettings && this.videoSettings.useUDP) {
+      return [
+        '--transport=RTP',
+        '--udp=' + `${this.videoSettings.useUDPIP}:${this.videoSettings.useUDPPort}`
+      ]
+    }
+    return ['--transport=RTSP', '--udp=0']
+  }
+
   // Flip the active source on a running dual-source stream.
   // Returns true if the switch command was sent to the video server.
   switchSource(source) {
@@ -519,7 +533,7 @@ class videoStream {
       '--bitrate=' + this.videoSettings.bitrate,
       '--rotation=' + this.videoSettings.rotation,
       '--fps=' + this.videoSettings.fps,
-      '--udp=' + (this.videoSettings.useUDP ? `${this.videoSettings.useUDPIP}:${this.videoSettings.useUDPPort}` : '0'),
+      ...this.getTransportArgs(),
       '--compression=' + this.videoSettings.compression
     ];
 

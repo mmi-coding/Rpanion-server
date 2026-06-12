@@ -324,6 +324,23 @@ describe('Video Functions', function () {
     assert.deepEqual(vManager.getCustomPipelineArgs(), [])
   })
 
+  it('#getTransportArgs()', function () {
+    settings.clear()
+    const vManager = new VideoStream(settings)
+
+    // no settings yet: default to RTSP
+    assert.deepEqual(vManager.getTransportArgs(), ['--transport=RTSP', '--udp=0'])
+
+    // RTSP selected (useUDP false)
+    vManager.videoSettings = { useUDP: false, useUDPIP: '192.168.1.10', useUDPPort: 5600 }
+    assert.deepEqual(vManager.getTransportArgs(), ['--transport=RTSP', '--udp=0'])
+
+    // RTP selected: must pass --transport=RTP alongside the destination
+    vManager.videoSettings = { useUDP: true, useUDPIP: '192.168.1.10', useUDPPort: 5600 }
+    assert.deepEqual(vManager.getTransportArgs(),
+      ['--transport=RTP', '--udp=192.168.1.10:5600'])
+  })
+
   it('#switchSource()', function () {
     settings.clear()
     const vManager = new VideoStream(settings)
