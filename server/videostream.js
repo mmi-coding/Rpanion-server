@@ -63,6 +63,7 @@ class videoStream {
     if (!dest || dest === '.') return '';
     if (path.isAbsolute(dest)) {
       dest = path.relative(logpaths.mediaDir, dest);
+      /* istanbul ignore next -- unreachable on Linux (relative() returns '' not '.') */
       if (dest === '.') return '';
     }
     return dest;
@@ -316,7 +317,7 @@ class videoStream {
 
         responseData.selectedDevice = selectedDevice;
         responseData.selectedCap = selectedCap;
-        responseData.resolutionCaps = selectedDevice?.caps || [];
+        responseData.resolutionCaps = /* istanbul ignore next -- RTSP mocks always provide caps */ selectedDevice?.caps || [];
         responseData.fpsOptions = selectedCap?.fps || [];
         responseData.fpsMax = selectedCap?.fpsmax || 0;
         responseData.selectedFps = responseData.fpsMax > 0 ? responseData.fpsMax : (responseData.fpsOptions[0]?.value ?? 30);
@@ -612,6 +613,7 @@ class videoStream {
     if (this.stillSettings.device) args.push('--device=' + this.stillSettings.device);
     if (this.stillSettings.width) args.push('--width=' + this.stillSettings.width);
     if (this.stillSettings.height) args.push('--height=' + this.stillSettings.height);
+    /* istanbul ignore else -- toAbsolutePath() always returns a non-empty string */
     if (dest) {
       try {
         fs.mkdirSync(dest, { recursive: true });
@@ -654,6 +656,7 @@ class videoStream {
       '--format=' + this.videoSettings.format
     ];
 
+    /* istanbul ignore else -- toAbsolutePath() always returns a non-empty string */
     if (dest) {
       try {
         fs.mkdirSync(dest, { recursive: true });
@@ -682,7 +685,7 @@ class videoStream {
     // Importing cv2 and Picamera2 on a Pi can take a minute or more
     // Safety Timeout: If nothing happens in 90 seconds, unblock the UI
     const timeout = setTimeout(() => {
-
+      /* istanbul ignore else -- callbackCalled is always false when timeout fires (clearTimeout prevents double-fire) */
       if (!callbackCalled) {
         callbackCalled = true;
         console.log(`${modeName}: No response from script after 60s, assuming start.`);

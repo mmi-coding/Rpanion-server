@@ -97,6 +97,82 @@ Where a destructured import blocks stubbing, convert it to an object import
 (`const serialDetection = require('./serialDetection.js')`) — a 2-line seam,
 no behaviour change.
 
+Applied in `server/pppConnection.js` and `server/flightController.js` on
+`feature/coverage-backend-upstream`.
+
+### Scenario-driven fake `sudo` dispatcher
+
+One `FakeBin` `sudo` script dispatches on `case "$*" in` patterns plus a
+`$FAKE_SCENARIO` environment variable — covers every `nmcli`/`iw`/`pppd`
+invocation shape. Use separate scenarios for `exit 1` (→ `error`) and
+`stderr + exit 0` (→ `stderr`): istanbul counts each `||` operand
+independently.
+
+### Fake `awk` with real fall-through
+
+A fake `awk` that delegates to the real binary must use an absolute path:
+`exec /usr/bin/awk "$@"` — a relative path recurses into the fake via PATH.
+
+### sinon fake timers with child processes
+
+`sinon.useFakeTimers()` by default fakes `setImmediate`, which silently
+blocks child-process `close`/`stdout` event delivery. When a test mixes a
+fake clock with child processes or sockets, always scope the fake:
+
+```js
+const clock = sinon.useFakeTimers({
+  toFake: ['setTimeout','clearTimeout','setInterval','clearInterval']
+})
+```
+
+Prefer `await clock.tickAsync(n)` over synchronous `.tick(n)`.
+
+### `uncaughtException` in child-process / socket callbacks
+
+An assertion throwing inside a child-process or socket callback becomes an
+`uncaughtException`; `server/index.js`'s process-wide handler then shuts
+down the whole mocha run with no summary.
+
+**Rule:** every assertion inside such callbacks goes in `try/catch + done(e)`.
+
+For code that intentionally throws inside async callbacks (e.g.
+`networkManager`'s `netmask2CIDR`), use a listener-swap pattern:
+
+```js
+const saved = process.listeners('uncaughtException')
+process.removeAllListeners('uncaughtException')
+process.once('uncaughtException', (err) => {
+  // assert on err
+  saved.forEach(h => process.on('uncaughtException', h))
+  done()
+})
+```
+
+### Double-callback guards and silent fall-throughs
+
+- `return callback(e)` inside a `forEach` only exits the iteration — the
+  tail callback still fires. Guard tests with a `finished` flag.
+- Incomplete `if/else-if` chains with no final `else` fire and forget — test
+  them by invoking then `setTimeout(done, 300)` (no assertion possible).
+
+### MAVLink byte injection
+
+Write crafted MAVLink v2 buffers directly to `mavManager`'s `inStream`
+(a `PassThrough`) — no UDP socket needed. A msgid with a magic number in
+mavlink-mappings but absent from the node-mavlink REGISTRY exercises the
+`!clazz` dispatch branch.
+
+UDP-port hygiene: `mavManager` binds at construction; use one distinct port
+per test instance, call `m.close()` in `afterEach`. `flightController`
+hardcodes 14540 — keep that port free.
+
+### mavManager missing methods (upstream bug)
+
+`flightController.startBinLogging()` / `stopBinLogging()` call
+`sendBinStreamRequest()` / `sendBinStreamRequestStop()` on the mavManager
+instance, but these methods do not exist in `mavManager.js`. Tests inject a
+stub mavManager object with those methods rather than using a real instance.
+
 ## Frontend patterns (`test/ui.jsx`, `test/socketMock.js`)
 
 The upstream "renders without crashing" tests never flush React's concurrent
