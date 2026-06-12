@@ -1,8 +1,9 @@
 # Testing & Coverage
 
-This fork targets **100% test coverage — statements, branches, functions and
-lines — on both suites** (upstream sat at ~34% backend, ~0% frontend). The
-target applies to all code in the repo, including upstream-inherited modules.
+This fork achieved **100% test coverage — statements, branches, functions and
+lines — on both suites** (upstream sat at ~34% backend, ~0% frontend). Both
+ratchets are now terminal at 100/100/100/100. The target applies to all code
+in the repo, including upstream-inherited modules.
 
 ## Commands
 
@@ -31,7 +32,7 @@ Thresholds live in `package.json` (`nyc` section, backend) and
 - Any merge that raises coverage **must** bump the thresholds to the new floor.
 - Thresholds are **never lowered**. A PR that drops below the floor fails
   `covback`/`covfront` and must add tests, not loosen the gate.
-- End state: all eight numbers read 100.
+- End state: all eight numbers read 100. **Both ratchets are now at 100 and held there permanently.**
 
 ## Backend patterns
 
@@ -397,6 +398,100 @@ single-file targeted runs (no coverage) and run the full gate only once:
 ```
 npx vitest --run src/mypage.test.jsx          # fast, no coverage
 npm run covfront                              # full gate, once
+```
+
+### v8 ignore placement rules
+
+`ast-v8-to-istanbul` resolves `/* v8 ignore next */` by requiring the comment
+end to be adjacent to the AST node start (getIgnoreHint: comment end == node
+start). Practical consequences:
+
+- Expression-level annotation: place the comment **inline, immediately before
+  the expression** — no whitespace gap between comment end and node.
+- Implicit-else / if-falsy arms have no source location in the AST. These
+  cannot be annotated inline; only `/* v8 ignore start */` ... `/* v8 ignore stop */`
+  blocks work, wrapping the entire if/else-if construct.
+- If an if/else-if false branch is reachable in principle but cannot be driven
+  by the test layer, **exhaust test approaches first** (ref pattern, module
+  reset, state injection) before annotating. An ignore hides regressions; a
+  test catches them.
+
+### Ref pattern for class component handlers
+
+Attach a `ref` callback to a class component's root element to capture the
+instance, then call handlers directly with crafted state:
+
+```jsx
+let inst
+const page = renderPage(<MyPage ref={r => { inst = r }} />)
+await page.flush()
+inst.setState({ someFlag: true })
+inst.handleSubmit()   // drives guard chains and catch paths happy-dom can't reach
+```
+
+Useful for: deeply-nested guard chains, catch paths that require specific state
+combinations, and react-select `(option, actionMeta)` handlers that happy-dom
+DOM events cannot trigger.
+
+### MemoryRouter wrapper for pages that use react-router
+
+Pages that render `<Link>` or call `useLocation()` crash without a router
+context. Wrap in `<MemoryRouter>` before rendering:
+
+```jsx
+import { MemoryRouter } from 'react-router-dom'
+const page = renderPage(<MemoryRouter><AppRouter /></MemoryRouter>)
+```
+
+### Module-side-effect files (index.jsx, serviceWorker.js)
+
+Files that execute side effects on import (DOM manipulation, `navigator.serviceWorker`
+registration) cannot be imported statically in tests — the side effect fires
+before stubs are in place. Use `vi.resetModules()` + dynamic `await import()`
+inside the test **after** stubbing the environment:
+
+```js
+beforeEach(() => vi.resetModules())
+
+test('registers SW', async () => {
+  // stub navigator.serviceWorker, #root div, NODE_ENV, etc. first
+  global.navigator.serviceWorker = { register: vi.fn().resolves({ ... }) }
+  document.body.innerHTML = '<div id="root"></div>'
+  await import('../src/index.jsx')   // side effect runs against stubs
+})
+```
+
+No coverage excludes are needed; every branch is reachable this way.
+
+### localStorage.clear() in afterEach for basePage subclasses
+
+`basePage` reads an auth token from `localStorage` on socket construction. A
+stale token from a prior test fires `/api/auth` unexpectedly and trips
+`mockFetch`'s "unhandled route" assertion. Clear in `afterEach`:
+
+```js
+afterEach(() => { localStorage.clear(); vi.unstubAllGlobals() })
+```
+
+### Stub URL methods, not the URL global
+
+`happy-dom` uses the `URL` constructor internally. Replacing `global.URL`
+breaks happy-dom's own event handling. Stub only the methods under test:
+
+```js
+vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake')
+vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+```
+
+### Per-test fixture factories for state-mutating handlers
+
+Pages that mutate a shared `this.state` object directly in handlers (e.g.
+adhocwifi's `handleAdapterChange`) leave side effects that bleed across tests
+when a single fixture constant is shared. Use a factory function:
+
+```js
+function makeState() { return { adapters: [...], selected: null, ... } }
+// each test: inst.state = makeState() before driving the handler
 ```
 
 ## Unreachable code: ignore annotations (last resort)

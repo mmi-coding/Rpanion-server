@@ -76,7 +76,8 @@ class NetworkConfig extends basePage {
     ]).then(retState => { 
       if (retState[2].netDevice && retState[2].netDevice.length > 0) {
         // Use currently selected adapter if available, otherwise use first one
-        const adapterToUse = this.state.netDeviceSelected || retState[2].netDevice[0].value;
+        // right-side unreachable: setState callback at L68 always sets netDeviceSelected before this point
+        const adapterToUse = /* v8 ignore next */ this.state.netDeviceSelected || retState[2].netDevice[0].value;
         this.handleAdapterChange({ target: { value: adapterToUse } }); 
       }
       this.loadDone();

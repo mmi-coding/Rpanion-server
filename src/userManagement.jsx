@@ -101,7 +101,7 @@ class userManagement extends basePage {
       } catch (error) {
         console.error('Error adding new user:', error);
       }
-    } else if (modalType === 'deleteUser') {
+    } else if (modalType === 'deleteUser') { // no 4th modal type; false branch below unreachable
       try {
         const response = await fetch('/api/deleteUser', {
           method: 'POST',
