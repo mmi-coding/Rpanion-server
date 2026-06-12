@@ -6,6 +6,7 @@
 
 import argparse
 import json
+import os
 import platform
 import ipaddress
 import sys
@@ -50,6 +51,73 @@ def is_multicast(ip: str) -> bool:
     except ValueError:
         # If the IP address is not valid, return False
         return False
+
+
+# ---- Cellular low-latency tuning ----
+# --lowlatency trades a little quality for a stream that degrades gracefully
+# on constrained cellular links: ~1 second GOP, constrained rate control,
+# single-buffer leaky queues and a non-blocking udpsink. All generated
+# encoders are named enc0 so their bitrate can be retuned at runtime via the
+# stdin control channel (see doBitrate)
+LOW_LATENCY = False
+
+
+def gopFrames(framerate) -> int:
+    # one keyframe per second; assume 30 fps if the rate is unspecified
+    return framerate if framerate is not None and framerate > 0 else 30
+
+
+def nvEncStr(codec, bitrate, framerate) -> str:
+    # Jetson hardware encoder. codec is "h264" or "h265", bitrate in kbps
+    gop = gopFrames(framerate) if LOW_LATENCY else 5
+    return "nvv4l2{0}enc name=enc0 bitrate={1} iframeinterval={2} preset-level=1 insert-sps-pps=true".format(
+        codec, bitrate*1000, gop)
+
+
+def v4l2EncStr(bitrate, framerate) -> str:
+    # Pi (4 and earlier) hardware H264 encoder, bitrate in kbps
+    gop = gopFrames(framerate) if LOW_LATENCY else 5
+    controls = "controls,repeat_sequence_header=1,h264_profile=4,video_bitrate={0},h264_i_frame_period={1}".format(
+        bitrate*1000, gop)
+    if LOW_LATENCY:
+        # CBR - don't let the rate spike above target on scene changes
+        controls += ",video_bitrate_mode=1"
+    return "v4l2h264enc name=enc0 extra-controls=\"{0}\"".format(controls)
+
+
+def swEncStr(compression, bitrate, framerate) -> str:
+    # software encoder (x264/x265), bitrate in kbps
+    if LOW_LATENCY:
+        keyint = gopFrames(framerate)
+        # constrain the VBV buffer to ~0.5s of video so the encoder
+        # can't burst far above the target bitrate
+        extra = " vbv-buf-capacity=500" if compression == "H264" else ""
+    else:
+        keyint = 25
+        extra = ""
+    threads = " threads=0" if compression == "H264" else ""
+    return "{0}enc name=enc0 tune=zerolatency bitrate={1} speed-preset=superfast key-int-max={2}{3}{4}".format(
+        "x264" if compression == "H264" else "x265", bitrate, keyint, threads, extra)
+
+
+def payQueueStr() -> str:
+    # the queue feeding the RTP payloader. In low-latency mode never let
+    # encoded frames pile up - drop instead (recovery is at most one GOP)
+    if LOW_LATENCY:
+        return "queue max-size-buffers=1 leaky=downstream"
+    return "queue"
+
+
+def udpSinkStr(udp) -> str:
+    host = udp.split(':')[0]
+    port = udp.split(':')[1]
+    sink = "udpsink host={0} port={1}".format(host, port)
+    if is_multicast(host):
+        sink += " auto-multicast=true"
+    if LOW_LATENCY:
+        # don't clock-wait on buffers - send as soon as they arrive
+        sink += " sync=false"
+    return sink
 
 
 def getPipeline(device, height, width, bitrate, format, rotation, framerate, timestamp, compression) -> str:
@@ -167,10 +235,10 @@ def getPipeline(device, height, width, bitrate, format, rotation, framerate, tim
                 pipeline.append("clockoverlay time-format=\"%d-%b-%Y %H:%M:%S\"")
                 pipeline.append("nvvidconv")
             if compression == "H265":
-                pipeline.append("nvv4l2h265enc bitrate={0} iframeinterval=5 preset-level=1 insert-sps-pps=true".format(bitrate*1000))
+                pipeline.append(nvEncStr("h265", bitrate, framerate))
                 pipeline.append("h265parse")
             elif compression == "H264":
-                pipeline.append("nvv4l2h264enc bitrate={0} iframeinterval=5 preset-level=1 insert-sps-pps=true".format(bitrate*1000))
+                pipeline.append(nvEncStr("h264", bitrate, framerate))
                 pipeline.append("h264parse")
         elif Gst.ElementFactory.find("v4l2h264enc") and compression == "H264" and not (device == "testsrc" or device.startswith("/dev/video")):
             # Pi or similar arm platforms running on RasPiOS. Note that Pi5 onwards don't support hardware encoding
@@ -182,7 +250,7 @@ def getPipeline(device, height, width, bitrate, format, rotation, framerate, tim
             else:
                 level = "4"
             pipeline.append("videoconvert")
-            pipeline.append("v4l2h264enc extra-controls=\"controls,repeat_sequence_header=1,h264_profile=4,video_bitrate={0},h264_i_frame_period=5\"".format(bitrate*1000))
+            pipeline.append(v4l2EncStr(bitrate, framerate))
             pipeline.append("video/x-h264,profile=high,level=(string){0}".format(level))
             pipeline.append("h264parse")
         else:
@@ -199,12 +267,12 @@ def getPipeline(device, height, width, bitrate, format, rotation, framerate, tim
                 pipeline.append("queue max-size-buffers=2")
             if compression == "H264":
                 # Use multiple threads for software encoding
-                pipeline.append("x264enc tune=zerolatency bitrate={0} speed-preset=superfast key-int-max=25 threads=0".format(bitrate))
+                pipeline.append(swEncStr("H264", bitrate, framerate))
             elif compression == "H265":
-                pipeline.append("x265enc tune=zerolatency bitrate={0} speed-preset=superfast key-int-max=25".format(bitrate))
+                pipeline.append(swEncStr("H265", bitrate, framerate))
 
         # final rtp formatting
-        pipeline.append("queue")
+        pipeline.append(payQueueStr())
         if compression == "H264":
             pipeline.append("rtph264pay config-interval=1 name=pay0 pt=96")
         elif compression == "H265":
@@ -243,8 +311,11 @@ def validateCustomPipeline(pipeline_str):
 # Shared state between the stdin control channel and the pipelines.
 # switch_state holds the desired source; live_selectors holds the
 # input-selector elements of all currently-running pipelines.
+# live_pipelines holds every currently-running pipeline, for runtime
+# encoder retuning (doBitrate)
 switch_state = {"source": "A"}
 live_selectors = []
+live_pipelines = []
 
 
 def applySwitchToSelector(sel):
@@ -266,21 +337,74 @@ def doSwitch(source):
     print("SWITCHED:{0}".format(source), flush=True)
 
 
-def stdinWatch(fd, condition):
-    # control channel from the Node server. One JSON object per line:
-    # {"cmd": "switch", "source": "A"|"B"}
-    line = sys.stdin.readline()
-    if line == "":
-        # EOF - parent has gone away. Stop watching
-        return False
+def doBitrate(kbps):
+    # retune the bitrate of every encoder named enc0 in every running
+    # pipeline. x264enc/x265enc take kbps; the nv/v4l2 hardware encoders
+    # take bps (v4l2h264enc via an extra-controls restructure)
+    applied = False
+    for pipe in list(live_pipelines):
+        enc = pipe.get_by_name("enc0")
+        if enc is None:
+            continue
+        try:
+            factory = enc.get_factory().get_name()
+            if factory in ("x264enc", "x265enc"):
+                enc.set_property("bitrate", kbps)
+            elif factory in ("nvv4l2h264enc", "nvv4l2h265enc"):
+                enc.set_property("bitrate", kbps * 1000)
+            elif factory == "v4l2h264enc":
+                controls = Gst.Structure.from_string(
+                    "controls,video_bitrate={0}".format(kbps * 1000))[0]
+                enc.set_property("extra-controls", controls)
+            else:
+                continue
+            applied = True
+        except Exception as e:
+            print("Bitrate error: {0}".format(e))
+    if applied:
+        print("BITRATE:{0}".format(kbps), flush=True)
+    else:
+        # no running pipeline has a retunable encoder (e.g. passthrough
+        # H264 source, custom pipeline without an enc0, no clients yet)
+        print("BITRATE-NOENCODER:{0}".format(kbps), flush=True)
+
+
+def handleControlLine(line):
     try:
         cmd = json.loads(line)
         if cmd.get("cmd") == "switch" and cmd.get("source") in ("A", "B"):
             doSwitch(cmd.get("source"))
+        elif cmd.get("cmd") == "bitrate" and isinstance(cmd.get("kbps"), int) and 50 <= cmd.get("kbps") <= 100000:
+            doBitrate(cmd.get("kbps"))
         else:
             print("Unknown control command: {0}".format(line.strip()))
     except ValueError:
         print("Bad control command: {0}".format(line.strip()))
+
+
+# partial line carried between stdinWatch invocations
+stdin_buffer = {"data": ""}
+
+
+def stdinWatch(fd, condition):
+    # control channel from the Node server. One JSON object per line:
+    # {"cmd": "switch", "source": "A"|"B"} - dual-source switching
+    # {"cmd": "bitrate", "kbps": N} - runtime encoder bitrate change
+    # Read the fd directly (not sys.stdin.readline) and drain every
+    # complete line: multiple commands can arrive in a single pipe chunk,
+    # and lines left in a buffered reader would never re-trigger the watch
+    try:
+        chunk = os.read(fd, 4096)
+    except OSError:
+        return False
+    if chunk == b"":
+        # EOF - parent has gone away. Stop watching
+        return False
+    stdin_buffer["data"] += chunk.decode("utf-8", errors="replace")
+    while "\n" in stdin_buffer["data"]:
+        line, stdin_buffer["data"] = stdin_buffer["data"].split("\n", 1)
+        if line.strip() != "":
+            handleControlLine(line)
     return True
 
 
@@ -343,7 +467,7 @@ def getNormalizedSourceBin(device, height, width, format, framerate, out_width, 
     return bin
 
 
-def getEncodeTail(primary_device, bitrate, compression) -> List[str]:
+def getEncodeTail(primary_device, bitrate, compression, framerate=-1) -> List[str]:
     """Encoder + RTP payloader for the switched (raw I420) stream. Mirrors the
     encoder selection logic of getPipeline()."""
     tail: List[str] = []
@@ -352,10 +476,10 @@ def getEncodeTail(primary_device, bitrate, compression) -> List[str]:
         # Jetson hardware encoder
         tail.append("nvvidconv")
         if compression == "H265":
-            tail.append("nvv4l2h265enc bitrate={0} iframeinterval=5 preset-level=1 insert-sps-pps=true".format(bitrate*1000))
+            tail.append(nvEncStr("h265", bitrate, framerate))
             tail.append("h265parse")
         else:
-            tail.append("nvv4l2h264enc bitrate={0} iframeinterval=5 preset-level=1 insert-sps-pps=true".format(bitrate*1000))
+            tail.append(nvEncStr("h264", bitrate, framerate))
             tail.append("h264parse")
     elif Gst.ElementFactory.find("v4l2h264enc") and compression == "H264" and not is_pi_5_or_later() and \
             (primary_device.startswith("/base/soc/i2c") or primary_device.startswith("/base/axi/pcie")):
@@ -366,7 +490,7 @@ def getEncodeTail(primary_device, bitrate, compression) -> List[str]:
         else:
             level = "4"
         tail.append("videoconvert")
-        tail.append("v4l2h264enc extra-controls=\"controls,repeat_sequence_header=1,h264_profile=4,video_bitrate={0},h264_i_frame_period=5\"".format(bitrate*1000))
+        tail.append(v4l2EncStr(bitrate, framerate))
         tail.append("video/x-h264,profile=high,level=(string){0}".format(level))
         tail.append("h264parse")
     else:
@@ -378,11 +502,11 @@ def getEncodeTail(primary_device, bitrate, compression) -> List[str]:
             tail.append("video/x-raw,format=I420")
         tail.append("queue max-size-buffers=2 leaky=downstream")
         if compression == "H264":
-            tail.append("x264enc tune=zerolatency bitrate={0} speed-preset=superfast key-int-max=25 threads=0".format(bitrate))
+            tail.append(swEncStr("H264", bitrate, framerate))
         elif compression == "H265":
-            tail.append("x265enc tune=zerolatency bitrate={0} speed-preset=superfast key-int-max=25".format(bitrate))
+            tail.append(swEncStr("H265", bitrate, framerate))
 
-    tail.append("queue")
+    tail.append(payQueueStr())
     if compression == "H264":
         tail.append("rtph264pay config-interval=1 name=pay0 pt=96")
     elif compression == "H265":
@@ -420,7 +544,7 @@ def getDualPipeline(primary_device, primary_format, height, width, framerate,
     if timestamp:
         tail.append("videoconvert")
         tail.append("clockoverlay time-format=\"%d-%b-%Y %H:%M:%S\"")
-    tail.extend(getEncodeTail(primary_device, bitrate, compression))
+    tail.extend(getEncodeTail(primary_device, bitrate, compression, framerate))
     if udp_sink != "":
         tail.append(udp_sink)
 
@@ -454,16 +578,20 @@ class SwitcherFactory(GstRtspServer.RTSPMediaFactory):
     def do_configure(self, media):
         self.set_eos_shutdown(True)
         element = media.get_element()
+        # track the pipeline so runtime bitrate changes can reach it
+        live_pipelines.append(element)
         sel = element.get_by_name("sel")
         if sel is not None:
             live_selectors.append(sel)
             # apply the current switch state to the new pipeline
             applySwitchToSelector(sel)
-            media.connect("unprepared", self.onMediaUnprepared, sel)
+        media.connect("unprepared", self.onMediaUnprepared, sel, element)
 
-    def onMediaUnprepared(self, media, sel):
+    def onMediaUnprepared(self, media, sel, element):
         if sel in live_selectors:
             live_selectors.remove(sel)
+        if element in live_pipelines:
+            live_pipelines.remove(element)
 
 
 class MyFactory(GstRtspServer.RTSPMediaFactory):
@@ -498,6 +626,14 @@ class MyFactory(GstRtspServer.RTSPMediaFactory):
         # Configure the media for each client connection
         # This is called when a client connects
         self.set_eos_shutdown(True)  # Clean shutdown on EOS
+        # track the pipeline so runtime bitrate changes can reach it
+        element = media.get_element()
+        live_pipelines.append(element)
+        media.connect("unprepared", self.onMediaUnprepared, element)
+
+    def onMediaUnprepared(self, media, element):
+        if element in live_pipelines:
+            live_pipelines.remove(element)
 
 
 class GstServer():
@@ -587,7 +723,11 @@ if __name__ == '__main__':
         "--secondary-fps", help="Secondary capture framerate", default=-1, type=int)
     parser.add_argument(
         "--custom-pipeline", help="User-defined pipeline string, replacing the generated one. Must end in an RTP payloader named pay0", default="", type=str)
+    parser.add_argument("--lowlatency", help="Tune the generated pipeline for low-latency cellular links",
+                        default=False, action='store_true')
     args = parser.parse_args()
+
+    LOW_LATENCY = args.lowlatency
 
     loop = GLib.MainLoop()
     Gst.init(None)
@@ -609,8 +749,9 @@ if __name__ == '__main__':
             print("Custom pipeline set - ignoring --secondary (camera switcher dual-source mode)")
 
     secondary_active = args.secondary != "" and args.multirtsp == "" and custom_pipeline == ""
-    if secondary_active:
-        # control channel from the Node server for runtime source switching
+    if args.multirtsp == "":
+        # control channel from the Node server: runtime source switching
+        # (dual-source mode) and runtime bitrate changes
         GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN |
                           GLib.IO_HUP, stdinWatch)
 
@@ -660,10 +801,7 @@ if __name__ == '__main__':
             loop.quit()
     elif secondary_active and args.transport == "RTP":
         # Dual-source RTP with runtime switching
-        udp_sink = "udpsink host={0} port={1}".format(
-            args.udp.split(':')[0], args.udp.split(':')[1])
-        if is_multicast(args.udp.split(':')[0]):
-            udp_sink += " auto-multicast=true"
+        udp_sink = udpSinkStr(args.udp)
         pipeline_str = getDualPipeline(args.videosource, args.format, args.height, args.width, args.fps,
                                        args.secondary, args.secondary_format, args.secondary_height,
                                        args.secondary_width, args.secondary_fps,
@@ -674,6 +812,7 @@ if __name__ == '__main__':
             sys.exit(1)
         print("PIPELINE:{0}".format(pipeline_str), flush=True)
         pipeline = Gst.parse_launch(pipeline_str)
+        live_pipelines.append(pipeline)
         sel = pipeline.get_by_name("sel")
         if sel is not None:
             live_selectors.append(sel)
@@ -708,12 +847,10 @@ if __name__ == '__main__':
             pipeline_str = getPipeline(args.videosource, args.height, args.width,
                                        args.bitrate, args.format, args.rotation, args.fps, args.timestamp,
                                        args.compression)
-        pipeline_str += " ! udpsink host={0} port={1}".format(
-            args.udp.split(':')[0], args.udp.split(':')[1])
-        if is_multicast(args.udp.split(':')[0]):
-            pipeline_str += " auto-multicast=true"
+        pipeline_str += " ! " + udpSinkStr(args.udp)
         print("PIPELINE:{0}".format(pipeline_str), flush=True)
         pipeline = Gst.parse_launch(pipeline_str)
+        live_pipelines.append(pipeline)
         pipeline.set_state(Gst.State.PLAYING)
 
         print("Server sending UDP stream to " + args.udp)

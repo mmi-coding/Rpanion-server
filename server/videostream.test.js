@@ -368,6 +368,51 @@ describe('Video Functions', function () {
     assert.equal(vManager.switchSource('A'), false)
   })
 
+  it('#getCellularTuningArgs()', function () {
+    settings.clear()
+    const vManager = new VideoStream(settings)
+
+    // preset off (default): no extra args
+    assert.deepEqual(vManager.getCellularTuningArgs(), [])
+
+    // preset on: pass --lowlatency to the video server
+    settings.setValue('cellularTuning.lowLatency', true)
+    assert.deepEqual(vManager.getCellularTuningArgs(), ['--lowlatency'])
+
+    settings.setValue('cellularTuning.lowLatency', false)
+    assert.deepEqual(vManager.getCellularTuningArgs(), [])
+  })
+
+  it('#setBitrate()', function () {
+    settings.clear()
+    const vManager = new VideoStream(settings)
+
+    // no active stream: no command
+    assert.equal(vManager.setBitrate(500), false)
+
+    // active stream in streaming mode: bitrate command written to stdin
+    let written = null
+    vManager.cameraMode = 'streaming'
+    vManager.deviceStream = {
+      stdin: {
+        writable: true,
+        write: (data) => { written = data }
+      }
+    }
+    assert.equal(vManager.setBitrate(500), true)
+    assert.deepEqual(JSON.parse(written), { cmd: 'bitrate', kbps: 500 })
+
+    // out-of-range and non-integer values are rejected
+    assert.equal(vManager.setBitrate(10), false)
+    assert.equal(vManager.setBitrate(100001), false)
+    assert.equal(vManager.setBitrate('500'), false)
+    assert.equal(vManager.setBitrate(500.5), false)
+
+    // wrong camera mode: no command
+    vManager.cameraMode = 'photo'
+    assert.equal(vManager.setBitrate(500), false)
+  })
+
   it('#sendCameraSettings()', function (done) {
     settings.clear()
     const vManager = new VideoStream(settings)

@@ -17,6 +17,7 @@ import PPPConnection from '../server/pppConnection.js'
 import CameraSwitcherPage from './cameraswitcher.jsx'
 import PipelineEditorPage from './pipelineeditor.jsx'
 import LTEModemPage from './ltemodem.jsx'
+import CellularTuningPage from './cellulartuning.jsx'
 
 describe('#apptest()', function () {
   test('homepage renders without crashing', function () {
@@ -114,6 +115,13 @@ describe('#apptest()', function () {
     const div = document.createElement('div')
     const root = createRoot(div)
     root.render(<LTEModemPage />)
+    root.unmount()
+  })
+
+  test('cellular tuning page renders without crashing', function () {
+    const div = document.createElement('div')
+    const root = createRoot(div)
+    root.render(<CellularTuningPage />)
     root.unmount()
   })
 })
