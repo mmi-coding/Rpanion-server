@@ -22,6 +22,7 @@
  - LTE: Modem discovery - scan USB serial ports and board UARTs for an AT-responding modem (identify via AT+CGMM/CGMI, recommend port and baud), list candidate RNDIS data interfaces by kernel driver; the flight controller's serial link is never probed
  - LTE: Staged end-to-end connection test (AT port, model, SIM, signal, registration, PDP address, network interface, ping through the modem interface) with per-step diagnosis and RNDIS-mode/UART-only hints
  - GUI: Self-documenting fork pages - per-control "?" tooltips and collapsed "How this works" sections (new HelpTip/HelpSection components) on the Camera Switcher, Pipeline Editor, LTE Modem and Cellular Tuning pages; adopted as the rule for future UI work (docs/UI-GUIDELINES.md)
+ - Testing: Coverage campaign towards 100% on both suites (docs/TESTING.md) - gated `covback`/`covfront` scripts with ratcheting thresholds, a fake-binaries-on-PATH harness for system-wrapper modules (networkClients.js first to 100%), and real React render helpers (act + fetch/socket.io mocks) replacing render-only smoke coverage
 
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support

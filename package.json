@@ -65,6 +65,8 @@
     "testback": "NODE_ENV=development mocha --exit ./server/*.test.js ./mavlink/*.test.js",
     "mocha": "NODE_ENV=development _mocha --exit ./server/*.test.js ./mavlink/*.test.js",
     "test-cov": "nyc npm run mocha && nyc report --reporter=text-lcov",
+    "covback": "nyc --check-coverage --reporter=text --reporter=text-summary npm run mocha",
+    "covfront": "NODE_ENV=development vitest --run --coverage ./src",
     "test-coveralls": "nyc npm run mocha && nyc report --reporter=text-lcov | coveralls",
     "lint": "eslint .",
     "server": "node-env-run server --exec nodemon | pino-colada",
@@ -103,6 +105,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^4.1.8",
     "coveralls-next": "^6.0.1",
     "eslint": "^9.39.1",
     "eslint-plugin-mocha": "^11.2.0",
@@ -134,7 +137,11 @@
     "reporter": [
       "lcov",
       "text-summary"
-    ]
+    ],
+    "statements": 44,
+    "branches": 36,
+    "functions": 37,
+    "lines": 44
   },
   "overrides": {
     "autoprefixer": "10.4.5",

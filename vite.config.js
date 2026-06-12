@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import eslint from 'vite-plugin-eslint';
 
 export default defineConfig({
@@ -9,6 +9,22 @@ export default defineConfig({
     ],
     build: {
         outDir: 'build',
+    },
+    test: {
+        coverage: {
+            provider: 'v8',
+            include: ['src/**/*.{js,jsx}'],
+            exclude: ['src/**/*.test.{js,jsx}'],
+            reporter: ['text', 'text-summary'],
+            // Coverage ratchet (see docs/TESTING.md): thresholds track the
+            // highest coverage achieved and may only be raised. Target: 100.
+            thresholds: {
+                statements: 3,
+                branches: 4,
+                functions: 3,
+                lines: 3,
+            },
+        },
     },
     server: {
         port: 3000,
