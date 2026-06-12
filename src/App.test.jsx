@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import { createRoot } from 'react-dom/client'
-import React from 'react'
-import { describe, test } from 'vitest'
+import React, { act } from 'react'
+import { describe, test, expect } from 'vitest'
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 import About from './about.jsx'
 import Home from './home.jsx'
@@ -18,6 +20,7 @@ import CameraSwitcherPage from './cameraswitcher.jsx'
 import PipelineEditorPage from './pipelineeditor.jsx'
 import LTEModemPage from './ltemodem.jsx'
 import CellularTuningPage from './cellulartuning.jsx'
+import { HelpTip, HelpSection } from './components/Help.jsx'
 
 describe('#apptest()', function () {
   test('homepage renders without crashing', function () {
@@ -122,6 +125,32 @@ describe('#apptest()', function () {
     const div = document.createElement('div')
     const root = createRoot(div)
     root.render(<CellularTuningPage />)
+    root.unmount()
+  })
+
+  test('help components render marker, collapsed section and toggle', function () {
+    const div = document.createElement('div')
+    const root = createRoot(div)
+    act(() => {
+      root.render(
+        <div>
+          <HelpTip text='what this field does' />
+          <HelpSection title='How this works'><p>the long explanation</p></HelpSection>
+        </div>
+      )
+    })
+    // HelpTip: a focusable "?" marker
+    const marker = div.querySelector('[aria-label="help"]')
+    expect(marker).not.toBeNull()
+    expect(marker.textContent).toBe('?')
+    // HelpSection: collapsed by default, but content present in the DOM
+    const toggle = div.querySelector('[aria-expanded]')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(div.textContent).toContain('How this works')
+    expect(div.textContent).toContain('the long explanation')
+    // clicking the title expands it
+    act(() => { toggle.click() })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
     root.unmount()
   })
 })
