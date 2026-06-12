@@ -45,3 +45,15 @@ its items here. Tick on the bench, note board + date.
 - [ ] RTP + custom pipeline: udpsink auto-appended, hardware encode confirmed
 - [ ] Multicast destination address (if used on the local network)
 - [ ] Camera heartbeat enabled: GCS auto-discovers the RTP stream via VIDEO_STREAM_INFORMATION (type RTPUDP, destination port)
+
+## Feature 4: LTE Modem (feature/lte-modem)
+
+- [ ] SIM7600G in RNDIS mode (`AT+CUSBPIDSWITCH=9011,1,1`): `usb0` netdev + `/dev/ttyUSB0-3` enumerate; ModemManager NOT installed
+- [ ] AT port appears in the page's port list; status populates with a real SIM (operator, LTE band, RSSI/RSRP/SINR, WAN IP)
+- [ ] Data usage counters move with real traffic; sanity-check against the carrier's reported usage; totals survive a reboot
+- [ ] Auto-reconnect: force-drop the data call (`AT+CFUN=4` then `AT+CFUN=1`, or antenna pull) → call re-established within ~30 s, reconnect count increments
+- [ ] APN setting applied on reconnect (check `AT+CGDCONT?` afterwards)
+- [ ] AT console round-trip on device
+- [ ] Port contention: mavlink-router and PPP are not configured on the modem's AT ports; monitor + Mission Planner telemetry run simultaneously
+- [ ] Monitor auto-starts on boot when enabled; status correct after modem USB replug (lazy port reopen)
+- [ ] Pi Zero 2 W: AT polling at 5 s has no impact on stream CPU

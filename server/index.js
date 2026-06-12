@@ -21,6 +21,7 @@ const userLogin = require('./userLogin.js')
 const logpaths = require('./paths.js')
 const CameraSwitcher = require('./cameraSwitcher.js')
 const CustomPipelines = require('./customPipelines.js')
+const LTEModem = require('./ltemodem.js')
 
 const settings = require('settings-store')
 
@@ -78,6 +79,7 @@ const userMgmt = new userLogin()
 const pppConnectionManager = new pppConnection(settings)
 const camSwitcher = new CameraSwitcher(settings)
 const customPipelines = new CustomPipelines(settings)
+const lteModem = new LTEModem(settings)
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -141,6 +143,7 @@ async function gracefulShutdown(signal, exitCode = 0) {
     pppConnectionManager.quitting()
     cloud.quitting()
     logConversion.quitting()
+    lteModem.quitting()
     console.log('All services stopped')
     
     clearTimeout(forceShutdownTimer)
@@ -966,6 +969,85 @@ app.post('/api/custompipelinevalidate', authenticateToken, [
   })
 })
 
+// Serve the LTE modem settings, status and detected serial ports
+app.get('/api/ltemodem', authenticateToken, (req, res) => {
+  lteModem.getSerialPorts().then((ports) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ settings: lteModem.getSettings(), status: lteModem.getStatus(), serialPorts: ports }))
+  })
+})
+
+// change LTE modem settings
+app.post('/api/ltemodemmodify', authenticateToken, [
+  check('enabled').isBoolean(),
+  check('atPort').isString().isLength({ max: 128 }),
+  check('baud').isInt(),
+  check('apn').optional({ checkFalsy: true }).isString().isLength({ max: 64 }),
+  check('netInterface').isString().isLength({ min: 1, max: 15 }),
+  check('autoReconnect').isBoolean(),
+  check('pollInterval').isInt({ min: 2, max: 120 })
+], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/ltemodemmodify', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  lteModem.setSettings({
+    enabled: req.body.enabled === true || req.body.enabled === 'true',
+    atPort: req.body.atPort,
+    baud: parseInt(req.body.baud, 10),
+    apn: req.body.apn || '',
+    netInterface: req.body.netInterface,
+    autoReconnect: req.body.autoReconnect === true || req.body.autoReconnect === 'true',
+    pollInterval: parseInt(req.body.pollInterval, 10)
+  }, (err) => {
+    res.setHeader('Content-Type', 'application/json')
+    if (err) {
+      res.status(422).send(JSON.stringify({ error: err.message, settings: lteModem.getSettings() }))
+    } else {
+      res.send(JSON.stringify({ error: null, settings: lteModem.getSettings() }))
+    }
+  })
+})
+
+// manually (re)start the modem's RNDIS data call
+app.post('/api/ltemodemreconnect', authenticateToken, function (req, res) {
+  res.setHeader('Content-Type', 'application/json')
+  lteModem.reconnect().then((lines) => {
+    res.send(JSON.stringify({ error: null, response: lines }))
+  }).catch((err) => {
+    res.status(422).send(JSON.stringify({ error: err.message, response: [] }))
+  })
+})
+
+// reset the data usage counters
+app.post('/api/ltemodemresetusage', authenticateToken, function (req, res) {
+  lteModem.resetUsage()
+  res.setHeader('Content-Type', 'application/json')
+  res.send(JSON.stringify({ error: null, status: lteModem.getStatus() }))
+})
+
+// raw AT command console
+app.post('/api/ltemodemcommand', authenticateToken, [
+  check('command').isString().isLength({ min: 2, max: 128 })
+], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/ltemodemcommand', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  lteModem.sendUserCommand(req.body.command, (err, lines) => {
+    res.setHeader('Content-Type', 'application/json')
+    if (err) {
+      res.status(422).send(JSON.stringify({ error: err.message, response: [] }))
+    } else {
+      res.send(JSON.stringify({ error: null, response: lines }))
+    }
+  })
+})
+
 // Serve the AP clients info
 app.get('/api/networkclients', authenticateToken, (req, res) => {
   networkClients.getClients((err, apnamev, apclientsv) => {
@@ -1246,6 +1328,7 @@ io.on('connection', function () {
     io.sockets.emit('PPPStatus', pppConnectionManager.conStatusStr())
     io.sockets.emit('VideoStreamStatus', vManager.getStreamingStatus())
     io.sockets.emit('CameraSwitcherStatus', camSwitcher.getStatus())
+    io.sockets.emit('LTEStatus', lteModem.getStatus())
   }, 1000)
 })
 
