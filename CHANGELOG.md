@@ -21,6 +21,7 @@
  - Video: Fix video server stdin control handling losing commands when multiple lines arrive in one chunk
  - LTE: Modem discovery - scan USB serial ports and board UARTs for an AT-responding modem (identify via AT+CGMM/CGMI, recommend port and baud), list candidate RNDIS data interfaces by kernel driver; the flight controller's serial link is never probed
  - LTE: Staged end-to-end connection test (AT port, model, SIM, signal, registration, PDP address, network interface, ping through the modem interface) with per-step diagnosis and RNDIS-mode/UART-only hints
+ - GUI: Self-documenting fork pages - per-control "?" tooltips and collapsed "How this works" sections (new HelpTip/HelpSection components) on the Camera Switcher, Pipeline Editor, LTE Modem and Cellular Tuning pages; adopted as the rule for future UI work (docs/UI-GUIDELINES.md)
 
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support

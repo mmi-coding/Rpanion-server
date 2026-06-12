@@ -1,6 +1,7 @@
 import React from 'react';
 import { Form, Button, Table, Alert, Badge } from 'react-bootstrap';
 import basePage from './basePage.jsx';
+import { HelpTip, HelpSection } from './components/Help.jsx';
 
 import './css/styles.css';
 
@@ -106,9 +107,24 @@ class CellularTuningPage extends basePage {
         const signal = status.signal;
         return (
             <div>
-                <p><i>Video stream tuning for constrained 4G/LTE links: a low-latency encoder preset and
-                    signal-adaptive bitrate so the stream degrades gracefully instead of stalling when
-                    the link gets worse. Signal data comes from the LTE Modem page&apos;s monitor.</i></p>
+                <p><i>Video stream tuning for constrained 4G/LTE links - degrade gracefully instead of stalling.</i></p>
+                <HelpSection title="How adaptive bitrate works">
+                    <p>Signal data comes from the LTE Modem page&apos;s monitor (RSRP when available - the better
+                        LTE metric - otherwise RSSI). The signal is mapped to a tier, and the encoder bitrate is
+                        scaled live, without restarting the stream:</p>
+                    <Table bordered size="sm" style={{ maxWidth: '450px' }}>
+                        <thead><tr><th>Tier</th><th>RSRP</th><th>Bitrate</th></tr></thead>
+                        <tbody>
+                            <tr><td>Good</td><td>≥ -95 dBm</td><td>100% of configured</td></tr>
+                            <tr><td>Fair</td><td>≥ -105 dBm</td><td>60%</td></tr>
+                            <tr><td>Poor</td><td>&lt; -105 dBm</td><td>35%</td></tr>
+                        </tbody>
+                    </Table>
+                    <p>A tier change is applied only after the signal stays in the new tier for a few polls
+                        (hysteresis), so a flickering signal does not cause bitrate thrash. The configured
+                        bitrate is restored when the signal recovers. With adaptive bitrate on but no signal
+                        data, the current bitrate is held.</p>
+                </HelpSection>
                 <h2>Status</h2>
                 {status.adaptiveBitrate && !status.streaming &&
                     <Alert variant="secondary">Adaptive bitrate is enabled, but no video stream is running.</Alert>
@@ -133,27 +149,21 @@ class CellularTuningPage extends basePage {
                 <h2 style={{ marginTop: '20px' }}>Settings</h2>
                 <Form onSubmit={this.handleSubmit}>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Low-latency preset</label>
+                        <label className="col-sm-3 col-form-label">Low-latency preset<HelpTip text="Tune the video pipeline for cellular links: ~1 s keyframe interval, constant-bitrate-style rate control, frame dropping instead of buffering. Takes effect when the stream is next started. For custom pipelines, name your encoder enc0 to allow runtime bitrate changes" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="lowLatency" checked={config.lowLatency} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
-                            <small className="form-text text-muted">Tune the video pipeline for cellular links: ~1 second keyframe interval,
-                                constant-bitrate-style rate control, frame dropping instead of buffering. Takes effect when the
-                                stream is next started. For custom pipelines, name your encoder <code>enc0</code> to allow runtime bitrate changes</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Adaptive bitrate</label>
+                        <label className="col-sm-3 col-form-label">Adaptive bitrate<HelpTip text="Scale the encoder bitrate with the LTE signal quality (good 100% / fair 60% / poor 35% - see the table above). Requires modem monitoring on the LTE Modem page" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="adaptiveBitrate" checked={config.adaptiveBitrate} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
-                            <small className="form-text text-muted">Scale the encoder bitrate with the LTE signal quality (good 100% / fair 60% / poor 35%).
-                                Requires modem monitoring on the LTE Modem page. The configured bitrate is restored when the signal recovers</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Minimum bitrate (kbps)</label>
+                        <label className="col-sm-3 col-form-label">Minimum bitrate (kbps)<HelpTip text="Adaptive bitrate never goes below this floor, however poor the signal" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="number" name="minBitrate" value={config.minBitrate} onChange={this.handleConfigChange} min={50} max={10000} style={{ maxWidth: '200px' }} />
-                            <small className="form-text text-muted">Adaptive bitrate never goes below this floor</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>

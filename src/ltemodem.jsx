@@ -1,6 +1,7 @@
 import React from 'react';
 import { Form, Button, Table, Alert, Badge } from 'react-bootstrap';
 import basePage from './basePage.jsx';
+import { HelpTip, HelpSection } from './components/Help.jsx';
 
 import './css/styles.css';
 
@@ -259,8 +260,20 @@ class LTEModemPage extends basePage {
         const sig = signalLabel(status.signal ? status.signal.dbm : null);
         return (
             <div>
-                <p><i>Status and management of a SimCom SIM7600-series LTE modem over its AT command port.
-                    The data connection itself runs over the modem&apos;s USB RNDIS network interface - do not install ModemManager.</i></p>
+                <p><i>Status and management of a SimCom SIM7600-series LTE modem.</i></p>
+                <HelpSection title="How the modem link works">
+                    <p>This page talks to the modem over its <b>AT command port</b> (a serial port) for status,
+                        configuration and reconnects. The data connection itself does <b>not</b> go through that
+                        port - it runs over the modem&apos;s <b>USB RNDIS network interface</b> (usually <code>usb0</code>),
+                        which appears to Linux as an ordinary network device.</p>
+                    <ul>
+                        <li><b>Do not install ModemManager</b> - it grabs the AT ports and fights this page for them.</li>
+                        <li>A SIM7600 on USB exposes several serial ports; the AT port is usually <code>/dev/ttyUSB2</code>.
+                            Use <i>Modem discovery</i> below to find it automatically.</li>
+                        <li>The modem can also be wired to the Pi&apos;s UART header for AT control, but the data path
+                            still needs the USB cable - the UART is far too slow for video.</li>
+                    </ul>
+                </HelpSection>
                 <h2>Status</h2>
                 {status.enabled === false &&
                     <Alert variant="secondary">Modem monitoring is disabled. Enable it below.</Alert>
@@ -289,9 +302,23 @@ class LTEModemPage extends basePage {
                 <Button onClick={this.handleReconnect} disabled={!status.available} className="btn btn-primary">Reconnect data call</Button>
 
                 <h2 style={{ marginTop: '20px' }}>Modem discovery</h2>
-                <p><i>Probe the serial ports (USB and the board&apos;s UART header) for an AT-responding modem and
-                    list candidate data network interfaces. The monitor is paused while scanning; the flight
-                    controller&apos;s serial link is never probed.</i></p>
+                <p><i>Find the connected modem automatically - serial ports and data network interface.</i></p>
+                <HelpSection title="What the scan does">
+                    <ul>
+                        <li>Probes every candidate serial port with an AT handshake: detected USB serial devices,
+                            the board&apos;s UART header (<code>/dev/serial0</code>, <code>/dev/ttyAMA*</code>) and the
+                            currently configured port. USB ports are tried at one baud (it is ignored there); real
+                            UARTs are tried at the common modem bauds.</li>
+                        <li>Responders are identified by model/manufacturer; the SIMCOM-identified, lowest-numbered
+                            port is <b>recommended</b> (a SIM7600 answers AT on two of its USB ports - either works).</li>
+                        <li>The flight controller&apos;s serial link is <b>never probed</b> (shown as <i>Skipped</i>) -
+                            AT chatter must not land in the MAVLink stream.</li>
+                        <li>Network interfaces are listed with their kernel driver; RNDIS/CDC ones (the modem&apos;s
+                            data path) are flagged and recommended.</li>
+                        <li>Modem monitoring is paused during the scan and resumes by itself afterwards.
+                            <b>Use</b> fills the settings form below - press Save to apply.</li>
+                    </ul>
+                </HelpSection>
                 <Button onClick={this.handleDetect} disabled={this.state.scanning} className="btn btn-primary">
                     {this.state.scanning ? 'Scanning (can take ~20 s)...' : 'Scan for modem'}
                 </Button>
@@ -338,8 +365,7 @@ class LTEModemPage extends basePage {
                     </Table>
                 }
                 {this.state.scanDone &&
-                    <p><small className="form-text text-muted">&quot;Use&quot; fills the settings below - press Save to apply.
-                        A SIM7600 answers AT on two USB ports; the recommended one is fine. No modem-driver network interface
+                    <p><small className="form-text text-muted">No modem-driver network interface
                         usually means the modem is not in RNDIS mode (<code>AT+CUSBPIDSWITCH=9011,1,1</code>) or is connected by UART only
                         (the UART carries AT control; data needs the USB cable).</small></p>
                 }
@@ -347,13 +373,13 @@ class LTEModemPage extends basePage {
                 <h2 style={{ marginTop: '20px' }}>Settings</h2>
                 <Form onSubmit={this.handleSubmit}>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Enable modem monitoring</label>
+                        <label className="col-sm-3 col-form-label">Enable modem monitoring<HelpTip text="Poll the modem over its AT port for signal, registration and data-call status. The discovery scan and connection test work even with this off" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="enabled" checked={config.enabled} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">AT command port</label>
+                        <label className="col-sm-3 col-form-label">AT command port<HelpTip text="Serial port carrying AT commands - usually /dev/ttyUSB2 on a SIM7600 over USB, or the UART device if wired to the GPIO header. Must not be held by anything else (ModemManager, mavlink-router). The discovery scan finds it for you" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="atPort" value={config.atPort} onChange={this.handleConfigChange} list="serialports" />
                             <datalist id="serialports">
@@ -361,11 +387,10 @@ class LTEModemPage extends basePage {
                                     <option key={idx} value={port.path}>{port.label}</option>
                                 ))}
                             </datalist>
-                            <small className="form-text text-muted">SIM7600 USB: usually /dev/ttyUSB2. Must not be in use by ModemManager or mavlink-router</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Baud rate</label>
+                        <label className="col-sm-3 col-form-label">Baud rate<HelpTip text="Serial speed of the AT port. Ignored on USB ports; for a UART it must match the modem's setting (SIM7600 default 115200)" /></label>
                         <div className="col-sm-8">
                             <Form.Select name="baud" value={config.baud} onChange={this.handleConfigChange}>
                                 {[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000].map((b) => (
@@ -375,28 +400,25 @@ class LTEModemPage extends basePage {
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">APN</label>
+                        <label className="col-sm-3 col-form-label">APN<HelpTip text="Your carrier's access point name. Applied before a reconnect (AT+CGDCONT); leave empty to keep the modem's stored APN" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="apn" value={config.apn} onChange={this.handleConfigChange} placeholder="carrier APN (optional)" />
-                            <small className="form-text text-muted">Set before a reconnect via AT+CGDCONT. Leave empty to keep the modem&apos;s stored APN</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Data network interface</label>
+                        <label className="col-sm-3 col-form-label">Data network interface<HelpTip text="The modem's RNDIS network device, usually usb0. Used for data usage accounting and the connection test. The discovery scan lists candidates" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="netInterface" value={config.netInterface} onChange={this.handleConfigChange} />
-                            <small className="form-text text-muted">The RNDIS network device, usually usb0. Used for data usage accounting</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Auto-reconnect</label>
+                        <label className="col-sm-3 col-form-label">Auto-reconnect<HelpTip text="Restart the data call automatically when the modem is registered to the network but has no IP address (dropped session)" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="autoReconnect" checked={config.autoReconnect} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
-                            <small className="form-text text-muted">Restart the data call when registered to the network but no IP address is assigned</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Poll interval (s)</label>
+                        <label className="col-sm-3 col-form-label">Poll interval (s)<HelpTip text="How often the modem is polled for status. 5 s is a good default; longer intervals reduce AT-port traffic" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="number" name="pollInterval" value={config.pollInterval} onChange={this.handleConfigChange} min={2} max={120} />
                         </div>
@@ -409,8 +431,21 @@ class LTEModemPage extends basePage {
                 </Form>
 
                 <h2>Connection test</h2>
-                <p><i>Run the whole chain end-to-end: AT port → modem → SIM → signal → registration → data call →
-                    network interface → internet (ping through the modem&apos;s interface, not the default route).</i></p>
+                <p><i>Check the whole modem chain end-to-end, with a per-step diagnosis.</i></p>
+                <HelpSection title="What gets tested">
+                    <p>Eight steps, in dependency order: AT port opens → modem identifies → SIM present →
+                        signal level → network registration + operator → data call has a PDP address →
+                        network interface up with an IPv4 address → <b>ping through the modem&apos;s
+                        interface</b> (not the default route - with a VPN up, a plain ping would test the
+                        tunnel instead of the modem).</p>
+                    <ul>
+                        <li><i>Skipped</i> means a prerequisite failed, not that the step is broken -
+                            fix the first red step and re-run.</li>
+                        <li>Failure details include the usual fixes (RNDIS mode switch, APN, UART-vs-USB wiring).</li>
+                        <li>Works with monitoring disabled - the test opens and releases the AT port itself.</li>
+                        <li>The ping target is configurable; the default 8.8.8.8 only needs internet reachability.</li>
+                    </ul>
+                </HelpSection>
                 <Form onSubmit={(e) => { e.preventDefault(); this.handleConnectionTest(); }}>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
                         <div className="col-sm-3">

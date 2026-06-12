@@ -1,6 +1,7 @@
 import React from 'react';
 import { Form, Button, Table, Alert } from 'react-bootstrap';
 import basePage from './basePage.jsx';
+import { HelpTip, HelpSection } from './components/Help.jsx';
 
 import './css/styles.css';
 
@@ -122,28 +123,42 @@ class PipelineEditorPage extends basePage {
     renderContent() {
         return (
             <div>
-                <p><i>Override the auto-generated GStreamer pipeline with your own, per camera device. The pipeline must end in an RTP payloader named <code>pay0</code> (e.g. <code>... ! rtph264pay config-interval=1 name=pay0 pt=96</code>).</i></p>
-                <p><i>In RTP/UDP mode the <code>udpsink</code> is appended automatically. If a custom pipeline fails to load, the stream falls back to the auto-generated pipeline. Changes apply on the next stream start.</i></p>
+                <p><i>Override the auto-generated GStreamer pipeline with your own, per camera device.</i></p>
+                <HelpSection title="Pipeline rules and behaviour">
+                    <ul>
+                        <li>Write a full <code>gst-launch</code>-style pipeline <b>without</b> the network sink,
+                            ending in an RTP payloader named <code>pay0</code>
+                            (e.g. <code>... ! rtph264pay config-interval=1 name=pay0 pt=96</code>).</li>
+                        <li>In RTP/UDP mode the <code>udpsink</code> for the configured destination is appended
+                            automatically - never add your own. In RTSP mode the server consumes <code>pay0</code> directly.</li>
+                        <li>Name your encoder <code>enc0</code> (e.g. <code>x264enc name=enc0 ...</code>) to allow
+                            runtime bitrate changes from the Cellular Video Tuning page.</li>
+                        <li>Pipelines are validated with a GStreamer dry run before they can be enabled. If an
+                            enabled pipeline still fails at stream start, the stream falls back to the
+                            auto-generated pipeline (a warning appears here) - a custom pipeline can never brick the video.</li>
+                        <li>Changes apply when the stream is next started. The &quot;Last used pipeline&quot; at the
+                            bottom is the best starting point for edits.</li>
+                    </ul>
+                </HelpSection>
                 {this.state.customPipelineFallback !== '' &&
                     <Alert variant="warning">The last stream rejected its custom pipeline and used the generated one instead: {this.state.customPipelineFallback}</Alert>
                 }
                 <h2>Editor</h2>
                 <Form>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Camera device</label>
+                        <label className="col-sm-3 col-form-label">Camera device<HelpTip text="The camera this pipeline overrides - must exactly match the device name shown on the Photo and Video page (e.g. /dev/video0 or the libcamera path)" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="device" placeholder="/dev/video0 or /base/soc/i2c0mux/i2c@1/imx708@1a" value={this.state.device} onChange={this.handleChange} />
-                            <small className="form-text text-muted">Must exactly match the device name used on the Photo and Video page</small>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Pipeline</label>
+                        <label className="col-sm-3 col-form-label">Pipeline<HelpTip text="gst-launch syntax, without the network sink, ending in a payloader named pay0. See the rules above" /></label>
                         <div className="col-sm-8">
                             <Form.Control as="textarea" rows={5} name="pipeline" style={{ fontFamily: 'monospace' }} value={this.state.pipeline} onChange={this.handleChange} />
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
-                        <label className="col-sm-3 col-form-label">Enabled</label>
+                        <label className="col-sm-3 col-form-label">Enabled<HelpTip text="Only an enabled pipeline replaces the auto-generated one - and only if it passes validation. Disabled pipelines are kept but ignored" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="enabled" checked={this.state.enabled} onChange={this.handleChange} style={{ marginTop: '12px' }} />
                         </div>
