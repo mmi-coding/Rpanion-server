@@ -100,6 +100,136 @@ no behaviour change.
 Applied in `server/pppConnection.js` and `server/flightController.js` on
 `feature/coverage-backend-upstream`.
 
+**`testHooks` export seam** — `server/index.js` does not export its singletons
+or the http server (they are module-level locals). A `testHooks` object is
+appended at the bottom of the file and gated so production behaviour is
+unchanged. It exposes the module-level `httpServer`, `io`, the six singleton
+managers, `gracefulShutdown`, and an `isShuttingDown` accessor — enough for
+tests to emit events directly on real singletons, connect a real socket.io
+client, and drive shutdown:
+
+```js
+// bottom of server/index.js — additive only, zero production change
+if (process.env.NODE_ENV !== 'production') {
+  module.exports.testHooks = { httpServer, io, fcManager, ... gracefulShutdown, ... }
+}
+```
+
+**Rate-limiter skip seam** — the 50 req/min express-rate-limit middleware
+trips immediately under 820-test suites. A `skip` predicate disables it in
+development unless the test opts in:
+
+```js
+skip: (req) => process.env.NODE_ENV === 'development' && !process.env.ENABLE_RATE_LIMIT
+```
+
+Set `ENABLE_RATE_LIMIT=1` in a test that specifically covers the limiter.
+
+### Shared ephemeral-port harness for index.js tests (`test/indexApp.js`)
+
+`server/index.js` binds a real http server and socket.io instance. Three test
+files all need that server; starting it three times causes port conflicts.
+The shared harness pattern:
+
+```js
+// test/indexApp.js
+let serverInstance = null
+async function getServer() {
+  if (!serverInstance) serverInstance = await startApp(0) // port 0 → ephemeral
+  return serverInstance
+}
+async function closeServer() { await serverInstance.close(); serverInstance = null }
+module.exports = { getServer, closeServer }
+```
+
+Each test file calls `getServer()` in `before()` and `closeServer()` in
+`after()`. The `0`-port binding lets the OS pick a free port; `server.address().port`
+gives the actual value. **One server per suite run — do not start a second
+instance from a parallel suite** (mocha test files run sequentially under
+`--file`).
+
+### Prototype-stubbing unexported class singletons
+
+`server/index.js` constructs singletons (`new NtripManager(...)` etc.) and
+never exports the instances. Sinon cannot stub an unexported instance; stub
+the **prototype** instead:
+
+```js
+const NtripManager = require('./ntrip')
+sinon.stub(NtripManager.prototype, 'getSettings').returns({ ... })
+```
+
+Prototype stubs apply to every instance (including the one already created
+inside index.js). Restore in `afterEach` with `sinon.restore()`.
+
+**Function-export modules** (those that export a plain function or object, not
+a class) are stubbed by replacing the exported property directly:
+
+```js
+const aboutInfo = require('./aboutInfo')
+sinon.stub(aboutInfo, 'getAbout').returns({ ... })
+```
+
+### No-res handlers: fire-and-forget + stub-poll
+
+Some upstream route handlers take `(req)` with no `res` parameter — they fire
+side effects but never call `res.json()` or `res.send()`, so the request hangs
+indefinitely. Test them by sending the request without awaiting a response,
+then polling a stub until the side-effect fires:
+
+```js
+// fire-and-forget (no await)
+fetch(`http://localhost:${port}/api/shutdowncc`, { method: 'POST', ... })
+// poll the stub
+await new Promise(resolve => {
+  const iv = setInterval(() => {
+    if (stub.called) { clearInterval(iv); resolve() }
+  }, 20)
+})
+```
+
+### Hand-built multipart/form-data bodies
+
+`supertest` is not in the project's dependencies. For `multipart/form-data`
+endpoints (e.g. `/api/vpnwireguardprofileadd`), build the body manually with
+`Buffer.concat` and a fixed boundary string, then send via Node's built-in
+`http.request`:
+
+```js
+const boundary = '----TestBoundary'
+const body = Buffer.concat([
+  Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="field"\r\n\r\nvalue\r\n`),
+  Buffer.from(`--${boundary}--\r\n`)
+])
+// set Content-Type: multipart/form-data; boundary=----TestBoundary
+```
+
+### NODE_ENV juggling with mandatory restore
+
+Tests that cover production-mode branches (e.g. the `authenticateToken`
+middleware behaves differently when `NODE_ENV === 'production'`) must always
+restore the original value — even if the test assertion throws:
+
+```js
+const saved = process.env.NODE_ENV
+try {
+  process.env.NODE_ENV = 'production'
+  // ... test
+} finally {
+  process.env.NODE_ENV = saved
+}
+```
+
+A missing restore silently poisons every subsequent test in the file.
+
+### JWT `iat` collision spacing
+
+JWTs include an `iat` (issued-at) claim with second-level precision. Two
+tokens minted within the same second are byte-identical, so a test that signs
+two different tokens in rapid succession may receive stale cached ones.
+Insert a 1-second gap (`await new Promise(r => setTimeout(r, 1100))`) between
+minting tokens, or use sinon fake time to advance the clock between mints.
+
 ### Scenario-driven fake `sudo` dispatcher
 
 One `FakeBin` `sudo` script dispatches on `case "$*" in` patterns plus a

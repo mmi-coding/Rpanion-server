@@ -138,10 +138,10 @@
       "lcov",
       "text-summary"
     ],
-    "statements": 81,
-    "branches": 84,
-    "functions": 71,
-    "lines": 80
+    "statements": 100,
+    "branches": 100,
+    "functions": 100,
+    "lines": 100
   },
   "overrides": {
     "autoprefixer": "10.4.5",
