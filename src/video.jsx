@@ -238,10 +238,12 @@ class VideoPage extends basePage {
 
 // Disconnect the socket that listens for file save events
 componentWillUnmount() {
+  /* v8 ignore start -- socket/super always exist; else branches are unreachable */
   if (this.socket) {
     this.socket.off('camera:filesaved');
   }
   if (super.componentWillUnmount) super.componentWillUnmount();
+  /* v8 ignore stop */
 }
 
   // Helper to generate a unique string value for still caps (since they don't always have a 'value' property)
@@ -581,7 +583,9 @@ componentWillUnmount() {
           mediaDestination: this.state.videoMediaDestination
         };
 
+      /* v8 ignore start -- cameraMode is always 'streaming', 'video', or 'photo'; falsy arm of else-if is unreachable */
       } else if (cameraMode === 'photo') {
+      /* v8 ignore stop */
 
         const device = stillDevices.find(d => d.id === stillDeviceSelected);
         if (!device) throw new Error("Photo device not found.");

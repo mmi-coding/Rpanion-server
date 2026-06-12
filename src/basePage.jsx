@@ -45,10 +45,8 @@ class basePage extends Component {
       })
       .catch((error) => {
         // Handle errors
-        if (error) {
-          console.error(error)
-          this.setState({ token: null })
-        }
+        console.error(error)
+        this.setState({ token: null })
       });
     }
 

@@ -33,6 +33,12 @@ export default function io () {
       }
       handlers[event].push(cb)
     }),
+    // Remove a previously-registered handler (video.jsx calls off on unmount)
+    off: vi.fn((event, cb) => {
+      if (handlers[event]) {
+        handlers[event] = handlers[event].filter(h => h !== cb)
+      }
+    }),
     emit: vi.fn(),
     disconnect: vi.fn(),
     // test-side: invoke every handler registered for `event`
