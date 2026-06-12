@@ -13,7 +13,8 @@ const path = require('path')
 const os = require('os')
 const { spawn } = require('child_process')
 const { SerialPort, ReadlineParser } = require('serialport')
-const { detectSerialDevices, getSerialPathFromValue } = require('./serialDetection.js')
+// required as an object (not destructured) so tests can stub the detection seam
+const serialDetection = require('./serialDetection.js')
 
 // SIM7600 +CREG / +CGREG registration states
 const REG_STATES = {
@@ -592,7 +593,7 @@ class LTEModem {
       const fcDevice = this.settings.value('flightcontroller.activeDevice', null)
       if (fcDevice !== null && fcDevice.serial !== undefined) {
         exclude.push(fcDevice.serial)
-        const fcPath = getSerialPathFromValue(fcDevice.serial, detected)
+        const fcPath = serialDetection.getSerialPathFromValue(fcDevice.serial, detected)
         if (fcPath !== null) {
           exclude.push(fcPath)
         }
@@ -819,7 +820,7 @@ class LTEModem {
 
   async getSerialPorts () {
     try {
-      return await detectSerialDevices()
+      return await serialDetection.detectSerialDevices()
     } catch (err) {
       console.log('LTE modem: serial detection failed: ' + err.toString())
       return []
