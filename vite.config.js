@@ -19,10 +19,10 @@ export default defineConfig({
             // Coverage ratchet (see docs/TESTING.md): thresholds track the
             // highest coverage achieved and may only be raised. Target: 100.
             thresholds: {
-                statements: 3,
-                branches: 4,
-                functions: 3,
-                lines: 3,
+                statements: 18,
+                branches: 19,
+                functions: 14,
+                lines: 18,
             },
         },
     },

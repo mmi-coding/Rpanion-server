@@ -51,7 +51,10 @@ class PipelineEditorPage extends basePage {
         const entry = this.state.pipelines[device];
         this.setState({
             device,
+            // Edit button only exists for devices in pipelines, so entry is always truthy
+            /* v8 ignore next -- Edit button only exists for devices in pipelines; entry always truthy */
             pipeline: entry ? entry.pipeline : '',
+            /* v8 ignore next -- Edit button only exists for devices in pipelines; entry always truthy */
             enabled: entry ? entry.enabled : false,
             validateResult: null
         });

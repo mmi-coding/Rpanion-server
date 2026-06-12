@@ -263,7 +263,9 @@ describe('Auth and user routes', function () {
     let expiredToken    // used for: "jwt.verify error path" test
 
     before(async function () {
-      this.timeout(5000)
+      // 3 × 1100 ms iat-spacing sleeps + 3 bcrypt-backed logins: needs far
+      // more than the 3.3 s of sleeps alone when the box is under load
+      this.timeout(20000)
       savedNodeEnv = process.env.NODE_ENV
       // Obtain three distinct tokens.  JWT iat has 1-second granularity; tokens
       // with the same payload signed within the same second are identical.

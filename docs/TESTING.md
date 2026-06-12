@@ -230,6 +230,24 @@ two different tokens in rapid succession may receive stale cached ones.
 Insert a 1-second gap (`await new Promise(r => setTimeout(r, 1100))`) between
 minting tokens, or use sinon fake time to advance the clock between mints.
 
+### Timeouts for suites that mix `execSync`, sleeps, or bcrypt under load
+
+Mocha's default per-test timeout is 2 s. Under a loaded CI box (or a
+heavily-loaded WSL instance), any of the following can silently exceed that
+budget:
+
+- **`execSync` spawning a fake `sudo`** — the OS needs to fork, exec, and
+  wait; measured at >2 s ~1 run in 3 under load. Raise the enclosing
+  `describe` to at least `this.timeout(10000)`.
+- **`before()` hooks that space JWT mints** — three 1.1 s `iat` sleeps already
+  consume 3.3 s; add two bcrypt logins (~900 ms each on Pi-class hardware) and
+  only ~0.8 s of headroom remains against a 5 s hook timeout. Raise such
+  `before()` hooks to **20 s**.
+
+The rule of thumb: set the timeout to the sum of all mandatory sleeps + at
+least 3× the cost of the most expensive operation, rounded up to the next
+round number.
+
 ### Scenario-driven fake `sudo` dispatcher
 
 One `FakeBin` `sudo` script dispatches on `case "$*" in` patterns plus a
@@ -327,6 +345,59 @@ page.unmount()
 - `mockFetch` throws on unhandled routes, so unexpected requests fail loudly.
   Call `vi.unstubAllGlobals()` in `afterEach`.
 - `src/cellulartuning.test.jsx` is the reference example.
+
+### `<select>` onChange — set value via native prototype setter
+
+`test/ui.jsx`'s `setValue` fires an `input` event, which React's synthetic
+`onChange` wires to `<input>` elements but **not** to `<select>`. For select
+elements, use the native `HTMLInputElement` prototype setter to update `.value`
+and dispatch a bubbling `change` event:
+
+```jsx
+import { act } from 'react-dom/test-utils'
+
+act(() => {
+  const nativeSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLSelectElement.prototype, 'value'
+  ).set
+  nativeSetter.call(selectEl, 'newValue')
+  selectEl.dispatchEvent(new Event('change', { bubbles: true }))
+})
+```
+
+### Modal errors render in a portal on `document.body`
+
+`basePage`'s error modal is mounted in a React portal outside the test
+container. Assert `document.body.textContent`, not `container.textContent`:
+
+```js
+assert.ok(document.body.textContent.includes('Something went wrong'))
+```
+
+### Per-file coverage truth is `coverage/coverage-final.json`
+
+The vitest text summary omits rows where all four metrics are 100%. To verify a
+specific file's numbers after `covfront`, read
+`coverage/coverage-final.json` — every file is present regardless of score.
+
+### `lastSocket()` — unmount before rendering the next page
+
+`lastSocket()` from `test/socketMock.js` returns the most recently constructed
+mock socket. If two page components are mounted concurrently (or a prior test
+left a mounted page), `lastSocket()` returns the wrong instance. Always call
+`page.unmount()` at the end of each test (or in `afterEach`) before rendering
+the next page under test.
+
+### Never run two vitest coverage processes concurrently
+
+Both share the `coverage/` output directory; concurrent runs corrupt each
+other's output and produce wrong totals. During development, iterate with
+single-file targeted runs (no coverage) and run the full gate only once:
+
+```
+npx vitest --run src/mypage.test.jsx          # fast, no coverage
+npm run covfront                              # full gate, once
+```
 
 ## Unreachable code: ignore annotations (last resort)
 
