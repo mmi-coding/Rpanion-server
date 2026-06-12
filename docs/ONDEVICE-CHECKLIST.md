@@ -25,3 +25,12 @@ its items here. Tick on the bench, note board + date.
 - [ ] CSI contention check: secondary USB cam unplug/replug behaviour; pipeline error handling when secondary missing at start
 - [ ] 'Command' mode with a CSI multiplexer board (i2cset commands) if hardware available
 - [ ] Verify `python/.venv` on the deployed image has gi/GStreamer access (system-site-packages)
+
+## Feature 2: Custom Pipelines (feature/custom-pipelines)
+
+- [ ] Custom pipeline with real hardware elements on Pi 4: `libcamerasrc` (IMX708) → `v4l2h264enc` → `h264parse` → `rtph264pay name=pay0` — validates on save, streams in RTSP and RTP modes, hardware encoder confirmed (CPU + pipeline print)
+- [ ] Same custom pipeline on Pi Zero 2 W — CPU headroom at 1080p30
+- [ ] Save-time validation works on the deployed image (validator runs in `/usr/share/rpanion-server/app/python/.venv`, gi available — not `valid: null`)
+- [ ] Runtime fallback on device: enable a deliberately broken pipeline, start stream → `CUSTOM-PIPELINE-FALLBACK` warning appears on the Pipeline Editor page and the generated pipeline streams
+- [ ] "Last used pipeline" populated after a real IMX708 stream; Copy-into-editor → tweak (e.g. bitrate) → save → restart → new value in effect
+- [ ] Custom pipeline correctly suppresses camera-switcher dual-source mode when both are configured for the same device

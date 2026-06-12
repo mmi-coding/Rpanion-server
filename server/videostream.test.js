@@ -294,6 +294,36 @@ describe('Video Functions', function () {
     assert.deepEqual(vManager.getSecondarySourceArgs(), [])
   })
 
+  it('#getCustomPipelineArgs()', function () {
+    settings.clear()
+    const vManager = new VideoStream(settings)
+    vManager.videoSettings = { device: '/dev/video0' }
+
+    // no custom pipelines stored: no extra args
+    assert.deepEqual(vManager.getCustomPipelineArgs(), [])
+
+    // enabled custom pipeline for the active device
+    settings.setValue('customPipelines.map', {
+      '/dev/video0': { enabled: true, pipeline: 'videotestsrc ! rtph264pay name=pay0' },
+      '/dev/video1': { enabled: true, pipeline: 'other ! rtph264pay name=pay0' }
+    })
+    assert.deepEqual(vManager.getCustomPipelineArgs(),
+      ['--custom-pipeline=videotestsrc ! rtph264pay name=pay0'])
+
+    // disabled pipeline: no args
+    settings.setValue('customPipelines.map', {
+      '/dev/video0': { enabled: false, pipeline: 'videotestsrc ! rtph264pay name=pay0' }
+    })
+    assert.deepEqual(vManager.getCustomPipelineArgs(), [])
+
+    // pipeline for a different device: no args
+    vManager.videoSettings = { device: '/dev/video5' }
+    settings.setValue('customPipelines.map', {
+      '/dev/video0': { enabled: true, pipeline: 'videotestsrc ! rtph264pay name=pay0' }
+    })
+    assert.deepEqual(vManager.getCustomPipelineArgs(), [])
+  })
+
   it('#switchSource()', function () {
     settings.clear()
     const vManager = new VideoStream(settings)

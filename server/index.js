@@ -20,6 +20,7 @@ const logConversionManager = require('./logConverter.js')
 const userLogin = require('./userLogin.js')
 const logpaths = require('./paths.js')
 const CameraSwitcher = require('./cameraSwitcher.js')
+const CustomPipelines = require('./customPipelines.js')
 
 const settings = require('settings-store')
 
@@ -76,6 +77,7 @@ const adhocManager = new Adhoc(settings)
 const userMgmt = new userLogin()
 const pppConnectionManager = new pppConnection(settings)
 const camSwitcher = new CameraSwitcher(settings)
+const customPipelines = new CustomPipelines(settings)
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -913,6 +915,55 @@ app.post('/api/cameraswitcherswitch', authenticateToken, [check('source').isIn([
   camSwitcher.doSwitch(req.body.source)
   res.setHeader('Content-Type', 'application/json')
   res.send(JSON.stringify({ error: null, status: camSwitcher.getStatus() }))
+})
+
+// Serve the custom video pipelines and the pipeline used by the last stream
+app.get('/api/custompipelines', authenticateToken, (req, res) => {
+  res.setHeader('Content-Type', 'application/json')
+  res.send(JSON.stringify({
+    pipelines: customPipelines.getAllPipelines(),
+    lastPipeline: vManager.lastPipeline,
+    customPipelineFallback: vManager.customPipelineFallback
+  }))
+})
+
+// add/update/remove a custom pipeline for a device
+app.post('/api/custompipelinemodify', authenticateToken, [
+  check('device').isLength({ min: 1, max: 256 }),
+  check('enabled').isBoolean(),
+  check('pipeline').isString().isLength({ max: 8192 })
+], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/custompipelinemodify', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  const enabled = req.body.enabled === true || req.body.enabled === 'true'
+  customPipelines.setPipeline(req.body.device, enabled, req.body.pipeline, (err) => {
+    res.setHeader('Content-Type', 'application/json')
+    if (err) {
+      res.status(422).send(JSON.stringify({ error: err.message, pipelines: customPipelines.getAllPipelines() }))
+    } else {
+      res.send(JSON.stringify({ error: null, pipelines: customPipelines.getAllPipelines() }))
+    }
+  })
+})
+
+// dry-run validate a pipeline string without saving it
+app.post('/api/custompipelinevalidate', authenticateToken, [
+  check('pipeline').isString().isLength({ min: 1, max: 8192 })
+], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/custompipelinevalidate', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  customPipelines.validatePipeline(req.body.pipeline, (err, valid, reason) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ error: err ? err.message : null, valid, reason }))
+  })
 })
 
 // Serve the AP clients info

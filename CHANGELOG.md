@@ -5,6 +5,10 @@
  - Video: 'Command' switch mode for CSI multiplexer boards (user-defined per-source shell commands)
  - Video: Manual source switching from the new Camera Switcher page
  - MAVLink: Request RC_CHANNELS stream via MAV_CMD_SET_MESSAGE_INTERVAL when the camera switcher is enabled
+ - Video: Add per-camera custom GStreamer pipeline overrides (new Video Pipeline Editor page)
+ - Video: Validate custom pipelines via a GStreamer dry-run (parse + `pay0` payloader check) before saving
+ - Video: Runtime fallback to the auto-generated pipeline if a custom pipeline fails to load - the stream never bricks
+ - Video: Report the actually-used pipeline string back to the UI as an editing starting point
 
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support
