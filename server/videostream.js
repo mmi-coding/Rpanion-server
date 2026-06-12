@@ -430,6 +430,54 @@ class videoStream {
     }
   }
 
+  // Build the extra video-server.py arguments for a dual-source (switchable)
+  // pipeline, based on the camera switcher settings. Returns [] when the
+  // switcher is disabled or not in gstreamer mode.
+  getSecondarySourceArgs() {
+    const swEnabled = this.settings.value('cameraSwitcher.enabled', false)
+    const swMode = this.settings.value('cameraSwitcher.switchMode', 'gstreamer')
+    const secDevice = this.settings.value('cameraSwitcher.secDevice', '')
+
+    if (!swEnabled || swMode !== 'gstreamer' || secDevice === '') {
+      return []
+    }
+
+    // RTSP sources can't be a switchable secondary (would need a full
+    // depay/decode branch); ignore if misconfigured
+    if (secDevice.startsWith('rtsp')) {
+      console.log('Camera switcher: RTSP secondary sources are not supported')
+      return []
+    }
+
+    // capture size defaults to the primary stream size (0 = use primary)
+    const secWidth = this.settings.value('cameraSwitcher.secWidth', 0) || this.videoSettings.width
+    const secHeight = this.settings.value('cameraSwitcher.secHeight', 0) || this.videoSettings.height
+
+    return [
+      '--secondary=' + secDevice,
+      '--secondary-format=' + this.settings.value('cameraSwitcher.secFormat', 'video/x-raw'),
+      '--secondary-width=' + secWidth,
+      '--secondary-height=' + secHeight,
+      '--secondary-fps=' + this.settings.value('cameraSwitcher.secFps', -1)
+    ]
+  }
+
+  // Flip the active source on a running dual-source stream.
+  // Returns true if the switch command was sent to the video server.
+  switchSource(source) {
+    if (source !== 'A' && source !== 'B') {
+      return false
+    }
+    if (this.deviceStream === null || this.cameraMode !== 'streaming') {
+      return false
+    }
+    if (this.deviceStream.stdin && this.deviceStream.stdin.writable) {
+      this.deviceStream.stdin.write(JSON.stringify({ cmd: 'switch', source }) + '\n')
+      return true
+    }
+    return false
+  }
+
   async startVideoStreaming(callback) {
     if (!this.videoSettings) return callback(new Error('No video settings provided'));
 
@@ -459,6 +507,9 @@ class videoStream {
     ];
 
     if (this.videoSettings.useTimestamp) args.push('--timestamp');
+
+    // dual-source (camera switcher) support
+    args.push(...this.getSecondarySourceArgs());
 
     const pythonPath = logpaths.getPythonPath()
     this.deviceStream = spawn(pythonPath, args)

@@ -1,6 +1,8 @@
 const assert = require('assert')
 const mavManager = require('./mavManager')
 const udp = require('dgram')
+const { MavLinkPacketSplitter, MavLinkPacketParser, common } = require('node-mavlink')
+const { PassThrough } = require('stream')
 
 describe('MAVLink Functions', function () {
   it('#startup()', function () {
@@ -364,5 +366,35 @@ describe('MAVLink Functions', function () {
     })
 
     udpStream.send(Buffer.from([0xfd, 0x06]), 16300, '127.0.0.1')
+  })
+
+  it('#sendSetMessageInterval()', function (done) {
+    const m = new mavManager(2, '127.0.0.1', 16400)
+    const udpStream = udp.createSocket('udp4')
+
+    m.eventEmitter.on('linkready', () => {
+      // ask for RC_CHANNELS (65) at 2 Hz (500000 us)
+      m.sendSetMessageInterval(65, 500000)
+    })
+
+    udpStream.on('message', (msg) => {
+      // decode the raw packet and check it is a correctly-formed
+      // MAV_CMD_SET_MESSAGE_INTERVAL COMMAND_LONG
+      const s = new PassThrough()
+      const decoder = s.pipe(new MavLinkPacketSplitter()).pipe(new MavLinkPacketParser())
+      decoder.on('data', (packet) => {
+        assert.equal(packet.header.msgid, common.CommandLong.MSG_ID)
+        const data = packet.protocol.data(packet.payload, common.CommandLong)
+        assert.equal(data.command, 511) // MAV_CMD_SET_MESSAGE_INTERVAL
+        assert.equal(data._param1, 65) // RC_CHANNELS
+        assert.equal(data._param2, 500000) // 2 Hz
+        m.close()
+        udpStream.close()
+        done()
+      })
+      s.write(msg)
+    })
+
+    udpStream.send(Buffer.from([0xfd, 0x06]), 16400, '127.0.0.1')
   })
 })

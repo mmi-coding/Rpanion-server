@@ -254,6 +254,73 @@ describe('Video Functions', function () {
     vManager.sendVideoStreamInformation(1, 1, 1)
   })
 
+  it('#getSecondarySourceArgs()', function () {
+    settings.clear()
+    const vManager = new VideoStream(settings)
+    vManager.videoSettings = { width: 1920, height: 1080 }
+
+    // switcher disabled: no extra args
+    assert.deepEqual(vManager.getSecondarySourceArgs(), [])
+
+    // switcher enabled in gstreamer mode with a secondary device
+    settings.setValue('cameraSwitcher.enabled', true)
+    settings.setValue('cameraSwitcher.switchMode', 'gstreamer')
+    settings.setValue('cameraSwitcher.secDevice', '/dev/video1')
+    settings.setValue('cameraSwitcher.secFormat', 'image/jpeg')
+    settings.setValue('cameraSwitcher.secFps', 30)
+
+    let args = vManager.getSecondarySourceArgs()
+    assert.ok(args.includes('--secondary=/dev/video1'))
+    assert.ok(args.includes('--secondary-format=image/jpeg'))
+    // capture size defaults to primary stream size
+    assert.ok(args.includes('--secondary-width=1920'))
+    assert.ok(args.includes('--secondary-height=1080'))
+    assert.ok(args.includes('--secondary-fps=30'))
+
+    // explicit capture size is respected
+    settings.setValue('cameraSwitcher.secWidth', 1280)
+    settings.setValue('cameraSwitcher.secHeight', 720)
+    args = vManager.getSecondarySourceArgs()
+    assert.ok(args.includes('--secondary-width=1280'))
+    assert.ok(args.includes('--secondary-height=720'))
+
+    // command mode: pipeline stays single-source
+    settings.setValue('cameraSwitcher.switchMode', 'command')
+    assert.deepEqual(vManager.getSecondarySourceArgs(), [])
+
+    // RTSP secondary sources are rejected
+    settings.setValue('cameraSwitcher.switchMode', 'gstreamer')
+    settings.setValue('cameraSwitcher.secDevice', 'rtspsourceh264')
+    assert.deepEqual(vManager.getSecondarySourceArgs(), [])
+  })
+
+  it('#switchSource()', function () {
+    settings.clear()
+    const vManager = new VideoStream(settings)
+
+    // no active stream: no switch
+    assert.equal(vManager.switchSource('B'), false)
+
+    // active stream in streaming mode: switch command written to stdin
+    let written = null
+    vManager.cameraMode = 'streaming'
+    vManager.deviceStream = {
+      stdin: {
+        writable: true,
+        write: (data) => { written = data }
+      }
+    }
+    assert.equal(vManager.switchSource('B'), true)
+    assert.deepEqual(JSON.parse(written), { cmd: 'switch', source: 'B' })
+
+    // invalid source values are rejected
+    assert.equal(vManager.switchSource('C'), false)
+
+    // wrong camera mode: no switch
+    vManager.cameraMode = 'photo'
+    assert.equal(vManager.switchSource('A'), false)
+  })
+
   it('#sendCameraSettings()', function (done) {
     settings.clear()
     const vManager = new VideoStream(settings)

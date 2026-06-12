@@ -13,3 +13,15 @@ its items here. Tick on the bench, note board + date.
 - [ ] SIM7600G enumerates on USB: RNDIS netdev (`usb0`) + AT ports (`/dev/ttyUSB2` typical)
 - [ ] WireGuard or ZeroTier up over the LTE link (CGNAT traversal), Mission Planner UDP telemetry through VPN
 - [ ] RTP/UDP video into Mission Planner/QGC through VPN
+
+## Feature 1: Camera Switcher (feature/rc-camera-switching)
+
+- [ ] Dual-source RTSP: IMX708 (libcamerasrc, `/base/soc/i2c...`) primary + USB cam (`/dev/video1`, MJPEG) secondary on Pi 4 — stream starts, hardware encoder (`v4l2h264enc`) in use (verify pipeline print + CPU)
+- [ ] Same on Pi Zero 2 W — check CPU headroom with the extra videoscale/videoconvert on the secondary branch (may need lower secondary capture res)
+- [ ] Runtime switch A↔B from the web UI while a GCS client is connected — stream stays up, no encoder renegotiation, < 1 s glitch
+- [ ] RC switching: transmitter switch on the configured channel flips the source (RC_CHANNELS arrives at 2 Hz after enabling — check with `mavproxy` or the FC messages)
+- [ ] RC_CHANNELS stream re-requested after FC reboot / link drop (stopLink → resetLink path)
+- [ ] Dual-source RTP/UDP mode to Mission Planner via VPN
+- [ ] CSI contention check: secondary USB cam unplug/replug behaviour; pipeline error handling when secondary missing at start
+- [ ] 'Command' mode with a CSI multiplexer board (i2cset commands) if hardware available
+- [ ] Verify `python/.venv` on the deployed image has gi/GStreamer access (system-site-packages)
