@@ -28,6 +28,11 @@ class videoStream {
     this.videoSettings = null;
     this.stillSettings = null;
 
+    // The pipeline string used by the last/current stream, and the reason
+    // a custom pipeline was rejected (if any). For the pipeline editor UI
+    this.lastPipeline = '';
+    this.customPipelineFallback = '';
+
     // Load saved settings from the 'camera' namespace
     this.active = this.settings.value('camera.active', false);
     this.cameraMode = this.settings.value('camera.mode', 'streaming');
@@ -433,6 +438,18 @@ class videoStream {
   // Build the extra video-server.py arguments for a dual-source (switchable)
   // pipeline, based on the camera switcher settings. Returns [] when the
   // switcher is disabled or not in gstreamer mode.
+  // Custom (user-editable) pipeline for the active device, if enabled.
+  // Takes precedence over the camera switcher's dual-source mode
+  getCustomPipelineArgs() {
+    const map = this.settings.value('customPipelines.map', {})
+    const device = this.videoSettings ? this.videoSettings.device : null
+    if (device && Object.prototype.hasOwnProperty.call(map, device) &&
+        map[device].enabled && map[device].pipeline !== '') {
+      return ['--custom-pipeline=' + map[device].pipeline]
+    }
+    return []
+  }
+
   getSecondarySourceArgs() {
     const swEnabled = this.settings.value('cameraSwitcher.enabled', false)
     const swMode = this.settings.value('cameraSwitcher.switchMode', 'gstreamer')
@@ -508,8 +525,21 @@ class videoStream {
 
     if (this.videoSettings.useTimestamp) args.push('--timestamp');
 
+    // custom (user-editable) pipeline support. Takes precedence over the
+    // camera switcher's dual-source mode
+    const customArgs = this.getCustomPipelineArgs();
+    args.push(...customArgs);
+
     // dual-source (camera switcher) support
-    args.push(...this.getSecondarySourceArgs());
+    if (customArgs.length === 0) {
+      args.push(...this.getSecondarySourceArgs());
+    } else if (this.getSecondarySourceArgs().length > 0) {
+      console.log('Custom pipeline enabled for this device - camera switcher dual-source mode is disabled');
+    }
+
+    // reset pipeline tracking for this run
+    this.lastPipeline = '';
+    this.customPipelineFallback = '';
 
     const pythonPath = logpaths.getPythonPath()
     this.deviceStream = spawn(pythonPath, args)
@@ -650,6 +680,18 @@ class videoStream {
         this.setRecordingFlag(false);
         this.saveSettings();
         console.log('Detected recorder STOP; isRecording=false');
+      }
+
+      // capture the actually-used pipeline and any custom-pipeline fallback
+      // markers printed by video-server.py
+      const pipelineMatch = chunk.match(/^PIPELINE:(.+)$/m);
+      if (pipelineMatch) {
+        this.lastPipeline = pipelineMatch[1].trim();
+      }
+      const fallbackMatch = chunk.match(/^CUSTOM-PIPELINE-FALLBACK:(.+)$/m);
+      if (fallbackMatch) {
+        this.customPipelineFallback = fallbackMatch[1].trim();
+        console.log('Custom pipeline rejected, fell back to generated pipeline: ' + this.customPipelineFallback);
       }
 
       // find file paths printed by photovideo.py

@@ -222,6 +222,23 @@ def getPipeline(device, height, width, bitrate, format, rotation, framerate, tim
     return " ! ".join(pipeline)
 
 
+# ---- Custom (user-editable) pipelines ----
+def validateCustomPipeline(pipeline_str):
+    """Dry-run validation of a user-supplied pipeline string. Returns
+    (ok, reason). The pipeline must parse and contain an RTP payloader
+    named pay0 - the same contract as the generated pipelines."""
+    if pipeline_str is None or pipeline_str.strip() == "":
+        return False, "Empty pipeline"
+    try:
+        pipeline = Gst.parse_launch(pipeline_str)
+    except Exception as e:
+        return False, str(e).strip()
+    if pipeline.get_by_name("pay0") is None:
+        return False, "No element named pay0 in pipeline"
+    pipeline.set_state(Gst.State.NULL)
+    return True, "OK"
+
+
 # ---- Runtime source switching (camera switcher) ----
 # Shared state between the stdin control channel and the pipelines.
 # switch_state holds the desired source; live_selectors holds the
@@ -431,6 +448,7 @@ class SwitcherFactory(GstRtspServer.RTSPMediaFactory):
         self.set_shared(True)
 
     def do_create_element(self, url):
+        print("PIPELINE:{0}".format(self.pipeline_str), flush=True)
         return Gst.parse_launch(self.pipeline_str)
 
     def do_configure(self, media):
@@ -449,7 +467,7 @@ class SwitcherFactory(GstRtspServer.RTSPMediaFactory):
 
 
 class MyFactory(GstRtspServer.RTSPMediaFactory):
-    def __init__(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression):
+    def __init__(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression, custom_pipeline=""):
         GstRtspServer.RTSPMediaFactory.__init__(self)
         self.device = device
         self.height = h
@@ -460,6 +478,7 @@ class MyFactory(GstRtspServer.RTSPMediaFactory):
         self.framerate = framerate
         self.timestamp = timestamp
         self.compression = compression
+        self.custom_pipeline = custom_pipeline
 
         # Configure for low latency streaming
         self.set_latency(0)  # Minimize latency
@@ -467,8 +486,12 @@ class MyFactory(GstRtspServer.RTSPMediaFactory):
         self.set_transport_mode(GstRtspServer.RTSPTransportMode.PLAY)
 
     def do_create_element(self, url):
-        pipeline_str = getPipeline(self.device, self.height, self.width, self.bitrate, self.format, self.rotation,
-                                   self.framerate, self.timestamp, self.compression)
+        if self.custom_pipeline != "":
+            pipeline_str = self.custom_pipeline
+        else:
+            pipeline_str = getPipeline(self.device, self.height, self.width, self.bitrate, self.format, self.rotation,
+                                       self.framerate, self.timestamp, self.compression)
+        print("PIPELINE:{0}".format(pipeline_str), flush=True)
         return Gst.parse_launch(pipeline_str)
 
     def do_configure(self, media):
@@ -487,10 +510,10 @@ class GstServer():
         self.sourceID = self.server.attach(None)
         print("Server available on rtsp://<IP>:8554")
 
-    def addStream(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression):
+    def addStream(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression, custom_pipeline=""):
         f = MyFactory(device, h, w, bitrate, format,
                       rotation, framerate, timestamp,
-                      compression)
+                      compression, custom_pipeline)
 
         # Don't share the media pipeline - each client gets their own
         # This prevents one slow client from affecting others
@@ -562,6 +585,8 @@ if __name__ == '__main__':
         "--secondary-height", help="Secondary capture height", default=0, type=int)
     parser.add_argument(
         "--secondary-fps", help="Secondary capture framerate", default=-1, type=int)
+    parser.add_argument(
+        "--custom-pipeline", help="User-defined pipeline string, replacing the generated one. Must end in an RTP payloader named pay0", default="", type=str)
     args = parser.parse_args()
 
     loop = GLib.MainLoop()
@@ -570,7 +595,20 @@ if __name__ == '__main__':
     Gst.debug_set_active(True)
     Gst.debug_set_default_threshold(3)
 
-    secondary_active = args.secondary != "" and args.multirtsp == ""
+    # Custom pipeline: validate up-front and fall back to the generated
+    # pipeline if it's bad. Never let a stale custom pipeline kill the stream
+    custom_pipeline = args.custom_pipeline
+    if custom_pipeline != "" and args.multirtsp == "":
+        ok, reason = validateCustomPipeline(custom_pipeline)
+        if not ok:
+            print("CUSTOM-PIPELINE-FALLBACK:{0}".format(reason), flush=True)
+            custom_pipeline = ""
+        elif args.secondary != "":
+            # custom pipelines and the dual-source switcher are mutually
+            # exclusive - the custom pipeline wins
+            print("Custom pipeline set - ignoring --secondary (camera switcher dual-source mode)")
+
+    secondary_active = args.secondary != "" and args.multirtsp == "" and custom_pipeline == ""
     if secondary_active:
         # control channel from the Node server for runtime source switching
         GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN |
@@ -634,6 +672,7 @@ if __name__ == '__main__':
         if pipeline_str == "":
             print("Unable to build dual-source pipeline")
             sys.exit(1)
+        print("PIPELINE:{0}".format(pipeline_str), flush=True)
         pipeline = Gst.parse_launch(pipeline_str)
         sel = pipeline.get_by_name("sel")
         if sel is not None:
@@ -653,7 +692,8 @@ if __name__ == '__main__':
         # RTSP
         s = GstServer()
         s.addStream(args.videosource, args.height, args.width, args.bitrate,
-                    args.format, args.rotation, args.fps, args.timestamp, args.compression)
+                    args.format, args.rotation, args.fps, args.timestamp, args.compression,
+                    custom_pipeline)
 
         try:
             loop.run()
@@ -662,13 +702,17 @@ if __name__ == '__main__':
             loop.quit()
     elif args.transport == "RTP":
         # RTP
-        pipeline_str = getPipeline(args.videosource, args.height, args.width,
-                                   args.bitrate, args.format, args.rotation, args.fps, args.timestamp,
-                                   args.compression)
+        if custom_pipeline != "":
+            pipeline_str = custom_pipeline
+        else:
+            pipeline_str = getPipeline(args.videosource, args.height, args.width,
+                                       args.bitrate, args.format, args.rotation, args.fps, args.timestamp,
+                                       args.compression)
         pipeline_str += " ! udpsink host={0} port={1}".format(
             args.udp.split(':')[0], args.udp.split(':')[1])
         if is_multicast(args.udp.split(':')[0]):
             pipeline_str += " auto-multicast=true"
+        print("PIPELINE:{0}".format(pipeline_str), flush=True)
         pipeline = Gst.parse_launch(pipeline_str)
         pipeline.set_state(Gst.State.PLAYING)
 

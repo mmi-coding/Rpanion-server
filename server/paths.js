@@ -13,12 +13,18 @@ const baseDir = isDev ?
 // Get Python executable path from venv if it exists, otherwise use system python3
 function getPythonPath() {
     const venvPython = path.join('/usr/share/rpanion-server/app', 'python', '.venv', 'bin', 'python3');
-    
+
     // Check if venv Python exists
     if (fs.existsSync(venvPython)) {
         return venvPython;
     }
-    
+
+    // Check for a local venv (development environments)
+    const localVenvPython = path.join(appRoot.toString(), 'python', '.venv', 'bin', 'python3');
+    if (fs.existsSync(localVenvPython)) {
+        return localVenvPython;
+    }
+
     // Fall back to system python3
     return 'python3';
 }

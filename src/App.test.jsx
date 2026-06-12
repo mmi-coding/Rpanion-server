@@ -15,6 +15,7 @@ import CloudConfig from './cloud.jsx'
 import UserManagement from './userManagement.jsx'
 import PPPConnection from '../server/pppConnection.js'
 import CameraSwitcherPage from './cameraswitcher.jsx'
+import PipelineEditorPage from './pipelineeditor.jsx'
 
 describe('#apptest()', function () {
   test('homepage renders without crashing', function () {
@@ -98,6 +99,13 @@ describe('#apptest()', function () {
     const div = document.createElement('div')
     const root = createRoot(div)
     root.render(<CameraSwitcherPage />)
+    root.unmount()
+  })
+
+  test('pipeline editor page renders without crashing', function () {
+    const div = document.createElement('div')
+    const root = createRoot(div)
+    root.render(<PipelineEditorPage />)
     root.unmount()
   })
 })
