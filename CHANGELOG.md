@@ -19,6 +19,8 @@
  - Video: Signal-adaptive bitrate - scales the stream bitrate with the LTE modem's RSRP/RSSI (good 100% / fair 60% / poor 35%) with hysteresis and a configurable minimum-bitrate floor; restores the configured bitrate on recovery
  - Video: New Cellular Video Tuning page (live tier/bitrate status + settings)
  - Video: Fix video server stdin control handling losing commands when multiple lines arrive in one chunk
+ - LTE: Modem discovery - scan USB serial ports and board UARTs for an AT-responding modem (identify via AT+CGMM/CGMI, recommend port and baud), list candidate RNDIS data interfaces by kernel driver; the flight controller's serial link is never probed
+ - LTE: Staged end-to-end connection test (AT port, model, SIM, signal, registration, PDP address, network interface, ping through the modem interface) with per-step diagnosis and RNDIS-mode/UART-only hints
 
 #### [v0.12.0](https://github.com/stephendade/Rpanion-server/compare/v0.11.4...v0.12.0)
  - Flight Controller: Add UDP (network) support

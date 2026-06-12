@@ -90,6 +90,151 @@ describe('LTE Modem Functions', function () {
     assert.equal(LTEModem.parseCGPADDR(['OK']), null)
   })
 
+  it('#parsePIN()', function () {
+    assert.deepEqual(LTEModem.parsePIN(['+CPIN: READY', 'OK']),
+      { ready: true, text: 'READY' })
+    assert.deepEqual(LTEModem.parsePIN(['+CPIN: SIM PIN', 'OK']),
+      { ready: false, text: 'SIM PIN' })
+    assert.deepEqual(LTEModem.parsePIN(['+CME ERROR: SIM not inserted']),
+      { ready: false, text: 'SIM not inserted' })
+    assert.equal(LTEModem.parsePIN(['OK']), null)
+  })
+
+  it('#parseIdentLine()', function () {
+    assert.equal(LTEModem.parseIdentLine(['SIMCOM_SIM7600G-H', 'OK']), 'SIMCOM_SIM7600G-H')
+    // echo or URC lines are skipped
+    assert.equal(LTEModem.parseIdentLine(['AT+CGMM', 'SIMCOM_SIM7600G-H', 'OK']), 'SIMCOM_SIM7600G-H')
+    assert.equal(LTEModem.parseIdentLine(['+SOMEURC: 1', 'OK']), '')
+    assert.equal(LTEModem.parseIdentLine(['OK']), '')
+    assert.equal(LTEModem.parseIdentLine(null), '')
+  })
+
+  it('#isModemNetDriver()', function () {
+    assert.equal(LTEModem.isModemNetDriver('rndis_host'), true)
+    assert.equal(LTEModem.isModemNetDriver('cdc_ether'), true)
+    assert.equal(LTEModem.isModemNetDriver('qmi_wwan'), true)
+    assert.equal(LTEModem.isModemNetDriver('hv_netvsc'), false)
+    assert.equal(LTEModem.isModemNetDriver(''), false)
+  })
+
+  it('#buildProbeCandidates()', function () {
+    const detected = [
+      { path: '/dev/ttyUSB0' },
+      { path: '/dev/ttyUSB2' },
+      { path: '/dev/ttyACM0' },
+      { path: '/dev/serial0' },
+      { path: '/dev/ttyUSB2' } // duplicate
+    ]
+    const candidates = LTEModem.buildProbeCandidates(detected, '/dev/ttyUSB2', ['/dev/ttyACM0'])
+
+    // deduplicated, configured port already covered
+    assert.equal(candidates.length, 4)
+
+    // USB CDC ports get a single baud attempt, real UARTs the full list
+    const usb = candidates.find(c => c.path === '/dev/ttyUSB0')
+    assert.deepEqual(usb.bauds, [115200])
+    const uart = candidates.find(c => c.path === '/dev/serial0')
+    assert.ok(uart.bauds.length > 1)
+    assert.ok(uart.bauds.includes(115200))
+
+    // the FC's port is listed but skipped, never probed
+    const fc = candidates.find(c => c.path === '/dev/ttyACM0')
+    assert.equal(fc.skipped, true)
+    assert.equal(fc.bauds, undefined)
+
+    // the configured port is appended when detection misses it (e.g. a pty)
+    const extra = LTEModem.buildProbeCandidates([], '/dev/pts/9', [])
+    assert.equal(extra.length, 1)
+    assert.equal(extra[0].path, '/dev/pts/9')
+  })
+
+  it('#testConnectionAllPass()', async function () {
+    settings.clear()
+    const modem = new LTEModem(settings)
+    modem.options.netInterface = 'usb0'
+
+    // stub the seams: AT session, interface listing, ping
+    modem.portOpen = true
+    const fixtures = {
+      AT: ['OK'],
+      'AT+CGMM': ['SIMCOM_SIM7600G-H', 'OK'],
+      'AT+CPIN?': ['+CPIN: READY', 'OK'],
+      'AT+CSQ': ['+CSQ: 20,99', 'OK'],
+      'AT+CREG?': ['+CREG: 0,1', 'OK'],
+      'AT+COPS?': ['+COPS: 0,0,"TestTel",7', 'OK'],
+      'AT+CGPADDR=1': ['+CGPADDR: 1,10.0.0.5', 'OK']
+    }
+    modem.sendAT = async (cmd) => fixtures[cmd] || ['OK']
+    modem.listNetInterfaces = () => [
+      { name: 'usb0', driver: 'rndis_host', modemLike: true, operstate: 'up', ipv4: '192.168.225.30' }
+    ]
+    modem._ping = async () => ({ ok: true, detail: 'rtt 45.2/50.1/55.0 ms' })
+
+    const steps = await modem.testConnection()
+    assert.equal(steps.length, 8)
+    for (const step of steps) {
+      assert.equal(step.pass, true, step.name + ': ' + step.detail)
+    }
+    assert.ok(steps.find(s => s.name === 'Modem model').detail.includes('SIM7600'))
+    assert.ok(steps.find(s => s.name === 'Network registration').detail.includes('TestTel'))
+    assert.ok(steps.find(s => s.name === 'Network interface').detail.includes('192.168.225.30'))
+  })
+
+  it('#testConnectionFailures()', async function () {
+    settings.clear()
+    const modem = new LTEModem(settings)
+    modem.options.netInterface = 'usb0'
+
+    // SIM missing, not registered, no PDP address, no RNDIS interface
+    modem.portOpen = true
+    const fixtures = {
+      AT: ['OK'],
+      'AT+CGMM': ['SIMCOM_SIM7600G-H', 'OK'],
+      'AT+CPIN?': ['+CME ERROR: SIM not inserted'],
+      'AT+CSQ': ['+CSQ: 99,99', 'OK'],
+      'AT+CREG?': ['+CREG: 0,0', 'OK'],
+      'AT+COPS?': ['+COPS: 0', 'OK'],
+      'AT+CGPADDR=1': ['+CGPADDR: 1,0.0.0.0', 'OK']
+    }
+    modem.sendAT = async (cmd) => fixtures[cmd] || ['OK']
+    modem.listNetInterfaces = () => []
+    modem._ping = async () => { throw new Error('must not ping without an interface') }
+
+    const steps = await modem.testConnection()
+    const byName = {}
+    for (const step of steps) {
+      byName[step.name] = step
+    }
+    assert.equal(byName['AT port'].pass, true)
+    assert.equal(byName['SIM card'].pass, false)
+    assert.equal(byName['SIM card'].detail, 'SIM not inserted')
+    assert.equal(byName.Signal.pass, false)
+    assert.equal(byName['Network registration'].pass, false)
+    assert.equal(byName['Data call (PDP address)'].pass, false)
+    assert.equal(byName['Network interface'].pass, false)
+    // the hint mentions both failure modes (USB mode / UART-only)
+    assert.ok(byName['Network interface'].detail.includes('CUSBPIDSWITCH'))
+    assert.ok(byName['Network interface'].detail.includes('UART'))
+    // ping is skipped, not failed
+    assert.equal(byName['Internet (ping 8.8.8.8)'].pass, null)
+  })
+
+  it('#testConnectionPortUnavailable()', async function () {
+    settings.clear()
+    const modem = new LTEModem(settings)
+    modem.options.atPort = '/dev/ttyNONEXISTENT99'
+    modem.listNetInterfaces = () => []
+
+    const steps = await modem.testConnection()
+    assert.equal(steps[0].name, 'AT port')
+    assert.equal(steps[0].pass, false)
+    // the AT-dependent steps are skipped, not failed
+    const sim = steps.find(s => s.name === 'SIM card')
+    assert.equal(sim.pass, null)
+    // port not left half-open
+    assert.equal(modem.portOpen, false)
+  })
+
   it('#sendATResolvesOnOK()', function (done) {
     settings.clear()
     const modem = new LTEModem(settings)

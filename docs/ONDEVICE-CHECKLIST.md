@@ -69,3 +69,15 @@ its items here. Tick on the bench, note board + date.
 - [ ] Dual-camera switcher + low-latency preset together: A↔B switch and a bitrate retune on the same stdin channel mid-stream
 - [ ] Custom pipeline with `enc0`-named hardware encoder: runtime retune works (x264 path verified in WSL; verify `v4l2h264enc` on device)
 - [ ] Pi Zero 2 W: CPU headroom with the preset at 1080p30 (CBR + 1 s GOP costs a little more encoder work); adaptive loop adds no measurable CPU
+
+## Feature 6: Modem discovery + connection test (feature/modem-discovery)
+
+- [ ] USB scan on Pi 4 with a real SIM7600G: all four `/dev/ttyUSB*` probed, the two AT ports answer, `/dev/ttyUSB2` recommended with the SIMCOM model string; NMEA (`ttyUSB1`) and diag (`ttyUSB0`) correctly time out without wedging the scan
+- [ ] UART scan: SIM7600 HAT wired to GPIO 14/15, serial console disabled - `/dev/serial0` found at 115200; scan duration acceptable (multi-baud probing of silent UARTs)
+- [ ] FC exclusion: with the Pixhawk connected and the FC link active, its port shows as "Skipped - in use by the flight controller link" and no AT bytes reach the FC (check MAVLink stream stays clean during a scan)
+- [ ] Scan while monitoring: monitor resumes by itself after the scan (lazy reopen) on real hardware
+- [ ] Interface discovery: `usb0` listed with driver `rndis_host` and recommended; wrong-mode modem (e.g. PID 9001) → no modem-driver interface and the RNDIS hint shown
+- [ ] Connection test, all-pass: real SIM, registered, data call up → 8/8 including ping through `usb0` (verify the ping really egresses the modem: `tcpdump -i usb0 icmp`)
+- [ ] Connection test failure modes: SIM removed (SIM step fails with "SIM not inserted"), antenna off (signal step), wrong APN (data call step), USB data cable pulled with UART control connected (interface step shows the UART-only hint)
+- [ ] Ping with the VPN up: confirm `-I usb0` bypasses the VPN default route as intended
+- [ ] Pi Zero 2 W: scan + test CPU/time acceptable
