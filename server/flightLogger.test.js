@@ -56,6 +56,45 @@ describe('Logging Functions', function () {
     assert.equal(fs.readdirSync(logpaths.kmzDir).length, 0)
   })
 
+  it('#clearlogsActiveBinlogKept()', function () {
+    const Lgr = new Logger()
+
+    // two binlogs, one of them is the actively-written file
+    const activeLog = Path.join(logpaths.flightsLogsDir, 'active.bin')
+    fs.writeFileSync(Path.join(logpaths.flightsLogsDir, 'old.bin'), Buffer.from('old'))
+    fs.writeFileSync(activeLog, Buffer.from('active'))
+
+    Lgr.clearlogs('binlog', activeLog)
+
+    // the active log survives, the old one is gone
+    assert.ok(fs.existsSync(activeLog))
+    assert.ok(!fs.existsSync(Path.join(logpaths.flightsLogsDir, 'old.bin')))
+  })
+
+  it('#clearlogsMediaAndSubfolders()', function () {
+    const Lgr = new Logger()
+
+    // media files at the top level and inside a subfolder
+    fs.writeFileSync(Path.join(logpaths.mediaDir, 'photo.jpg'), Buffer.from('jpg'))
+    const subdir = Path.join(logpaths.mediaDir, '2026-06-12')
+    fs.mkdirSync(subdir, { recursive: true })
+    fs.writeFileSync(Path.join(subdir, 'video.mp4'), Buffer.from('mp4'))
+
+    Lgr.clearlogs('media', null)
+
+    // everything under media is removed, including the subfolder itself
+    assert.equal(fs.readdirSync(logpaths.mediaDir).length, 0)
+  })
+
+  it('#clearlogsUnknownType()', function () {
+    const Lgr = new Logger()
+
+    // an unknown log type deletes nothing
+    fs.writeFileSync(Path.join(logpaths.flightsLogsDir, 'flight.tlog'), Buffer.from('tést'))
+    Lgr.clearlogs('floppydisk', null)
+    assert.ok(fs.existsSync(Path.join(logpaths.flightsLogsDir, 'flight.tlog')))
+  })
+
   it('#getlogs()', function (done) {
     const Lgr = new Logger()
 

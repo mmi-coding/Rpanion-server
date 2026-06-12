@@ -6,7 +6,7 @@ const { spawn, spawnSync } = require('child_process')
 const { common } = require('node-mavlink')
 const mavManager = require('../mavlink/mavManager.js')
 const logpaths = require('./paths.js')
-const { detectSerialDevices, isModemManagerInstalled, isPi, getSerialPathFromValue } = require('./serialDetection.js')
+const serialDetection = require('./serialDetection.js')
 
 class FCDetails {
   constructor (settings) {
@@ -202,7 +202,7 @@ class FCDetails {
     // try to save. Will be invalid if running under test runner
     try {
       this.saveSerialSettings()
-    } catch (e) {
+    } catch (e) { /* istanbul ignore next -- saveSerialSettings has its own try/catch and never throws */
       console.log(e)
     }
 
@@ -238,7 +238,7 @@ class FCDetails {
         // try to save. Will be invalid if running under test runner
         try {
           this.saveSerialSettings()
-        } catch (e) {
+        } catch (e) { /* istanbul ignore next -- saveSerialSettings has its own try/catch and never throws */
           console.log(e)
         }
 
@@ -381,7 +381,7 @@ class FCDetails {
       cmd.push('0.0.0.0:' + this.UDPBPort)
     }
     if (this.activeDevice.inputType === 'UART') {
-      const serialPath = getSerialPathFromValue(this.activeDevice.serial, this.serialDevices)
+      const serialPath = serialDetection.getSerialPathFromValue(this.activeDevice.serial, this.serialDevices)
       cmd.push(serialPath + ':' + this.activeDevice.baud)
     } else if (this.activeDevice.inputType === 'UDP') {
       cmd.push('0.0.0.0:' + this.activeDevice.udpInputPort)
@@ -491,12 +491,12 @@ class FCDetails {
 
   checkSerialPortIssues () {
     // Check if ModemManager is installed
-    if (isModemManagerInstalled()) {
+    if (serialDetection.isModemManagerInstalled()) {
       return new Error('The ModemManager package is installed. This must be uninstalled (via sudo apt remove modemmanager), due to conflicts with serial ports')
     }
 
     // Check if serial console is active on Raspberry Pi
-    if (fs.existsSync('/boot/cmdline.txt') && isPi()) {
+    if (fs.existsSync('/boot/cmdline.txt') && serialDetection.isPi()) {
       const data = fs.readFileSync('/boot/cmdline.txt', { encoding: 'utf8', flag: 'r' })
       if (data.includes('console=serial0')) {
         return new Error('Serial console is active on /dev/serial0. Use raspi-config to deactivate it')
@@ -512,7 +512,7 @@ class FCDetails {
     let retError = null
 
     // Detect all serial devices using hardwareDetection module
-    this.serialDevices = await detectSerialDevices()
+    this.serialDevices = await serialDetection.detectSerialDevices()
 
     // Check for configuration issues
     retError = this.checkSerialPortIssues()

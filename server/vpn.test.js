@@ -1,70 +1,366 @@
 const assert = require('assert')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const sinon = require('sinon')
+const { FakeBin } = require('../test/fakeBin')
+const logpaths = require('./paths.js')
 const VPNManager = require('./vpn')
 
 describe('VPN Functions', function () {
-  it('#getVPNStatusZerotier()', function (done) {
-    // Get zerotier status
-    VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
-      assert.equal(stderr, null)
-      assert.equal(statusJSON.installed, true)
-      assert.equal(statusJSON.status, true)
-      assert.notEqual(statusJSON.text, null)
-      done()
+  // all binaries (which/sudo/cp/rm) are faked so the tests never touch a
+  // real zerotier/wireguard install; scenarios select the failure modes
+  let fake
+  let tmpDir
+  let fakeWgPy
+
+  before(function () {
+    fake = new FakeBin()
+    fake.install('which', 'case "$FAKE_SCENARIO" in\n' +
+      'zt-missing) [ "$1" = "zerotier-cli" ] && exit 1 ;;\n' +
+      'zt-empty) [ "$1" = "zerotier-cli" ] && exit 0 ;;\n' +
+      'wg-missing) [ "$1" = "wg-quick" ] && exit 1 ;;\n' +
+      'wg-empty) [ "$1" = "wg-quick" ] && exit 0 ;;\n' +
+      'esac\n' +
+      'echo "/usr/bin/$1"')
+    fake.install('sudo', 'case "$FAKE_SCENARIO" in\n' +
+      'zt-err) echo boom >&2; exit 0 ;;\n' +
+      'zt-connfail) echo "connection failed"; exit 0 ;;\n' +
+      'esac\n' +
+      'case "$1 $2" in\n' +
+      '"zerotier-cli info")\n' +
+      '  case "$FAKE_SCENARIO" in\n' +
+      '  zt-offline) echo "200 info abc 1.10.1 OFFLINE" ;;\n' +
+      '  zt-tunneled) echo "200 info abc 1.10.1 TUNNELED" ;;\n' +
+      '  *) echo "200 info abc 1.10.1 ONLINE" ;;\n' +
+      '  esac ;;\n' +
+      '"zerotier-cli listnetworks") echo "[]" ;;\n' +
+      '"zerotier-cli join")\n' +
+      '  if [ "$FAKE_SCENARIO" = "zt-joinfail" ]; then echo "500 join failed"; else echo "200 join OK"; fi ;;\n' +
+      '"zerotier-cli leave")\n' +
+      '  if [ "$FAKE_SCENARIO" = "zt-leavefail" ]; then echo "500 leave failed"; else echo "200 leave OK"; fi ;;\n' +
+      '"wg-quick up"|"wg-quick down")\n' +
+      '  if [ "$FAKE_SCENARIO" = "wg-fail" ]; then echo "wg boom" >&2; exit 1; fi ;;\n' +
+      '"systemctl enable"|"systemctl disable")\n' +
+      '  if [ "$FAKE_SCENARIO" = "sysctl-fail" ]; then exit 1; fi\n' +
+      '  if [ "$FAKE_SCENARIO" = "wg-noexist" ]; then echo "wg-quick@xxxxx.service does not exist"; fi ;;\n' +
+      'esac\n' +
+      'exit 0')
+    fake.install('cp', 'if [ "$FAKE_SCENARIO" = "cp-fail" ]; then echo "cp: cannot create" >&2; exit 1; fi')
+    fake.install('rm', 'if [ "$FAKE_SCENARIO" = "rm-stderr" ]; then echo "rm: cannot remove" >&2; fi')
+    fake.activate()
+
+    // wireguardconfig.py stand-in, selected by stubbing logpaths.getPythonPath
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-vpn-'))
+    fakeWgPy = path.join(tmpDir, 'fake-wgpy')
+    fs.writeFileSync(fakeWgPy,
+      '#!/bin/sh\nif [ "$FAKE_SCENARIO" = "py-fail" ]; then echo pyboom >&2; exit 1; fi\necho "[]"\n',
+      { mode: 0o755 })
+  })
+
+  after(function () {
+    fake.cleanup()
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  beforeEach(function () {
+    sinon.stub(logpaths, 'getPythonPath').returns(fakeWgPy)
+  })
+
+  afterEach(function () {
+    sinon.restore()
+    delete process.env.FAKE_SCENARIO
+  })
+
+  describe('#getVPNStatusZerotier()', function () {
+    it('should report an online zerotier', function (done) {
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, true)
+        assert.deepEqual(statusJSON.text, [])
+        done()
+      })
+    })
+
+    it('should report a tunneled zerotier as online', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-tunneled'
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.status, true)
+        done()
+      })
+    })
+
+    it('should report an offline zerotier', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-offline'
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, false)
+        done()
+      })
+    })
+
+    it('should report zerotier as not installed', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-missing'
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should treat an empty which result as not installed', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-empty'
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should pass through cli errors on stderr', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-err'
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.ok(stderr.includes('boom'))
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should report a daemon connection failure', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-connfail'
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, false)
+        done()
+      })
     })
   })
 
-  it('#addZerotier()', function (done) {
-    // Add dummy network
-    VPNManager.addZerotier('xxxxx', (stderr, statusJSON) => {
-      assert.notEqual(stderr, null)
-      assert.equal(statusJSON.installed, true)
-      assert.equal(statusJSON.status, true)
-      assert.notEqual(statusJSON.text, null)
-      done()
+  describe('#addZerotier() and #removeZerotier()', function () {
+    it('should join a network', function (done) {
+      VPNManager.addZerotier('aaaabbbbcccc0001', (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should pass through a failed join', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-joinfail'
+      VPNManager.addZerotier('xxxxx', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('500 join failed'))
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should leave a network', function (done) {
+      VPNManager.removeZerotier('aaaabbbbcccc0001', (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should pass through a failed leave', function (done) {
+      process.env.FAKE_SCENARIO = 'zt-leavefail'
+      VPNManager.removeZerotier('xxxxx', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('500 leave failed'))
+        done()
+      })
+    })
+
+    it('should log stderr from join and leave', function (done) {
+      this.timeout(5000)
+      // on stderr the callback is never run, only console.error
+      process.env.FAKE_SCENARIO = 'zt-err'
+      const errSpy = sinon.spy(console, 'error')
+      VPNManager.addZerotier('xxxxx', () => done(new Error('callback should not run')))
+      VPNManager.removeZerotier('xxxxx', () => done(new Error('callback should not run')))
+
+      const deadline = Date.now() + 3000
+      const check = () => {
+        if (errSpy.callCount >= 2) {
+          return done()
+        }
+        if (Date.now() > deadline) {
+          return done(new Error('stderr was not logged'))
+        }
+        setTimeout(check, 25)
+      }
+      check()
     })
   })
 
-  it('#removeZerotier()', function (done) {
-    // Remove dummy network
-    VPNManager.removeZerotier('xxxxx', (stderr, statusJSON) => {
-      assert.notEqual(stderr, null)
-      assert.equal(statusJSON.installed, true)
-      assert.equal(statusJSON.status, true)
-      assert.notEqual(statusJSON.text, null)
-      done()
+  describe('#getVPNStatusWireguard()', function () {
+    it('should report wireguard profiles', function (done) {
+      VPNManager.getVPNStatusWireguard(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, true)
+        assert.deepEqual(statusJSON.text, [])
+        done()
+      })
+    })
+
+    it('should report wireguard as not installed', function (done) {
+      process.env.FAKE_SCENARIO = 'wg-missing'
+      VPNManager.getVPNStatusWireguard(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should treat an empty which result as not installed', function (done) {
+      process.env.FAKE_SCENARIO = 'wg-empty'
+      VPNManager.getVPNStatusWireguard(null, (stderr, statusJSON) => {
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should pass through a config reader failure', function (done) {
+      process.env.FAKE_SCENARIO = 'py-fail'
+      VPNManager.getVPNStatusWireguard(null, (stderr, statusJSON) => {
+        assert.ok(stderr.includes('pyboom'))
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
     })
   })
 
-  it('#getVPNStatusWireguard()', function (done) {
-    // Get wireguard status
-    VPNManager.getVPNStatusWireguard(null, (stderr, statusJSON) => {
-      assert.equal(stderr, null)
-      assert.equal(statusJSON.installed, true)
-      assert.equal(statusJSON.status, true)
-      assert.notEqual(statusJSON.text, null)
-      done()
+  describe('#addWireguardProfile()', function () {
+    it('should reject a bad extension', function (done) {
+      VPNManager.addWireguardProfile('evil.exe', '/tmp/upload', (err) => {
+        assert.equal(err, 'Bad extension')
+        done()
+      })
+    })
+
+    it('should install a profile', function (done) {
+      VPNManager.addWireguardProfile('drone.conf', '/tmp/upload', (err) => {
+        assert.equal(err, null)
+        done()
+      })
+    })
+
+    it('should pass through a copy failure', function (done) {
+      process.env.FAKE_SCENARIO = 'cp-fail'
+      VPNManager.addWireguardProfile('drone.conf', '/tmp/upload', (err) => {
+        assert.ok(err.includes('cannot create'))
+        done()
+      })
     })
   })
 
-  it('#activateWireguardProfile()', function (done) {
-    // Add dummy network
-    VPNManager.activateWireguardProfile('xxxxx', (stderr, statusJSON) => {
-      assert.notEqual(stderr, null)
-      assert.equal(statusJSON.installed, true)
-      assert.equal(statusJSON.status, true)
-      assert.notEqual(statusJSON.text, null)
-      done()
+  describe('#activateWireguardProfile()', function () {
+    it('should activate a profile', function (done) {
+      VPNManager.activateWireguardProfile('drone.conf', (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should report a wg-quick failure', function (done) {
+      process.env.FAKE_SCENARIO = 'wg-fail'
+      VPNManager.activateWireguardProfile('drone.conf', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('wg boom'))
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should report a systemctl failure', function (done) {
+      process.env.FAKE_SCENARIO = 'sysctl-fail'
+      VPNManager.activateWireguardProfile('drone.conf', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('Command failed'))
+        done()
+      })
+    })
+
+    it('should report a missing unit', function (done) {
+      process.env.FAKE_SCENARIO = 'wg-noexist'
+      VPNManager.activateWireguardProfile('xxxxx.conf', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('does not exist'))
+        done()
+      })
     })
   })
 
-  it('#deactivateWireguardProfile()', function (done) {
-    // Remove dummy network
-    VPNManager.deactivateWireguardProfile('xxxxx', (stderr, statusJSON) => {
-      assert.notEqual(stderr, null)
-      assert.equal(statusJSON.installed, true)
-      assert.equal(statusJSON.status, true)
-      assert.notEqual(statusJSON.text, null)
-      done()
+  describe('#deactivateWireguardProfile()', function () {
+    it('should deactivate a profile', function (done) {
+      VPNManager.deactivateWireguardProfile('drone.conf', (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should report a wg-quick failure', function (done) {
+      process.env.FAKE_SCENARIO = 'wg-fail'
+      VPNManager.deactivateWireguardProfile('drone.conf', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('wg boom'))
+        done()
+      })
+    })
+
+    it('should report a systemctl failure', function (done) {
+      process.env.FAKE_SCENARIO = 'sysctl-fail'
+      VPNManager.deactivateWireguardProfile('drone.conf', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('Command failed'))
+        done()
+      })
+    })
+
+    it('should report a missing unit', function (done) {
+      process.env.FAKE_SCENARIO = 'wg-noexist'
+      VPNManager.deactivateWireguardProfile('xxxxx.conf', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('does not exist'))
+        done()
+      })
+    })
+  })
+
+  describe('#deleteWireguardProfile()', function () {
+    it('should delete a profile', function (done) {
+      VPNManager.deleteWireguardProfile('drone.conf', (err, statusJSON) => {
+        assert.equal(err, null)
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should reject a bad extension (and still try the delete)', function (done) {
+      // the bad-extension guard does not return, so the callback runs twice:
+      // once with the error, once from the rm that follows anyway
+      const results = []
+      VPNManager.deleteWireguardProfile('../evil.exe', (err) => {
+        results.push(err)
+        if (results.length === 2) {
+          assert.ok(results.some((e) => e instanceof Error && e.message === 'Bad extension'))
+          assert.ok(results.some((e) => e === null))
+          done()
+        }
+      })
+    })
+
+    it('should log stderr from rm', function (done) {
+      process.env.FAKE_SCENARIO = 'rm-stderr'
+      const errSpy = sinon.spy(console, 'error')
+      VPNManager.deleteWireguardProfile('drone.conf', (err, statusJSON) => {
+        try {
+          // the logged message holds the (null) error object, not the stderr text
+          assert.equal(err, null)
+          assert.ok(errSpy.getCalls().some((c) => String(c.args[0]).includes('exec error')))
+          done()
+        } catch (e) {
+          done(e)
+        }
+      })
     })
   })
 })

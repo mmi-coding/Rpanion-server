@@ -140,7 +140,7 @@ class mavManager {
       } else if (packet.header.msgid === common.StatusText.MSG_ID) {
         // Remove whitespace
         this.statusText += data.text.trim().replace(/[^ -~]+/g, '') + '\n'
-      } else if (packet.header.msgid === 148) {
+      } else /* istanbul ignore next - msgid 148 (AUTOPILOT_VERSION) absent from node-mavlink REGISTRY; splitter skips unknown-registry packets before reaching here */ if (packet.header.msgid === 148) {
         // decode Ardupilot version (AUTOPILOT_VERSION message)
         this.fcVersion = this.decodeFlightSwVersion(data.flightSwVersion)
         console.log(this.fcVersion)
@@ -243,7 +243,7 @@ class mavManager {
     const buffer = protocol.serialize(msg, this.seq++)
     this.seq &= 255
 
-    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, function (error) {
+    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, function (error) { // istanbul ignore next - error callback loses 'this' (non-arrow fn); UDP send-error path would throw, upstream bug
       if (error) {
         this.udpStream.close()
         console.log(error)

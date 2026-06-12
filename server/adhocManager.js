@@ -61,6 +61,7 @@ class adhocManager {
                   const ln = allFreqs[i].split(' ').filter(i => i)
                   // can only do 2.4GHz channels in adhoc mode
                   if (ln.length > 4 && parseFloat(ln[3]) < 3) {
+                    // istanbul ignore next - the 'a' branch is unreachable: the enclosing if already requires < 3 GHz
                     freqList.push({ value: parseInt(ln[1]), freq: ln[3], label: '' + ln[1] + ' (' + ln[3] + ' GHz)', band: ((parseFloat(ln[3]) < 3) ? 'bg' : 'a') })
                   }
                 }
