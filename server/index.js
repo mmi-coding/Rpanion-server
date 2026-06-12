@@ -1042,6 +1042,36 @@ app.post('/api/ltemodemresetusage', authenticateToken, function (req, res) {
   res.send(JSON.stringify({ error: null, status: lteModem.getStatus() }))
 })
 
+// scan serial ports (USB + UART) for an AT-responding modem and list
+// candidate data network interfaces. Long-running (up to ~20s)
+app.post('/api/ltemodemdetect', authenticateToken, function (req, res) {
+  res.setHeader('Content-Type', 'application/json')
+  lteModem.detectModem().then((result) => {
+    res.send(JSON.stringify({ error: null, ports: result.ports, interfaces: result.interfaces }))
+  }).catch((err) => {
+    res.status(422).send(JSON.stringify({ error: err.message, ports: [], interfaces: [] }))
+  })
+})
+
+// staged end-to-end connection test (AT -> SIM -> registration -> data
+// call -> interface -> ping)
+app.post('/api/ltemodemtest', authenticateToken, [
+  check('pingHost').optional({ checkFalsy: true }).matches(/^[a-zA-Z0-9.:-]{1,253}$/)
+], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/ltemodemtest', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  res.setHeader('Content-Type', 'application/json')
+  lteModem.testConnection(req.body.pingHost || undefined).then((steps) => {
+    res.send(JSON.stringify({ error: null, steps }))
+  }).catch((err) => {
+    res.status(422).send(JSON.stringify({ error: err.message, steps: [] }))
+  })
+})
+
 // raw AT command console
 app.post('/api/ltemodemcommand', authenticateToken, [
   check('command').isString().isLength({ min: 2, max: 128 })

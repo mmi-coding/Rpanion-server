@@ -26,6 +26,66 @@ enumerates as:
 | `/dev/ttyUSB3` | AT/modem |
 | `usb0` | RNDIS network interface (data) |
 
+## USB or UART?
+
+The modem's **AT control link** can be either:
+
+- **USB** (typical for SIM7600 dongles/HATs with the USB cable connected):
+  the AT ports enumerate as `/dev/ttyUSB0-3`.
+- **UART** (HATs wired to the Pi's GPIO header, pins 8/10): the AT link is
+  the board UART, `/dev/serial0` on Raspberry Pi OS. Free the UART first
+  (`raspi-config` → Interface Options → Serial Port → console **off**, port
+  **on**) and don't assign it to the flight controller at the same time.
+  SIM7600 UART default is 115200 baud (autobaud also syncs at common rates).
+
+The **data path is always USB RNDIS** (`usb0`). A UART-only connection
+carries AT control and nothing else — there is no high-bandwidth data
+without the USB cable, and PPP-over-UART is far too slow for video, so it
+is intentionally not supported. The connection test says exactly this when
+it finds a working AT link but no RNDIS interface.
+
+## Modem discovery
+
+The **Scan for modem** button probes every candidate serial port with an AT
+handshake and identifies what answers (`AT+CGMM`/`AT+CGMI`):
+
+- Candidates: all detected USB serial ports, the board UARTs
+  (`/dev/serial0`, `/dev/ttyAMA*`), and the currently configured port.
+- The **flight controller's serial link is never probed** — AT chatter must
+  not land in the MAVLink stream. It shows as *Skipped* in the results.
+- USB CDC ports ignore the baud setting, so they get one attempt; real
+  UARTs are tried at 115200 / 921600 / 460800 / 9600.
+- A SIM7600 answers AT on two of its USB ports — the scan recommends the
+  SIMCOM-identified, lowest-numbered one.
+- Candidate **data interfaces** are listed with their kernel driver; an
+  RNDIS/CDC one (`rndis_host`, `cdc_ether`, …) is recommended. If none
+  appears, the modem is not in RNDIS mode (`AT+CUSBPIDSWITCH=9011,1,1`,
+  once, persists) or is connected by UART only.
+- **Use** fills the settings form; press Save to apply.
+
+The monitor is paused during a scan (its port must be probed too) and
+resumes by itself on the next poll.
+
+## Connection test
+
+The **Run connection test** button checks the whole chain end-to-end and
+reports pass/fail per step with a one-line diagnosis:
+
+1. **AT port** — opens the configured port, modem answers `AT` → `OK`
+2. **Modem model** — `AT+CGMM`
+3. **SIM card** — `AT+CPIN?` (`READY`, or e.g. *SIM not inserted* / *SIM PIN*)
+4. **Signal** — `AT+CSQ` (fails on 99 = no reading; check the antenna)
+5. **Network registration** — `AT+CREG?` + operator
+6. **Data call** — `AT+CGPADDR=1` has a PDP address
+7. **Network interface** — the configured interface exists and has an IPv4
+   address (with RNDIS-mode / UART-only hints when it doesn't)
+8. **Internet** — `ping -I <interface> <target>` *through the modem's
+   interface*, not the default route (target configurable, default 8.8.8.8)
+
+Steps whose prerequisites failed are *Skipped*, not failed. The test works
+with monitoring disabled too — it opens the port for the test and closes it
+again.
+
 ## Page features
 
 - **Status** (updates at 1 Hz over the existing socket connection; the modem
@@ -49,6 +109,12 @@ enumerates as:
 - `GET /api/ltemodem` — `{settings, status, serialPorts}`
 - `POST /api/ltemodemmodify` — update settings (validated; errors returned
   with unchanged settings)
+- `POST /api/ltemodemdetect` — scan for the modem →
+  `{ports: [{path, baud, ok, model, manufacturer, recommended}], interfaces:
+  [{name, driver, modemLike, operstate, ipv4, recommended}]}` (long-running,
+  up to ~20 s)
+- `POST /api/ltemodemtest` — `{pingHost?}` → `{steps: [{name, pass, detail}]}`
+  (`pass` is `null` for skipped steps)
 - `POST /api/ltemodemreconnect` — restart the data call
 - `POST /api/ltemodemresetusage` — zero the usage counters
 - `POST /api/ltemodemcommand` — `{command}` → `{response: [lines]}`
@@ -74,3 +140,9 @@ python3 ./python/fake-sim7600.py
 # that path, interface to "lo", enable, and the status fills with the
 # emulated values (TestTel, LTE band 3, -71 dBm, 10.64.12.34)
 ```
+
+With the AT port set to the pty, **Scan for modem** finds and recommends it
+(identified as `SIMCOM_SIM7600G-H`), and the **connection test** passes all
+eight steps when the interface is set to a real one with an IP (the
+emulator answers the AT legs; interface + ping run against the real
+network stack).

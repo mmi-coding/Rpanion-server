@@ -4,6 +4,9 @@ import os, pty, sys
 
 RESPONSES = {
     "ATE0": [],
+    "AT+CGMM": ["SIMCOM_SIM7600G-H"],
+    "AT+CGMI": ["SIMCOM INCORPORATED"],
+    "AT+CPIN?": ["+CPIN: READY"],
     "AT+CSQ": ["+CSQ: 21,99"],
     "AT+CREG?": ["+CREG: 0,1"],
     "AT+COPS?": ['+COPS: 0,0,"TestTel",7'],
