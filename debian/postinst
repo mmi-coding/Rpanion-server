@@ -38,6 +38,9 @@ rpanion ALL=(ALL) NOPASSWD: \
   /usr/sbin/zerotier-cli leave *, \
   /usr/sbin/zerotier-cli listnetworks *, \
   /usr/sbin/zerotier-cli info, \
+  /usr/bin/tailscale status *, \
+  /usr/bin/tailscale up *, \
+  /usr/bin/tailscale down, \
   /usr/sbin/shutdown *, \
   /usr/bin/nmcli *, \
   /usr/sbin/pppd *, \

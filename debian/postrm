@@ -2,4 +2,11 @@
 
 rm -f /etc/sudoers.d/allow-vpn-control
 
+# Remove the fork-added QMI udev rule and NetworkManager drop-in (created by
+# postinst) so wwan0 is no longer forced unmanaged / raw-IP after uninstall.
+rm -f /etc/udev/rules.d/77-rpanion-qmi-rawip.rules
+rm -f /etc/NetworkManager/conf.d/rpanion-wwan-unmanaged.conf
+udevadm control --reload-rules 2>/dev/null || true
+nmcli general reload 2>/dev/null || true
+
 deluser --system --remove-home rpanion || true
