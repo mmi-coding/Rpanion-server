@@ -449,15 +449,18 @@ class FCDetails {
         }
         this.eventEmitter.emit('gotMessage', packet, data)
       })
+
+      // arming events - just pass them on. Registered only with a fresh
+      // mavManager so auto-reconnect (which reuses this.m) does not stack
+      // duplicate listeners on every retry.
+      this.m.eventEmitter.on('armed', () => {
+        this.eventEmitter.emit('armed')
+      })
+      this.m.eventEmitter.on('disarmed', () => {
+        this.eventEmitter.emit('disarmed')
+      })
     }
 
-    // arming events - just pass them on
-    this.m.eventEmitter.on('armed', () => {
-      this.eventEmitter.emit('armed')
-    })
-    this.m.eventEmitter.on('disarmed', () => {
-      this.eventEmitter.emit('disarmed')
-    })
     this.eventEmitter.emit('newLink')
 
     // Start dataflash logger if logging enabled

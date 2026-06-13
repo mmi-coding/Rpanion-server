@@ -977,6 +977,9 @@ except (KeyboardInterrupt, SystemExit):
           try {
             assert.equal(err2, null)
             assert.strictEqual(FC.m, originalM)
+            // armed/disarmed listeners must not accumulate on reconnect
+            assert.strictEqual(FC.m.eventEmitter.listenerCount('armed'), 1)
+            assert.strictEqual(FC.m.eventEmitter.listenerCount('disarmed'), 1)
             if (r && r.exitCode === null) try { r.kill('SIGINT') } catch (_) {}
             done()
           } catch (e) {
