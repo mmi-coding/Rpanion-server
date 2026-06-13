@@ -11,7 +11,7 @@
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
-const { spawn } = require('child_process')
+const { spawn, execFile } = require('child_process')
 const { SerialPort, ReadlineParser } = require('serialport')
 // required as an object (not destructured) so tests can stub the detection seam
 const serialDetection = require('./serialDetection.js')
@@ -57,8 +57,17 @@ class LTEModem {
       apn: this.settings.value('ltemodem.apn', ''),
       netInterface: this.settings.value('ltemodem.netInterface', 'usb0'),
       autoReconnect: this.settings.value('ltemodem.autoReconnect', false),
-      pollInterval: this.settings.value('ltemodem.pollInterval', 5)
+      pollInterval: this.settings.value('ltemodem.pollInterval', 5),
+      // Data path: 'rndis' (USB net device, default), 'qmi' (libqmi/qmicli) or
+      // 'ppp' (pppd dial). ModemManager is never used in any mode.
+      dataPathMode: this.settings.value('ltemodem.dataPathMode', 'rndis'),
+      qmiDevice: this.settings.value('ltemodem.qmiDevice', '/dev/cdc-wdm0'),
+      pppPort: this.settings.value('ltemodem.pppPort', ''),
+      pppBaud: this.settings.value('ltemodem.pppBaud', 115200)
     }
+    // QMI packet-data handle/CID captured at connect, used for a clean stop
+    this.qmiHandle = null
+    this.qmiCid = null
 
     // persistent data usage counters (bytes, over the RNDIS interface)
     this.usage = {
@@ -112,6 +121,10 @@ class LTEModem {
     this.settings.setValue('ltemodem.netInterface', this.options.netInterface)
     this.settings.setValue('ltemodem.autoReconnect', this.options.autoReconnect)
     this.settings.setValue('ltemodem.pollInterval', this.options.pollInterval)
+    this.settings.setValue('ltemodem.dataPathMode', this.options.dataPathMode)
+    this.settings.setValue('ltemodem.qmiDevice', this.options.qmiDevice)
+    this.settings.setValue('ltemodem.pppPort', this.options.pppPort)
+    this.settings.setValue('ltemodem.pppBaud', this.options.pppBaud)
   }
 
   // --- AT response parsers (pure, static for unit testing) ---
@@ -474,7 +487,7 @@ class LTEModem {
       if (this.options.autoReconnect && this.status.registered && this.status.ip === '' &&
           Date.now() - this.lastReconnectAttempt > 30000) {
         console.log('LTE modem: registered but no data connection - reconnecting')
-        await this.reconnect()
+        await this.connectData()
       }
     } catch (err) {
       this.status.available = false
@@ -500,6 +513,96 @@ class LTEModem {
     // RNDIS interface; harmless if already up
     const resp = await this.sendAT('AT$QCRMCALL=1,1', 15000)
     return resp
+  }
+
+  // --- multi-mode data path (RNDIS / QMI / PPP) ---
+  // Promise-wrapping execFile seam (single stub point for tests; never runs
+  // ModemManager). Rejects with the command's stderr (or error message).
+  _exec (cmd, args) {
+    return new Promise((resolve, reject) => {
+      execFile(cmd, args, (error, stdout, stderr) => {
+        if (error) {
+          const msg = (stderr && stderr.toString().trim()) ? stderr.toString().trim() : error.message
+          return reject(new Error(msg))
+        }
+        return resolve(stdout.toString())
+      })
+    })
+  }
+
+  // bookkeeping shared by every connect path
+  _markReconnect () {
+    this.lastReconnectAttempt = Date.now()
+    this.status.lastReconnect = new Date().toISOString()
+    this.status.reconnectCount += 1
+  }
+
+  // bring the data call up, dispatching on the configured mode
+  async connectData () {
+    if (this.options.dataPathMode === 'qmi') {
+      return this._qmiConnect()
+    }
+    if (this.options.dataPathMode === 'ppp') {
+      return this._pppConnect()
+    }
+    return this.reconnect()
+  }
+
+  // bring the data call down, dispatching on the configured mode
+  async disconnectData () {
+    if (this.options.dataPathMode === 'qmi') {
+      return this._qmiStop()
+    }
+    if (this.options.dataPathMode === 'ppp') {
+      return this._pppStop()
+    }
+    // RNDIS: stop the QCRMCALL data call
+    return this.sendAT('AT$QCRMCALL=0,1', 15000)
+  }
+
+  // QMI via libqmi (no ModemManager). Starts the WDS network and captures the
+  // packet-data handle/CID for a clean stop, then leases an address via DHCP.
+  async _qmiConnect () {
+    this._markReconnect()
+    const out = await this._exec('qmicli', ['-d', this.options.qmiDevice, `--wds-start-network=apn='${this.options.apn}',ip-type=4`, '--client-no-release-cid'])
+    const hMatch = out.match(/handle:\s*'?(\d+)'?/i)
+    const cMatch = out.match(/CID:\s*'?(\d+)'?/i)
+    this.qmiHandle = hMatch ? hMatch[1] : null
+    this.qmiCid = cMatch ? cMatch[1] : null
+    await this._exec('udhcpc', ['-q', '-i', this.options.netInterface])
+    return ['QMI network started']
+  }
+
+  async _qmiStop () {
+    if (this.qmiHandle) {
+      await this._exec('qmicli', ['-d', this.options.qmiDevice, `--wds-stop-network=${this.qmiHandle}`, `--client-cid=${this.qmiCid}`])
+      this.qmiHandle = null
+      this.qmiCid = null
+    } else {
+      // no tracked session - just take the interface down
+      await this._exec('ip', ['link', 'set', this.options.netInterface, 'down'])
+    }
+    return ['QMI network stopped']
+  }
+
+  // PPP via pppd dialling *99# on the modem's serial port. Never dials the
+  // flight-controller UART.
+  async _pppConnect () {
+    this._markReconnect()
+    const port = this.options.pppPort || this.options.atPort
+    const fcDevice = this.settings.value('flightcontroller.activeDevice', null)
+    const fcSerial = fcDevice && fcDevice.serial
+    if (fcSerial && fcSerial === port) {
+      throw new Error('Refusing to dial PPP on the flight controller port')
+    }
+    const chat = "chat -v '' AT OK ATD*99# CONNECT ''"
+    await this._exec('pppd', [port, String(this.options.pppBaud), 'noauth', 'defaultroute', 'usepeerdns', 'connect', chat])
+    return ['PPP started']
+  }
+
+  async _pppStop () {
+    await this._exec('poff', [])
+    return ['PPP stopped']
   }
 
   // --- modem discovery ---
@@ -880,6 +983,35 @@ class LTEModem {
         errors.push('Poll interval must be 2-120 seconds')
       } else {
         next.pollInterval = pollInterval
+      }
+    }
+    if (newSettings.dataPathMode !== undefined) {
+      if (!['rndis', 'qmi', 'ppp'].includes(newSettings.dataPathMode)) {
+        errors.push('Invalid data path mode')
+      } else {
+        next.dataPathMode = newSettings.dataPathMode
+      }
+    }
+    if (newSettings.qmiDevice !== undefined) {
+      if (typeof newSettings.qmiDevice !== 'string' || !/^[\w/.:-]{0,128}$/.test(newSettings.qmiDevice)) {
+        errors.push('Invalid QMI device')
+      } else {
+        next.qmiDevice = newSettings.qmiDevice
+      }
+    }
+    if (newSettings.pppPort !== undefined) {
+      if (typeof newSettings.pppPort !== 'string' || !/^[\w/.:-]{0,128}$/.test(newSettings.pppPort)) {
+        errors.push('Invalid PPP port')
+      } else {
+        next.pppPort = newSettings.pppPort
+      }
+    }
+    if (newSettings.pppBaud !== undefined) {
+      const pppBaud = parseInt(newSettings.pppBaud, 10)
+      if (![9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000].includes(pppBaud)) {
+        errors.push('Invalid PPP baud rate')
+      } else {
+        next.pppBaud = pppBaud
       }
     }
     if (next.enabled && next.atPort === '') {

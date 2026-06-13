@@ -55,7 +55,11 @@ class LTEModemPage extends basePage {
                 apn: '',
                 netInterface: 'usb0',
                 autoReconnect: false,
-                pollInterval: 5
+                pollInterval: 5,
+                dataPathMode: 'rndis',
+                qmiDevice: '/dev/cdc-wdm0',
+                pppPort: '',
+                pppBaud: 115200
             },
             serialPorts: [],
             // modem discovery
@@ -92,7 +96,7 @@ class LTEModemPage extends basePage {
             const response = await fetch('/api/ltemodem', { headers: { Authorization: `Bearer ${this.state.token}` } });
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
-            this.setState({ config: data.settings, status: data.status, serialPorts: data.serialPorts });
+            this.setState({ config: { ...this.state.config, ...data.settings }, status: data.status, serialPorts: data.serialPorts });
             this.loadDone();
         } catch (error) {
             this.setState({ error: 'Failed to fetch LTE modem config', isLoading: false });
@@ -126,7 +130,7 @@ class LTEModemPage extends basePage {
             if (data.error) {
                 this.setState({ error: data.error });
             } else {
-                this.setState({ error: null, config: data.settings });
+                this.setState({ error: null, config: { ...this.state.config, ...data.settings } });
             }
         } catch (error) {
             this.setState({ error: 'Failed to save LTE modem settings' });
@@ -147,6 +151,40 @@ class LTEModemPage extends basePage {
             }
         } catch (error) {
             this.setState({ error: 'Failed to send reconnect command' });
+        }
+    };
+
+    handleConnect = async () => {
+        try {
+            const response = await fetch('/api/ltemodemconnect', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${this.state.token}` }
+            });
+            const data = await response.json();
+            if (data.error) {
+                this.setState({ error: data.error });
+            } else {
+                this.setState({ error: null, infoMessage: 'Connect command sent: ' + (data.response || []).join(' ') });
+            }
+        } catch (error) {
+            this.setState({ error: 'Failed to send connect command' });
+        }
+    };
+
+    handleDisconnect = async () => {
+        try {
+            const response = await fetch('/api/ltemodemdisconnect', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${this.state.token}` }
+            });
+            const data = await response.json();
+            if (data.error) {
+                this.setState({ error: data.error });
+            } else {
+                this.setState({ error: null, infoMessage: 'Disconnect command sent: ' + (data.response || []).join(' ') });
+            }
+        } catch (error) {
+            this.setState({ error: 'Failed to send disconnect command' });
         }
     };
 
@@ -299,7 +337,9 @@ class LTEModemPage extends basePage {
                         <tr><td>Reconnects</td><td>{status.reconnectCount}{status.lastReconnect ? ' (last: ' + status.lastReconnect + ')' : ''}</td></tr>
                     </tbody>
                 </Table>
-                <Button onClick={this.handleReconnect} disabled={!status.available} className="btn btn-primary">Reconnect data call</Button>
+                <Button onClick={this.handleReconnect} disabled={!status.available} className="btn btn-primary">Reconnect data call</Button>{' '}
+                <Button onClick={this.handleConnect} className="btn btn-success">Connect ({config.dataPathMode.toUpperCase()})<HelpTip text="Bring the data call up using the configured data-path mode (RNDIS dials AT$QCRMCALL; QMI runs qmicli; PPP dials pppd)." /></Button>{' '}
+                <Button onClick={this.handleDisconnect} variant="secondary" className="btn">Disconnect<HelpTip text="Bring the current data call down (RNDIS AT$QCRMCALL=0; QMI stop-network; PPP poff)." /></Button>
 
                 <h2 style={{ marginTop: '20px' }}>Modem discovery</h2>
                 <p><i>Find the connected modem automatically - serial ports and data network interface.</i></p>
@@ -378,6 +418,44 @@ class LTEModemPage extends basePage {
                             <input type="checkbox" name="enabled" checked={config.enabled} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
+                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                        <label className="col-sm-3 col-form-label">Data path mode<HelpTip text="How the modem carries IP data. RNDIS: the modem's built-in USB network device (usb0), no extra packages. QMI: libqmi (qmicli) drives a wwan0 interface - never ModemManager. PPP: pppd dials *99# over the serial port (slowest, last resort). Takes effect on the next Connect." /></label>
+                        <div className="col-sm-8">
+                            <Form.Select name="dataPathMode" value={config.dataPathMode} onChange={this.handleConfigChange}>
+                                <option value="rndis">RNDIS (usb0)</option>
+                                <option value="qmi">QMI (wwan0)</option>
+                                <option value="ppp">PPP (ppp0)</option>
+                            </Form.Select>
+                        </div>
+                    </div>
+                    {config.dataPathMode === 'qmi' && (
+                        <div className="form-group row" style={{ marginBottom: '5px' }}>
+                            <label className="col-sm-3 col-form-label">QMI control device<HelpTip text="The libqmi control device, usually /dev/cdc-wdm0. Set the data network interface to wwan0 for QMI." /></label>
+                            <div className="col-sm-8">
+                                <Form.Control type="text" name="qmiDevice" value={config.qmiDevice} onChange={this.handleConfigChange} />
+                            </div>
+                        </div>
+                    )}
+                    {config.dataPathMode === 'ppp' && (
+                        <div>
+                            <div className="form-group row" style={{ marginBottom: '5px' }}>
+                                <label className="col-sm-3 col-form-label">PPP port<HelpTip text="Serial port pppd dials on. Leave blank to use the AT port. Must NOT be the flight-controller UART - the server refuses to dial it. Set the data network interface to ppp0 for PPP." /></label>
+                                <div className="col-sm-8">
+                                    <Form.Control type="text" name="pppPort" value={config.pppPort} onChange={this.handleConfigChange} placeholder="defaults to the AT port" />
+                                </div>
+                            </div>
+                            <div className="form-group row" style={{ marginBottom: '5px' }}>
+                                <label className="col-sm-3 col-form-label">PPP baud<HelpTip text="Serial speed for the pppd dial. SIM7600 default 115200." /></label>
+                                <div className="col-sm-8">
+                                    <Form.Select name="pppBaud" value={config.pppBaud} onChange={this.handleConfigChange}>
+                                        {[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000].map((b) => (
+                                            <option key={b} value={b}>{b}</option>
+                                        ))}
+                                    </Form.Select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
                         <label className="col-sm-3 col-form-label">AT command port<HelpTip text="Serial port carrying AT commands - usually /dev/ttyUSB2 on a SIM7600 over USB, or the UART device if wired to the GPIO header. Must not be held by anything else (ModemManager, mavlink-router). The discovery scan finds it for you" /></label>
                         <div className="col-sm-8">

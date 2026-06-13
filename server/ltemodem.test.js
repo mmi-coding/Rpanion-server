@@ -1078,6 +1078,192 @@ esac`)
     })
   })
 
+  describe('data path modes (RNDIS / QMI / PPP)', function () {
+    let fake
+
+    before(function () {
+      fake = new FakeBin()
+      fake.install('qmicli', `
+case "$FAKE_SCENARIO" in
+qmi-fail) echo "qmicli error" >&2; exit 1 ;;
+qmi-nohandle) echo "Network started" ;;
+*) printf "Network started\\n\\tPacket data handle: '12345'\\n\\tCID: '7'\\n" ;;
+esac
+exit 0`)
+      fake.install('udhcpc', 'exit 0')
+      fake.install('ip', 'exit 0')
+      fake.install('pppd', `
+case "$FAKE_SCENARIO" in
+ppp-fail) echo "pppd error" >&2; exit 1 ;;
+esac
+exit 0`)
+      fake.install('poff', 'exit 0')
+      fake.activate()
+    })
+
+    after(function () {
+      delete process.env.FAKE_SCENARIO
+      fake.cleanup()
+    })
+
+    afterEach(function () {
+      delete process.env.FAKE_SCENARIO
+      fake.reset()
+      sinon.restore()
+    })
+
+    it('#_exec() resolves output and rejects with stderr', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      const out = await modem._exec('qmicli', ['-d', '/dev/cdc-wdm0'])
+      assert.ok(out.includes('Network started'))
+      process.env.FAKE_SCENARIO = 'qmi-fail'
+      await assert.rejects(() => modem._exec('qmicli', []), /qmicli error/)
+    })
+
+    it('#_exec() rejects with the error message on spawn failure', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      const oldPath = process.env.PATH
+      try {
+        process.env.PATH = '/nonexistent-bin'
+        await assert.rejects(() => modem._exec('qmicli', []), /ENOENT/)
+      } finally {
+        process.env.PATH = oldPath
+      }
+    })
+
+    it('#connectData() dispatches by mode', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      const qmi = sinon.stub(modem, '_qmiConnect').resolves(['qmi'])
+      const ppp = sinon.stub(modem, '_pppConnect').resolves(['ppp'])
+      const rnd = sinon.stub(modem, 'reconnect').resolves(['rndis'])
+      modem.options.dataPathMode = 'qmi'
+      await modem.connectData()
+      assert.ok(qmi.calledOnce)
+      modem.options.dataPathMode = 'ppp'
+      await modem.connectData()
+      assert.ok(ppp.calledOnce)
+      modem.options.dataPathMode = 'rndis'
+      await modem.connectData()
+      assert.ok(rnd.calledOnce)
+    })
+
+    it('#disconnectData() dispatches by mode', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      const qmi = sinon.stub(modem, '_qmiStop').resolves(['qmi'])
+      const ppp = sinon.stub(modem, '_pppStop').resolves(['ppp'])
+      const at = sinon.stub(modem, 'sendAT').resolves(['OK'])
+      modem.options.dataPathMode = 'qmi'
+      await modem.disconnectData()
+      assert.ok(qmi.calledOnce)
+      modem.options.dataPathMode = 'ppp'
+      await modem.disconnectData()
+      assert.ok(ppp.calledOnce)
+      modem.options.dataPathMode = 'rndis'
+      await modem.disconnectData()
+      assert.ok(at.calledWith('AT$QCRMCALL=0,1', 15000))
+    })
+
+    it('#_qmiConnect() parses the handle and CID and runs DHCP', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      const r = await modem._qmiConnect()
+      assert.deepEqual(r, ['QMI network started'])
+      assert.equal(modem.qmiHandle, '12345')
+      assert.equal(modem.qmiCid, '7')
+      assert.ok(fake.calls('qmicli')[0].includes('--wds-start-network'))
+      assert.ok(fake.calls('udhcpc').length >= 1)
+    })
+
+    it('#_qmiConnect() tolerates output without a handle/CID', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      process.env.FAKE_SCENARIO = 'qmi-nohandle'
+      await modem._qmiConnect()
+      assert.equal(modem.qmiHandle, null)
+      assert.equal(modem.qmiCid, null)
+    })
+
+    it('#_qmiStop() stops the tracked network', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      modem.qmiHandle = '12345'
+      modem.qmiCid = '7'
+      await modem._qmiStop()
+      assert.ok(fake.calls('qmicli')[0].includes('--wds-stop-network=12345'))
+      assert.equal(modem.qmiHandle, null)
+    })
+
+    it('#_qmiStop() without a handle takes the interface down', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      await modem._qmiStop()
+      assert.ok(fake.calls('ip')[0].includes('link'))
+    })
+
+    it('#_pppConnect() dials pppd on the modem port', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      modem.options.pppPort = '/dev/ttyUSB3'
+      const r = await modem._pppConnect()
+      assert.deepEqual(r, ['PPP started'])
+      assert.ok(fake.calls('pppd')[0].includes('/dev/ttyUSB3'))
+    })
+
+    it('#_pppConnect() refuses to dial the flight controller port', async function () {
+      settings.clear()
+      settings.setValue('flightcontroller.activeDevice', { serial: '/dev/ttyUSB3' })
+      const modem = new LTEModem(settings)
+      modem.options.pppPort = '/dev/ttyUSB3'
+      await assert.rejects(() => modem._pppConnect(), /flight controller/)
+    })
+
+    it('#_pppConnect() falls back to the AT port and allows a non-FC port', async function () {
+      settings.clear()
+      settings.setValue('flightcontroller.activeDevice', { serial: '/dev/ttyACM0' })
+      const modem = new LTEModem(settings)
+      // pppPort left empty → falls back to the AT port (/dev/ttyUSB2 default)
+      const r = await modem._pppConnect()
+      assert.deepEqual(r, ['PPP started'])
+      assert.ok(fake.calls('pppd')[0].includes('/dev/ttyUSB2'))
+    })
+
+    it('#_pppStop() runs poff', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      await modem._pppStop()
+      assert.ok(fake.calls('poff').length >= 1)
+    })
+
+    it('#setSettings() accepts the new data-path fields and persists them', function (done) {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      modem.setSettings({ enabled: false, dataPathMode: 'qmi', qmiDevice: '/dev/cdc-wdm0', pppPort: '/dev/ttyUSB3', pppBaud: 115200 }, (err) => {
+        assert.equal(err, null)
+        assert.equal(modem.options.dataPathMode, 'qmi')
+        assert.equal(settings.value('ltemodem.qmiDevice'), '/dev/cdc-wdm0')
+        assert.equal(settings.value('ltemodem.pppPort'), '/dev/ttyUSB3')
+        done()
+      })
+    })
+
+    it('#setSettings() rejects invalid data-path fields', function (done) {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      modem.setSettings({ dataPathMode: 'bogus', qmiDevice: 'bad dev!', pppPort: 'bad port!', pppBaud: 1234 }, (err) => {
+        assert.ok(err)
+        assert.ok(err.message.includes('Invalid data path mode'))
+        assert.ok(err.message.includes('Invalid QMI device'))
+        assert.ok(err.message.includes('Invalid PPP port'))
+        assert.ok(err.message.includes('Invalid PPP baud'))
+        done()
+      })
+    })
+  })
+
   describe('live modem on a pty (fake-sim7600.py)', function () {
     let pty
 

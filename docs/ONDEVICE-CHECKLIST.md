@@ -154,3 +154,16 @@ The wrapper, parsing and rate maths are unit-tested in WSL; real failover needs 
 - [ ] Pull the WiFi link → traffic fails over to the modem (`usb0`); restore WiFi → it preempts again (check the default route / `ip route`)
 - [ ] Confirm `sudo nmcli connection modify` has polkit rights under the service user
 - [ ] With RBAC on, a read-only user cannot set priority (403)
+
+## Feature 20: Multi-mode modem data path — QMI/PPP (feature/lte-data-path)
+
+Wrappers are fakeBin-tested in WSL; the real data calls need the modem. See docs/MODEM-DATA-PATH.md.
+
+- [ ] Prereqs installed: `libqmi-utils` (QMI), `ppp` (PPP); ModemManager NOT installed
+- [ ] QMI: expose `/dev/cdc-wdm0`; select QMI mode, set interface `wwan0`, Connect → `qmicli --wds-start-network` succeeds, `udhcpc` leases an IP on wwan0, data flows; Disconnect stops the network cleanly
+- [ ] QMI raw-IP: SIM7600 may need `echo Y > /sys/class/net/wwan0/qmi/raw_ip` before the lease — confirm/automate as needed
+- [ ] PPP: select PPP mode, set PPP port to the modem's AT port (NOT the FC UART), Connect → `pppd` dials *99#, `ppp0` comes up with an IP; Disconnect (`poff`) tears it down
+- [ ] PPP FC-safety: with the flight controller active, setting PPP port = the FC serial is refused (error), and a PPP dial never disturbs the MAVLink link
+- [ ] Auto-reconnect works in each mode (registered but no IP → mode-aware reconnect)
+- [ ] Data-usage accounting and the connection test follow the active interface (usb0/wwan0/ppp0)
+- [ ] `sudo` rights for qmicli/udhcpc/pppd/poff under the service user

@@ -1867,6 +1867,55 @@ describe('Package B — delegate HTTP routes', function () {
     })
   })
 
+  describe('POST /api/ltemodemconnect', function () {
+    it('200 — success path', function (done) {
+      sinon.stub(LTEModem.prototype, 'connectData').resolves(['OK'])
+      request('POST', '/api/ltemodemconnect').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(res.body.error, null)
+          assert.ok(Array.isArray(res.body.response))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('422 — connectData rejects', function (done) {
+      sinon.stub(LTEModem.prototype, 'connectData').rejects(new Error('no modem'))
+      request('POST', '/api/ltemodemconnect').then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          assert.ok(res.body.error)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/ltemodemdisconnect', function () {
+    it('200 — success path', function (done) {
+      sinon.stub(LTEModem.prototype, 'disconnectData').resolves(['OK'])
+      request('POST', '/api/ltemodemdisconnect').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(res.body.error, null)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('422 — disconnectData rejects', function (done) {
+      sinon.stub(LTEModem.prototype, 'disconnectData').rejects(new Error('no modem'))
+      request('POST', '/api/ltemodemdisconnect').then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          assert.ok(res.body.error)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
   describe('POST /api/ltemodemresetusage', function () {
     it('200 — resets usage counters', function (done) {
       sinon.stub(LTEModem.prototype, 'resetUsage').returns(undefined)
