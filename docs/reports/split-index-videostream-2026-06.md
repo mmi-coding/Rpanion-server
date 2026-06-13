@@ -6,7 +6,15 @@ audit's in-place cleanups). Behaviour-preserving, applied incrementally, every
 step gated by the full CI parity run. Branch `feature/split-index-videostream`,
 merged `--no-ff` into `dev`.
 
-## server/index.js — 2196 → 1215 lines (−45%)
+## server/index.js — 2196 → 538 lines (−75%)
+
+> **Update (phase 2):** after the user confirmed this fork will never merge
+> upstream (so merge friction is a non-issue — see the
+> `fork-no-upstream-merge` memory), the remaining groups were extracted too.
+> index.js is now **538 lines** — app/middleware setup, the socket.io status
+> loop, graceful shutdown, the production SPA catch-all, and `testHooks`. Every
+> route lives in a module. Phase-1 stopped at 1215 (−45%); phase-2 finished at
+> 538 (−75%).
 
 The Express monolith's route handlers were extracted into **router-factory
 modules** under `server/routes/`. Each module exports
@@ -17,7 +25,13 @@ dependency-injection context, e.g.:
 app.use(require('./routes/ltemodem.js')({ authenticateToken, toBool, lteModem }))
 ```
 
-14 route groups extracted (one module each):
+**Auth keystone** (`server/auth.js`): `authenticateToken` is the middleware every
+other route depends on. It moved into `auth.js` together with the auth/user
+routes and the JWT secret / logout blacklist / RBAC write-allowlist;
+index.js obtains it once (`const { authenticateToken, router } =
+require('./auth.js')({ userMgmt })`) and injects it into every route module.
+
+18 route modules + auth.js extracted:
 
 | Module | Routes | Injected deps |
 |---|---|---|
@@ -35,6 +49,10 @@ app.use(require('./routes/ltemodem.js')({ authenticateToken, toBool, lteModem })
 | cellularTuning | 2 | cellularTuning |
 | logConversion | 2 | logConversion |
 | adhoc | 2 | adhocManager |
+| flightController | 6 | fcManager |
+| system | 12 | aboutPage, networkClients, logManager, fcManager |
+| camera | 6 | vManager, fcManager, camSwitcher, MEDIA_ROOT |
+| auth.js | 8 | userMgmt (+ owns secret/blacklist/allowlist) |
 
 `authenticateToken`/`toBool` are passed in; `check`/`validationResult` are
 required per-module. Route order is preserved relative to the
@@ -42,11 +60,17 @@ connection-tracking middleware and the production SPA catch-all (both still
 registered last). Express matches by path, so groups split across the file (e.g.
 `network` was interrupted by the `camera/*` routes) are safely consolidated.
 
-**Left in index.js by design** (tightly coupled to app core / module state, not
-worth the merge-friction): camera routes (vManager + `io` emits + MEDIA_ROOT +
-the video lifecycle), the auth/users routes (tokenBlacklist/JWT), the FC routes
-(interleaved with the settings/system routes), and the misc system endpoints —
-plus the socket.io section, `gracefulShutdown`, `FCStatusLoop`, and `testHooks`.
+**Gotcha caught by the gate:** the `camera` router was first mounted at the old
+capturestillphoto position — *before* the `express.json()`/`urlencoded` body
+parser — so `camera/start` saw an empty `req.body` and every test 422'd. Moving
+the mount below the body parser fixed it. The `covback` gate caught this before
+merge.
+
+**What remains in index.js (~538 lines):** require/instantiate the managers,
+middleware setup (rate limit, file upload, body parsers, static), the
+`vManager`/`fcManager` event-emitter wiring, the socket.io status-emit loop +
+`FCStatusLoop`, `gracefulShutdown`, the production SPA catch-all, and the
+`testHooks` export. No route handlers.
 
 ## server/videostream.js — 1099 → 1031 lines
 
@@ -71,10 +95,11 @@ dropped.
   passing 100/100/100/100, `covfront` 814 passing 100/100/100/100, `npm run e2e`
   68 passed.
 
-## Trade-off (recorded)
+## No upstream-merge constraint
 
-These extractions touch upstream-derived code (`index.js`, `videostream.js`),
-so they add merge friction against `stephendade/Rpanion-server`. The user opted
-into whole-codebase changes; the router-factory layout keeps each group small
-and self-contained, which limits per-merge conflict surface to the touched
-group rather than the whole monolith.
+These extractions heavily restructure upstream-derived files (`index.js`,
+`videostream.js`). That is intentional and unconstrained: the user confirmed
+this fork is maintained independently and **will never merge upstream**
+(recorded in the `fork-no-upstream-merge` memory). Merge friction is therefore
+not a consideration — the whole tree is treated as fork-owned. The only standing
+guardrail is the 100% coverage ratchet, which every step passed.
