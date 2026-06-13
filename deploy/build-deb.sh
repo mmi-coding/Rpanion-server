@@ -11,6 +11,12 @@ cd "$(dirname "$0")/.."
 ARCH=$(dpkg --print-architecture 2>/dev/null || echo arm64)
 echo "Building .deb for architecture: $ARCH"
 
+# Compile any TypeScript backend sources to JS in place (server/*.ts -> server/*.js,
+# mavlink/*.ts -> mavlink/*.js) so node-deb packages runnable JS and systemd's
+# `node server/index.js` works unchanged. No-op while the tree is still all-JS.
+echo "Compiling TypeScript backend (tsc)..."
+npm run build:server
+
 cp package.json package.json.debbak
 trap 'mv -f package.json.debbak package.json 2>/dev/null || true' EXIT
 sed -i "s/\"architecture\": \"[^\"]*\"/\"architecture\": \"$ARCH\"/" package.json

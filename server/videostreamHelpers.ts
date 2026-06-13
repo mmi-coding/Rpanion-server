@@ -1,15 +1,22 @@
 /*
- * videostreamHelpers.js
+ * videostreamHelpers.ts
  * Pure (stateless) helpers extracted from videostream.js so they can be unit
  * tested in isolation and keep the class focused on stateful camera control.
  * The videoStream class delegates to these.
+ *
+ * First file of the gradual TypeScript migration (Wave 1 pilot).
  */
-const path = require('path')
-const os = require('os')
-const logpaths = require('./paths.js')
+import * as path from 'path'
+import * as os from 'os'
+// paths is still plain JS during the migration; require() so tsc doesn't pull it
+// into the emittable program (avoids TS5055 with outDir '.'). Switch to `import`
+// once server/paths is converted to .ts.
+const logpaths = require('./paths')
+
+interface SelectOption { value: string; label: string }
 
 // Convert an absolute media path to one relative to the media root (for the UI).
-function toRelativePath (dest) {
+export function toRelativePath (dest: string): string {
   if (!dest || dest === '.') return ''
   if (path.isAbsolute(dest)) {
     dest = path.relative(logpaths.mediaDir, dest)
@@ -20,8 +27,8 @@ function toRelativePath (dest) {
 }
 
 // The compression (codec) select option for a given value (defaults to H.264).
-function getCompressionSelect (val) {
-  const options = [
+export function getCompressionSelect (val: string): SelectOption {
+  const options: SelectOption[] = [
     { value: 'H264', label: 'H.264' },
     { value: 'H265', label: 'H.265' }
   ]
@@ -34,8 +41,8 @@ function getCompressionSelect (val) {
 }
 
 // The transport select option for a given value (defaults to RTSP).
-function getTransportSelect (val) {
-  const options = [
+export function getTransportSelect (val: string): SelectOption {
+  const options: SelectOption[] = [
     { value: 'RTP', label: 'RTP' },
     { value: 'RTSP', label: 'RTSP' }
   ]
@@ -48,7 +55,7 @@ function getTransportSelect (val) {
 }
 
 // All transport options.
-function getTransportOptions () {
+export function getTransportOptions (): SelectOption[] {
   return [
     { value: 'RTP', label: 'RTP' },
     { value: 'RTSP', label: 'RTSP' }
@@ -56,8 +63,8 @@ function getTransportOptions () {
 }
 
 // All local IPv4 addresses (an interface may have more than one).
-function scanInterfaces () {
-  const iface = []
+export function scanInterfaces (): string[] {
+  const iface: string[] = []
   const ifaces = os.networkInterfaces()
   for (const ifacename in ifaces) {
     for (let j = 0; j < ifaces[ifacename].length; j++) {
@@ -70,19 +77,10 @@ function scanInterfaces () {
 }
 
 // Encode a JS string into the fixed-length char[] array node-mavlink expects.
-function toMavChars (str, length) {
+export function toMavChars (str: string, length: number): Uint8Array {
   const buf = new Uint8Array(length)
   if (!str) return buf
   const encoded = new TextEncoder().encode(str)
   buf.set(encoded.slice(0, length))
   return buf
-}
-
-module.exports = {
-  toRelativePath,
-  getCompressionSelect,
-  getTransportSelect,
-  getTransportOptions,
-  scanInterfaces,
-  toMavChars
 }

@@ -5,7 +5,7 @@ const events = require('events')
 const { minimal, common } = require('node-mavlink')
 const logpaths = require('./paths.js')
 const fs = require('fs')
-const vsHelpers = require('./videostreamHelpers.js')
+const vsHelpers = require('./videostreamHelpers')
 
 class videoStream {
   constructor (settings) {
