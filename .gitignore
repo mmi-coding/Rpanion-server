@@ -42,3 +42,10 @@ __pycache__/
 /playwright-report
 /blob-report
 /playwright/.cache
+
+# TypeScript migration: emitted JS is a build artifact (produced only by
+# build:server / build-deb.sh), never committed — the .ts is the source of record.
+# Each converted file adds its emitted-JS twin below so nyc (all:true) never
+# double-counts foo.ts + foo.js. Tests transpile .ts in-memory via ts-node.
+*.tsbuildinfo
+# --- emitted JS for converted modules (keep in sync with the .ts conversions) ---

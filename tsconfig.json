@@ -1,0 +1,43 @@
+{
+  "//": "Backend-only (CommonJS Node) gradual TypeScript migration. src/ (React/Vite) is out of scope. Phase 1 is deliberately loose (allowJs, non-strict) so a single .js->.ts rename compiles with zero new type errors; tighten the strict block over time. Emit-in-place (outDir '.') keeps the .deb/systemd/paths.js layout byte-identical.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": ["ES2022"],
+
+    "allowJs": true,
+    "checkJs": false,
+
+    "rootDir": ".",
+    "outDir": ".",
+
+    "sourceMap": true,
+    "inlineSources": true,
+
+    "declaration": false,
+    "removeComments": false,
+
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+
+    "noEmitOnError": true,
+
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["server/**/*.ts", "mavlink/**/*.ts", "typings/**/*.d.ts"],
+  "exclude": ["node_modules", "build", "coverage", "dist", "src", "test", "**/*.test.js", "**/*.test.ts"],
+  "ts-node": {
+    "//": "Test-time only. transpileOnly skips type-checking (use `npm run typecheck`); ignoring .js leaves plain JS to Node so nyc instruments it natively (allowJs above is only for tsc resolving .ts->.js imports during the migration, NOT for ts-node to transpile .js).",
+    "transpileOnly": true,
+    "ignore": ["(?:^|/)node_modules/", "\\.js$"]
+  }
+}

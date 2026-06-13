@@ -1,0 +1,5 @@
+{
+  "require": ["ts-node/register"],
+  "spec": ["./server/*.test.{js,ts}", "./mavlink/*.test.{js,ts}"],
+  "exit": true
+}
