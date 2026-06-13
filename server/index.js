@@ -1081,7 +1081,11 @@ app.post('/api/ltemodemmodify', authenticateToken, [
   check('apn').optional({ checkFalsy: true }).isString().isLength({ max: 64 }),
   check('netInterface').isString().isLength({ min: 1, max: 15 }),
   check('autoReconnect').isBoolean(),
-  check('pollInterval').isInt({ min: 2, max: 120 })
+  check('pollInterval').isInt({ min: 2, max: 120 }),
+  check('dataPathMode').optional({ checkFalsy: true }).isIn(['rndis', 'qmi', 'ppp']),
+  check('qmiDevice').optional({ checkFalsy: true }).isString().isLength({ max: 128 }),
+  check('pppPort').optional({ checkFalsy: true }).isString().isLength({ max: 128 }),
+  check('pppBaud').optional({ checkFalsy: true }).isInt()
 ], function (req, res) {
   const errors = validationResult(req)
   if (!errors.isEmpty()) {
@@ -1096,7 +1100,11 @@ app.post('/api/ltemodemmodify', authenticateToken, [
     apn: req.body.apn || '',
     netInterface: req.body.netInterface,
     autoReconnect: req.body.autoReconnect === true || req.body.autoReconnect === 'true',
-    pollInterval: parseInt(req.body.pollInterval, 10)
+    pollInterval: parseInt(req.body.pollInterval, 10),
+    dataPathMode: req.body.dataPathMode || 'rndis',
+    qmiDevice: req.body.qmiDevice || '/dev/cdc-wdm0',
+    pppPort: req.body.pppPort || '',
+    pppBaud: parseInt(req.body.pppBaud, 10) || 115200
   }, (err) => {
     res.setHeader('Content-Type', 'application/json')
     if (err) {
@@ -1111,6 +1119,26 @@ app.post('/api/ltemodemmodify', authenticateToken, [
 app.post('/api/ltemodemreconnect', authenticateToken, function (req, res) {
   res.setHeader('Content-Type', 'application/json')
   lteModem.reconnect().then((lines) => {
+    res.send(JSON.stringify({ error: null, response: lines }))
+  }).catch((err) => {
+    res.status(422).send(JSON.stringify({ error: err.message, response: [] }))
+  })
+})
+
+// bring the data call up using the configured data-path mode (RNDIS/QMI/PPP)
+app.post('/api/ltemodemconnect', authenticateToken, function (req, res) {
+  res.setHeader('Content-Type', 'application/json')
+  lteModem.connectData().then((lines) => {
+    res.send(JSON.stringify({ error: null, response: lines }))
+  }).catch((err) => {
+    res.status(422).send(JSON.stringify({ error: err.message, response: [] }))
+  })
+})
+
+// bring the data call down using the configured data-path mode
+app.post('/api/ltemodemdisconnect', authenticateToken, function (req, res) {
+  res.setHeader('Content-Type', 'application/json')
+  lteModem.disconnectData().then((lines) => {
     res.send(JSON.stringify({ error: null, response: lines }))
   }).catch((err) => {
     res.status(422).send(JSON.stringify({ error: err.message, response: [] }))

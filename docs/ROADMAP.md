@@ -65,6 +65,10 @@ and land at 100% coverage on both suites.
   page: live per-interface throughput (from `/sys/class/net`) + per-connection
   autoconnect-priority/route-metric via `nmcli`. Done — see docs/NETWORK-PRIORITY.md,
   feature-19 report. Real failover verified on-device.
+- [x] **Multi-mode modem data path (RNDIS / QMI / PPP).** Selectable data path on
+  the LTE Modem page — QMI via libqmi, PPP via pppd (ModemManager still banned).
+  Done — overrides the former RNDIS-only constraint (CLAUDE.md updated); see
+  docs/MODEM-DATA-PATH.md, feature-20 report.
 - [ ] **Telemetry injectors.** Accept external sensor data over HTTP/UDP/serial
   and inject it into the MAVLink stream; auto-start on boot.
 
@@ -76,11 +80,11 @@ and land at 100% coverage on both suites.
 
 ### B3. Won't do — conflicts with hard constraints / hardware
 
-- **Traditional (PPP/QMI) modem types.** The fork is **RNDIS-only** and must
-  never install ModemManager (CLAUDE.md). HiLink (= RNDIS) is already supported,
-  which is the in-constraint half of UAVcast's "Traditional + HiLink".
-- **5G.** The RNDIS data path is already modem-agnostic — a 5G RNDIS modem works
-  on it unchanged. Only the SIM7600-specific AT monitoring is 4G-tuned; that's an
+- **ModemManager.** Still never used (it auto-probes serial ports and can seize
+  the flight-controller UART). QMI/PPP are implemented directly via libqmi/pppd
+  instead — see the multi-mode data path above.
+- **5G.** The data path is already modem-agnostic — a 5G RNDIS/QMI modem works on
+  it unchanged. Only the SIM7600-specific AT monitoring is 4G-tuned; that's an
   on-bench tweak when such hardware exists, not a software gap.
 
 ---

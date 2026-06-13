@@ -17,7 +17,11 @@ describe('#ltemodemp age()', function () {
         apn: '',
         netInterface: 'usb0',
         autoReconnect: false,
-        pollInterval: 5
+        pollInterval: 5,
+        dataPathMode: 'rndis',
+        qmiDevice: '/dev/cdc-wdm0',
+        pppPort: '',
+        pppBaud: 115200
     }
 
     const defaultStatus = {
@@ -590,6 +594,127 @@ describe('#ltemodemp age()', function () {
         await page.flush()
         const reconnectBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Reconnect data call')
         expect(reconnectBtn.disabled).toBe(true)
+        page.unmount()
+    })
+
+    // ------------------------------------------------------------------
+    // Data path: Connect / Disconnect + mode-conditional fields
+    // ------------------------------------------------------------------
+    function findConnect (page) {
+        return [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Connect ('))
+    }
+    function findDisconnect (page) {
+        return [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Disconnect'))
+    }
+
+    test('handleConnect success sets infoMessage', async function () {
+        mockFetch({ ...defaultFetch, 'POST /api/ltemodemconnect': { response: ['QMI network started'] } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findConnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('Connect command sent: QMI network started')
+        page.unmount()
+    })
+
+    test('handleConnect tolerates a missing response array', async function () {
+        mockFetch({ ...defaultFetch, 'POST /api/ltemodemconnect': {} })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findConnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('Connect command sent:')
+        page.unmount()
+    })
+
+    test('handleDisconnect tolerates a missing response array', async function () {
+        mockFetch({ ...defaultFetch, 'POST /api/ltemodemdisconnect': {} })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findDisconnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('Disconnect command sent:')
+        page.unmount()
+    })
+
+    test('handleConnect sets error when API returns data.error', async function () {
+        mockFetch({ ...defaultFetch, 'POST /api/ltemodemconnect': { error: 'no modem' } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findConnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('no modem')
+        page.unmount()
+    })
+
+    test('handleConnect catch branch sets error', async function () {
+        vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
+            if ((opts.method || 'GET').toUpperCase() === 'GET') {
+                return { ok: true, status: 200, json: async () => ({ settings: defaultConfig, status: defaultStatus, serialPorts: [] }) }
+            }
+            throw new Error('network failure')
+        }))
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findConnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('Failed to send connect command')
+        page.unmount()
+    })
+
+    test('handleDisconnect success sets infoMessage', async function () {
+        mockFetch({ ...defaultFetch, 'POST /api/ltemodemdisconnect': { response: ['QMI network stopped'] } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findDisconnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('Disconnect command sent: QMI network stopped')
+        page.unmount()
+    })
+
+    test('handleDisconnect sets error when API returns data.error', async function () {
+        mockFetch({ ...defaultFetch, 'POST /api/ltemodemdisconnect': { error: 'stop failed' } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findDisconnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('stop failed')
+        page.unmount()
+    })
+
+    test('handleDisconnect catch branch sets error', async function () {
+        vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
+            if ((opts.method || 'GET').toUpperCase() === 'GET') {
+                return { ok: true, status: 200, json: async () => ({ settings: defaultConfig, status: defaultStatus, serialPorts: [] }) }
+            }
+            throw new Error('network failure')
+        }))
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        page.click(findDisconnect(page))
+        await page.flush()
+        expect(document.body.textContent).toContain('Failed to send disconnect command')
+        page.unmount()
+    })
+
+    test('QMI mode shows the QMI device field', async function () {
+        const config = { ...defaultConfig, dataPathMode: 'qmi' }
+        mockFetch({ '/api/ltemodem': { settings: config, status: defaultStatus, serialPorts: [] } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        expect(page.container.querySelector('input[name="qmiDevice"]')).not.toBeNull()
+        expect(page.container.querySelector('input[name="pppPort"]')).toBeNull()
+        page.unmount()
+    })
+
+    test('PPP mode shows the PPP port and baud fields', async function () {
+        const config = { ...defaultConfig, dataPathMode: 'ppp' }
+        mockFetch({ '/api/ltemodem': { settings: config, status: defaultStatus, serialPorts: [] } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        expect(page.container.querySelector('input[name="pppPort"]')).not.toBeNull()
+        expect(page.container.querySelector('select[name="pppBaud"]')).not.toBeNull()
+        expect(page.container.querySelector('input[name="qmiDevice"]')).toBeNull()
         page.unmount()
     })
 
