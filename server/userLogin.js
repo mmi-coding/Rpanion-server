@@ -43,10 +43,33 @@ class userLogin {
     try {
       const data = await fs.readFile(this.usersFile, 'utf8')
       const users = JSON.parse(data)
-      return users
+      // Normalise: users created before RBAC have no role; treat them as admin.
+      return users.map(user => ({ ...user, role: user.role || 'admin' }))
     } catch (error) {
       console.error('Error getting users:', error)
       return []
+    }
+  }
+
+  /**
+   * Returns a user's role ('admin' or 'readonly').
+   *
+   * @param {string} username - The username of the user.
+   * @returns {Promise<string|null>} - The role, 'admin' for pre-RBAC users
+   *   without a stored role, or null if the user does not exist / on error.
+   */
+  async getUserRole(username) {
+    try {
+      const data = await fs.readFile(this.usersFile, 'utf8')
+      const users = JSON.parse(data)
+      const user = users.find(user => user.username === username)
+      if (!user) {
+        return null
+      }
+      return user.role || 'admin'
+    } catch (error) {
+      console.error('Error getting user role:', error)
+      return null
     }
   }
 
@@ -58,8 +81,14 @@ class userLogin {
    * @returns {Promise<boolean>} - A promise that resolves to true if the user was added successfully, otherwise false.
    * @throws {Error} - Throws an error if there is an issue reading the users file.
    */
-  async addUser(username, password) {
+  async addUser(username, password, role = 'readonly') {
     try {
+      // New users default to least-privilege ('readonly'); only 'admin' or
+      // 'readonly' are valid roles.
+      if (role !== 'admin' && role !== 'readonly') {
+        return false
+      }
+
       const data = await fs.readFile(this.usersFile, 'utf8')
       const users = JSON.parse(data)
 
@@ -69,7 +98,7 @@ class userLogin {
       }
 
       const passwordhash = await bcrypt.hash(password, 10)
-      users.push({ username, passwordhash })
+      users.push({ username, passwordhash, role })
 
       await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
       return true
@@ -139,6 +168,38 @@ class userLogin {
       return true
     } catch (error) {
       console.error('Error changing password:', error)
+      return false
+    }
+  }
+
+  /**
+   * Changes the role of a user.
+   *
+   * @param {string} username - The username of the user.
+   * @param {string} role - The new role ('admin' or 'readonly').
+   * @returns {Promise<boolean>} - True if the role was changed, otherwise false.
+   * @throws {Error} - Throws an error if there is an issue reading the users file.
+   */
+  async updateRole(username, role) {
+    try {
+      if (role !== 'admin' && role !== 'readonly') {
+        return false
+      }
+
+      const data = await fs.readFile(this.usersFile, 'utf8')
+      const users = JSON.parse(data)
+
+      const user = users.find(user => user.username === username)
+      if (!user) {
+        return false
+      }
+
+      user.role = role
+
+      await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
+      return true
+    } catch (error) {
+      console.error('Error changing role:', error)
       return false
     }
   }

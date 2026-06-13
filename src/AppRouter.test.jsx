@@ -89,6 +89,35 @@ describe('#AppRouter()', function () {
   })
 
   // -------------------------------------------------------------------------
+  // RBAC: read-only role shows a badge in the sidebar heading
+  // -------------------------------------------------------------------------
+  test('shows a read-only badge when the auth role is readonly', async function () {
+    mockFetch({ 'POST /api/auth': { authEnabled: true, role: 'readonly' } })
+    const page = renderPage(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRouter />
+      </MemoryRouter>
+    )
+    await page.flush()
+    const badge = page.container.querySelector('#readonly-badge')
+    expect(badge).not.toBeNull()
+    expect(badge.textContent).toContain('read-only')
+    page.unmount()
+  })
+
+  test('shows no read-only badge for an admin role', async function () {
+    mockFetch({ 'POST /api/auth': { authEnabled: true, role: 'admin' } })
+    const page = renderPage(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRouter />
+      </MemoryRouter>
+    )
+    await page.flush()
+    expect(page.container.querySelector('#readonly-badge')).toBeNull()
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
   // isAuthenticated=false at '/' → shows home (Login form via showLogin)
   // -------------------------------------------------------------------------
   test('unauthenticated at / renders Home with login form', async function () {

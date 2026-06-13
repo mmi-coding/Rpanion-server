@@ -7,7 +7,7 @@ import UserManagement from './userManagement.jsx'
 
 vi.mock('socket.io-client', () => import('../test/socketMock.js'))
 
-const defaultUsers = { users: [{ username: 'admin' }, { username: 'pilot' }] }
+const defaultUsers = { users: [{ username: 'admin', role: 'admin' }, { username: 'pilot', role: 'readonly' }] }
 
 describe('#UserManagement()', function () {
   beforeEach(() => {
@@ -368,6 +368,111 @@ describe('#UserManagement()', function () {
     await page.flush()
     // Should not have crashed; modal is now closed
     expect(ref.state.showModal).toBe(false)
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
+  // RBAC: role column + change role
+  // -------------------------------------------------------------------------
+  test('renders the role for each user', async function () {
+    mockFetch({ '/api/users': defaultUsers })
+    const page = renderPage(<UserManagement />)
+    await page.flush()
+    const rows = [...page.container.querySelectorAll('#users tbody tr')]
+    expect(rows.some(r => r.textContent.includes('admin'))).toBe(true)
+    expect(rows.some(r => r.textContent.includes('readonly'))).toBe(true)
+    // An admin shows "Make Read-only"; a read-only user shows "Make Admin"
+    const btns = [...page.container.querySelectorAll('button')].map(b => b.textContent)
+    expect(btns).toContain('Make Read-only')
+    expect(btns).toContain('Make Admin')
+    page.unmount()
+  })
+
+  test('handleChangeRole POSTs to /api/updateUserRole and refreshes', async function () {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const fetch = mockFetch({
+      '/api/users': defaultUsers,
+      'POST /api/updateUserRole': { users: defaultUsers.users }
+    })
+    const page = renderPage(<UserManagement />)
+    await page.flush()
+    // Click both directions so each branch of the role-toggle target is exercised
+    const makeReadonly = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Make Read-only')
+    act(() => { makeReadonly.click() })
+    await page.flush()
+    const makeAdmin = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Make Admin')
+    act(() => { makeAdmin.click() })
+    await page.flush()
+    const roleCalls = fetch.mock.calls.filter(c => c[0] === '/api/updateUserRole')
+    expect(JSON.parse(roleCalls[0][1].body).role).toBe('readonly')
+    expect(JSON.parse(roleCalls[1][1].body).role).toBe('admin')
+    consoleSpy.mockRestore()
+    page.unmount()
+  })
+
+  test('handleChangeRole: !response.ok throws and logs error', async function () {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
+      const method = (opts.method || 'GET').toUpperCase()
+      if (url === '/api/users') return { ok: true, status: 200, json: async () => defaultUsers }
+      if (method === 'POST' && url === '/api/updateUserRole') return { ok: false, status: 400, json: async () => ({}) }
+      throw new Error(`unhandled: ${method} ${url}`)
+    }))
+    const page = renderPage(<UserManagement />)
+    await page.flush()
+    const roleBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Make Read-only')
+    act(() => { roleBtn.click() })
+    await page.flush()
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error updating user role'), expect.any(Error))
+    consoleSpy.mockRestore()
+    page.unmount()
+  })
+
+  test('handleChangeRole catch path logs error', async function () {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
+      const method = (opts.method || 'GET').toUpperCase()
+      if (url === '/api/users') return { ok: true, status: 200, json: async () => defaultUsers }
+      if (method === 'POST' && url === '/api/updateUserRole') throw new Error('role net error')
+      throw new Error(`unhandled: ${method} ${url}`)
+    }))
+    const page = renderPage(<UserManagement />)
+    await page.flush()
+    const roleBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Make Read-only')
+    act(() => { roleBtn.click() })
+    await page.flush()
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error updating user role'), expect.any(Error))
+    consoleSpy.mockRestore()
+    page.unmount()
+  })
+
+  test('addUser sends the role chosen in the role selector', async function () {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const fetch = mockFetch({
+      '/api/users': defaultUsers,
+      'POST /api/createUser': { users: defaultUsers.users }
+    })
+    const page = renderPage(<UserManagement />)
+    await page.flush()
+    const addBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Add New User')
+    page.click(addBtn)
+    await page.flush()
+    page.setValue(document.body.querySelector('input[name="username"]'), 'newuser')
+    page.setValue(document.body.querySelector('input[name="password"]'), 'samepass')
+    page.setValue(document.body.querySelector('input[name="confirmPassword"]'), 'samepass')
+    const roleSelect = document.body.querySelector('select[name="role"]')
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(roleSelect), 'value').set
+      setter.call(roleSelect, 'admin')
+      roleSelect.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await page.flush()
+    const submitBtn = [...document.body.querySelectorAll('.modal-footer button')].find(b => b.textContent === 'Add User' && !b.disabled)
+    act(() => { submitBtn.click() })
+    await page.flush()
+    const createCall = fetch.mock.calls.find(c => c[0] === '/api/createUser')
+    expect(JSON.parse(createCall[1].body).role).toBe('admin')
+    consoleSpy.mockRestore()
     page.unmount()
   })
 

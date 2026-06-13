@@ -1,7 +1,10 @@
 const assert = require('assert')
 const path = require('path')
+const os = require('os')
 const userLogin = require('./userLogin.js')
 const fs = require('fs')
+
+const rbacTmpFile = path.join(os.tmpdir(), 'rpanion-rbac-users-test.json')
 
 describe('User Login Functions', function () {
   let originalUserFile
@@ -133,5 +136,74 @@ describe('User Login Functions', function () {
     assert.equal(await userMgmt.addUser('x', 'y'), false)
     assert.equal(await userMgmt.deleteUser('x'), false)
     assert.equal(await userMgmt.changePassword('x', 'y'), false)
+    assert.equal(await userMgmt.getUserRole('x'), null)
+    assert.equal(await userMgmt.updateRole('x', 'admin'), false)
+  })
+
+  describe('RBAC roles', function () {
+  let userMgmt
+
+  beforeEach(function () {
+    // Isolated users file: a pre-RBAC user (no role), an admin and a read-only.
+    fs.writeFileSync(rbacTmpFile, JSON.stringify([
+      { username: 'legacy', passwordhash: 'x' },
+      { username: 'boss', passwordhash: 'y', role: 'admin' },
+      { username: 'viewer', passwordhash: 'z', role: 'readonly' }
+    ], null, 2))
+    userMgmt = new userLogin()
+    userMgmt.usersFile = rbacTmpFile
+  })
+
+  after(function () {
+    if (fs.existsSync(rbacTmpFile)) {
+      fs.unlinkSync(rbacTmpFile)
+    }
+  })
+
+  it('#getAllUsers() defaults a missing role to admin', async function () {
+    const users = await userMgmt.getAllUsers()
+    assert.equal(users.find(u => u.username === 'legacy').role, 'admin')
+    assert.equal(users.find(u => u.username === 'viewer').role, 'readonly')
+  })
+
+  it('#getUserRole() returns the stored role', async function () {
+    assert.equal(await userMgmt.getUserRole('viewer'), 'readonly')
+    assert.equal(await userMgmt.getUserRole('boss'), 'admin')
+  })
+
+  it('#getUserRole() defaults a missing role to admin', async function () {
+    assert.equal(await userMgmt.getUserRole('legacy'), 'admin')
+  })
+
+  it('#getUserRole() returns null for an unknown user', async function () {
+    assert.equal(await userMgmt.getUserRole('ghost'), null)
+  })
+
+  it('#addUser() stores a valid role', async function () {
+    assert.equal(await userMgmt.addUser('newadmin', 'pw', 'admin'), true)
+    assert.equal(await userMgmt.getUserRole('newadmin'), 'admin')
+  })
+
+  it('#addUser() defaults new users to readonly', async function () {
+    assert.equal(await userMgmt.addUser('plain', 'pw'), true)
+    assert.equal(await userMgmt.getUserRole('plain'), 'readonly')
+  })
+
+  it('#addUser() rejects an invalid role', async function () {
+    assert.equal(await userMgmt.addUser('bad', 'pw', 'superuser'), false)
+  })
+
+  it('#updateRole() changes a user role', async function () {
+    assert.equal(await userMgmt.updateRole('viewer', 'admin'), true)
+    assert.equal(await userMgmt.getUserRole('viewer'), 'admin')
+  })
+
+  it('#updateRole() rejects an invalid role', async function () {
+    assert.equal(await userMgmt.updateRole('viewer', 'root'), false)
+  })
+
+  it('#updateRole() returns false for an unknown user', async function () {
+    assert.equal(await userMgmt.updateRole('ghost', 'admin'), false)
+  })
   })
 })

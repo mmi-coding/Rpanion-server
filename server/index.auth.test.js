@@ -71,6 +71,15 @@ describe('Auth and user routes', function () {
       })
       assert.equal(res.status, 422)
     })
+
+    it('200 — the JWT embeds the user role', async function () {
+      const res = await request('POST', '/api/login', {
+        body: { username: 'admin', password: 'admin' }
+      })
+      assert.equal(res.status, 200)
+      const decoded = jwt.decode(res.body.token)
+      assert.equal(decoded.role, 'admin')
+    })
   })
 
   // -------------------------------------------------------------------------
@@ -120,6 +129,23 @@ describe('Auth and user routes', function () {
       } finally {
         process.env.NODE_ENV = savedEnv
         delete process.env.DISABLE_AUTH
+      }
+    })
+
+    it('200 — returns the role from the token in production mode', async function () {
+      // Mint a read-only token (login runs in dev mode here)
+      sinon.stub(userLogin.prototype, 'getUserRole').resolves('readonly')
+      const token = (await request('POST', '/api/login', {
+        body: { username: 'admin', password: 'admin' }
+      })).body.token
+      const savedEnv = process.env.NODE_ENV
+      try {
+        process.env.NODE_ENV = 'production'
+        const res = await request('POST', '/api/auth', { body: {}, token })
+        assert.equal(res.status, 200)
+        assert.strictEqual(res.body.role, 'readonly')
+      } finally {
+        process.env.NODE_ENV = savedEnv
       }
     })
   })
@@ -193,6 +219,22 @@ describe('Auth and user routes', function () {
         body: { username: 'newuser' }
       })
       assert.equal(res.status, 422)
+    })
+
+    it('422 — invalid role fails validation', async function () {
+      const res = await request('POST', '/api/createUser', {
+        body: { username: 'newuser', password: 'password', role: 'superuser' }
+      })
+      assert.equal(res.status, 422)
+    })
+
+    it('200 — a valid role is passed through to addUser', async function () {
+      const stub = sinon.stub(userLogin.prototype, 'addUser').resolves(true)
+      const res = await request('POST', '/api/createUser', {
+        body: { username: 'newuser', password: 'password', role: 'admin' }
+      })
+      assert.equal(res.status, 200)
+      assert.ok(stub.calledWith('newuser', 'password', 'admin'))
     })
   })
 
@@ -349,6 +391,109 @@ describe('Auth and user routes', function () {
       process.env.NODE_ENV = 'production'
       process.env.DISABLE_AUTH = '1'
       const res = await request('GET', '/api/users')
+      assert.equal(res.status, 200)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // POST /api/updateUserRole
+  // -------------------------------------------------------------------------
+  describe('POST /api/updateUserRole', function () {
+    it('200 — success path', async function () {
+      sinon.stub(userLogin.prototype, 'updateRole').resolves(true)
+      const res = await request('POST', '/api/updateUserRole', {
+        body: { username: 'admin', role: 'readonly' }
+      })
+      assert.equal(res.status, 200)
+      assert.ok(res.body.infoMessage)
+    })
+
+    it('500 — updateRole returns false', async function () {
+      sinon.stub(userLogin.prototype, 'updateRole').resolves(false)
+      const res = await request('POST', '/api/updateUserRole', {
+        body: { username: 'admin', role: 'readonly' }
+      })
+      assert.equal(res.status, 500)
+    })
+
+    it('422 — invalid role fails validation', async function () {
+      const res = await request('POST', '/api/updateUserRole', {
+        body: { username: 'admin', role: 'root' }
+      })
+      assert.equal(res.status, 422)
+    })
+
+    it('422 — username too short fails validation', async function () {
+      const res = await request('POST', '/api/updateUserRole', {
+        body: { username: 'a', role: 'admin' }
+      })
+      assert.equal(res.status, 422)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // RBAC write protection — read-only users may not POST mutating routes.
+  // Tokens are minted with distinct usernames (stubbed login) so they never
+  // collide with the admin/admin tokens blacklisted elsewhere.
+  // -------------------------------------------------------------------------
+  describe('RBAC write protection (production mode)', function () {
+    let savedNodeEnv
+    let readonlyToken
+    let adminToken
+
+    before(async function () {
+      this.timeout(20000)
+      savedNodeEnv = process.env.NODE_ENV
+      sinon.stub(userLogin.prototype, 'checkLoginDetails').resolves(true)
+      const roleStub = sinon.stub(userLogin.prototype, 'getUserRole')
+      roleStub.resolves('readonly')
+      readonlyToken = (await request('POST', '/api/login', {
+        body: { username: 'rbacviewer', password: 'pw' }
+      })).body.token
+      roleStub.resolves('admin')
+      adminToken = (await request('POST', '/api/login', {
+        body: { username: 'rbacadmin', password: 'pw' }
+      })).body.token
+      sinon.restore()
+    })
+
+    afterEach(function () {
+      sinon.restore()
+      process.env.NODE_ENV = savedNodeEnv
+    })
+
+    after(function () {
+      process.env.NODE_ENV = savedNodeEnv
+    })
+
+    it('403 — read-only user cannot POST a mutating route', async function () {
+      process.env.NODE_ENV = 'production'
+      const res = await request('POST', '/api/createUser', {
+        token: readonlyToken,
+        body: { username: 'someone', password: 'password' }
+      })
+      assert.equal(res.status, 403)
+    })
+
+    it('200 — read-only user may still GET', async function () {
+      process.env.NODE_ENV = 'production'
+      const res = await request('GET', '/api/users', { token: readonlyToken })
+      assert.equal(res.status, 200)
+    })
+
+    it('200 — read-only user may POST an allowlisted route (/api/auth)', async function () {
+      process.env.NODE_ENV = 'production'
+      const res = await request('POST', '/api/auth', { token: readonlyToken, body: {} })
+      assert.equal(res.status, 200)
+    })
+
+    it('200 — admin user is not blocked from a mutating POST', async function () {
+      sinon.stub(userLogin.prototype, 'addUser').resolves(true)
+      process.env.NODE_ENV = 'production'
+      const res = await request('POST', '/api/createUser', {
+        token: adminToken,
+        body: { username: 'someone', password: 'password' }
+      })
       assert.equal(res.status, 200)
     })
   })
