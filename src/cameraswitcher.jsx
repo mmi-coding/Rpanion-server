@@ -61,17 +61,6 @@ class CameraSwitcherPage extends basePage {
         }
     };
 
-    handleConfigChange = (event) => {
-        const name = event.target.name;
-        const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
-        this.setState(prevState => ({
-            config: {
-                ...prevState.config,
-                [name]: value
-            }
-        }));
-    };
-
     handleSubmit = async (event) => {
         event.preventDefault();
         try {

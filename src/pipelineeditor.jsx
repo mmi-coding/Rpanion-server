@@ -98,14 +98,7 @@ class PipelineEditorPage extends basePage {
                 body: JSON.stringify({ device, enabled, pipeline })
             });
             const data = await response.json();
-            if (data.error) {
-                this.setState({ error: data.error });
-            } else {
-                this.setState({ error: null });
-            }
-            if (data.pipelines) {
-                this.setState({ pipelines: data.pipelines });
-            }
+            this.setState({ error: data.error || null, ...(data.pipelines ? { pipelines: data.pipelines } : {}) });
         } catch (error) {
             console.error('Error saving custom pipeline:', error);
             this.setState({ error: 'Failed to save custom pipeline' });

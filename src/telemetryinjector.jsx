@@ -67,17 +67,6 @@ class TelemetryInjectorPage extends basePage {
         }
     };
 
-    handleConfigChange = (event) => {
-        const name = event.target.name;
-        const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
-        this.setState(prevState => ({
-            config: {
-                ...prevState.config,
-                [name]: value
-            }
-        }));
-    };
-
     handleSubmit = async (event) => {
         event.preventDefault();
         try {
@@ -200,9 +189,9 @@ class TelemetryInjectorPage extends basePage {
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
                         <label className="col-sm-3 col-form-label">Serial baud<HelpTip text="Baud rate of the serial device. Must match the device's setting" /></label>
                         <div className="col-sm-8">
-                            <Form.Control as="select" name="serialBaud" value={config.serialBaud} onChange={this.handleConfigChange} style={{ maxWidth: '200px' }}>
+                            <Form.Select name="serialBaud" value={config.serialBaud} onChange={this.handleConfigChange} style={{ maxWidth: '200px' }}>
                                 {BAUDS.map(b => <option key={b} value={b}>{b}</option>)}
-                            </Form.Control>
+                            </Form.Select>
                         </div>
                     </div>
                     <div className="form-group row" style={{ marginBottom: '5px' }}>
