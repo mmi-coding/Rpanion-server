@@ -48,4 +48,6 @@ __pycache__/
 # Each converted file adds its emitted-JS twin below so nyc (all:true) never
 # double-counts foo.ts + foo.js. Tests transpile .ts in-memory via ts-node.
 *.tsbuildinfo
+*.js.map
 # --- emitted JS for converted modules (keep in sync with the .ts conversions) ---
+/server/videostreamHelpers.js
