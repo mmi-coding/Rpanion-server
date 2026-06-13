@@ -167,3 +167,17 @@ Wrappers are fakeBin-tested in WSL; the real data calls need the modem. See docs
 - [ ] Auto-reconnect works in each mode (registered but no IP → mode-aware reconnect)
 - [ ] Data-usage accounting and the connection test follow the active interface (usb0/wwan0/ppp0)
 - [ ] `sudo` rights for qmicli/udhcpc/pppd/poff under the service user
+
+## Feature 24: Telemetry injectors (feature/telemetry-injectors)
+
+Encoding + the HTTP/UDP/serial sources are unit-tested in WSL (serial via a
+pty-backed port); actual MAVLink delivery needs the live router + a GCS. See
+docs/TELEMETRY-INJECTORS.md.
+
+- [ ] With mavlink-router running and a GCS connected: enable the injector + HTTP source, POST `{"name":"co2","value":412}` to `/api/telemetryinject` → the NAMED_VALUE_FLOAT `co2` appears in the GCS
+- [ ] POST `{"text":"pump on","severity":6}` → a STATUSTEXT shows in the GCS message log
+- [ ] UDP source: enable + set listen port, send NDJSON datagrams from another host → readings appear; status shows "Listening on <port>" and the float/text counters climb
+- [ ] Serial source: point at a real serial device emitting NDJSON (NOT the FC port) → readings ingested; status shows "Open (<dev>)"
+- [ ] Component ID is distinct from the autopilot, so injected values are attributable in the GCS
+- [ ] Master switch off → all sources stop, `/api/telemetryinject` returns 409, no messages injected; on reboot the saved enabled state auto-starts the sources
+- [ ] With RBAC on, a read-only user cannot modify settings or inject (403)

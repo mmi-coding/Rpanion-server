@@ -19,6 +19,7 @@ export const ROUTES = [
   { path: '/pipelineeditor', nav: 'Video Pipeline Editor', title: 'Video Pipeline Editor' },
   { path: '/ltemodem', nav: 'LTE Modem', title: 'LTE Modem' },
   { path: '/cellulartuning', nav: 'Cellular Video Tuning', title: 'Cellular Video Tuning' },
+  { path: '/telemetryinjector', nav: 'Telemetry Injector', title: 'Telemetry Injector' },
   { path: '/cloud', nav: 'Cloud Upload', title: 'Cloud Upload' },
   { path: '/vpn', nav: 'VPN Config', title: 'VPN' },
   { path: '/tailscale', nav: 'Tailscale VPN', title: 'Tailscale VPN' },
@@ -33,6 +34,7 @@ export const ROUTES = [
 export const SELF_DOCUMENTING_PAGES = [
   { path: '/cameraswitcher', title: 'Camera Switcher' },
   { path: '/cellulartuning', title: 'Cellular Video Tuning' },
+  { path: '/telemetryinjector', title: 'Telemetry Injector' },
   { path: '/ltemodem', title: 'LTE Modem' },
   { path: '/pipelineeditor', title: 'Video Pipeline Editor' },
   { path: '/users', title: 'User Management' },
