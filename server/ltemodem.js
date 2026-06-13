@@ -564,23 +564,23 @@ class LTEModem {
   // packet-data handle/CID for a clean stop, then leases an address via DHCP.
   async _qmiConnect () {
     this._markReconnect()
-    const out = await this._exec('qmicli', ['-d', this.options.qmiDevice, `--wds-start-network=apn='${this.options.apn}',ip-type=4`, '--client-no-release-cid'])
+    const out = await this._exec('sudo', ['qmicli', '-d', this.options.qmiDevice, `--wds-start-network=apn='${this.options.apn}',ip-type=4`, '--client-no-release-cid'])
     const hMatch = out.match(/handle:\s*'?(\d+)'?/i)
     const cMatch = out.match(/CID:\s*'?(\d+)'?/i)
     this.qmiHandle = hMatch ? hMatch[1] : null
     this.qmiCid = cMatch ? cMatch[1] : null
-    await this._exec('udhcpc', ['-q', '-i', this.options.netInterface])
+    await this._exec('sudo', ['udhcpc', '-q', '-i', this.options.netInterface])
     return ['QMI network started']
   }
 
   async _qmiStop () {
     if (this.qmiHandle) {
-      await this._exec('qmicli', ['-d', this.options.qmiDevice, `--wds-stop-network=${this.qmiHandle}`, `--client-cid=${this.qmiCid}`])
+      await this._exec('sudo', ['qmicli', '-d', this.options.qmiDevice, `--wds-stop-network=${this.qmiHandle}`, `--client-cid=${this.qmiCid}`])
       this.qmiHandle = null
       this.qmiCid = null
     } else {
       // no tracked session - just take the interface down
-      await this._exec('ip', ['link', 'set', this.options.netInterface, 'down'])
+      await this._exec('sudo', ['ip', 'link', 'set', this.options.netInterface, 'down'])
     }
     return ['QMI network stopped']
   }
@@ -596,12 +596,12 @@ class LTEModem {
       throw new Error('Refusing to dial PPP on the flight controller port')
     }
     const chat = "chat -v '' AT OK ATD*99# CONNECT ''"
-    await this._exec('pppd', [port, String(this.options.pppBaud), 'noauth', 'defaultroute', 'usepeerdns', 'connect', chat])
+    await this._exec('sudo', ['pppd', port, String(this.options.pppBaud), 'noauth', 'defaultroute', 'usepeerdns', 'connect', chat])
     return ['PPP started']
   }
 
   async _pppStop () {
-    await this._exec('poff', [])
+    await this._exec('sudo', ['poff'])
     return ['PPP stopped']
   }
 

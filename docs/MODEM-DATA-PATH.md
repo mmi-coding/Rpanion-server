@@ -46,9 +46,20 @@ so a PPP data call can never disrupt the FC link.
 the wrappers are unit-tested via fake binaries with no hardware. The real
 `qmicli`/`udhcpc`/`pppd` round-trips are verified on-device.
 
+### Privileges
+
+`/dev/cdc-wdm0` (QMI) is root-only and `pppd` is setuid-root/`dip`-group, so the
+QMI/PPP helpers run their commands with **`sudo`** (`sudo qmicli`, `sudo udhcpc`,
+`sudo ip link set`, `sudo pppd`, `sudo poff`). The `.deb` installs a sudoers
+drop-in (`/etc/sudoers.d/allow-vpn-control`) granting the `rpanion` service user
+**passwordless** access to exactly those commands — nothing else. RNDIS needs no
+sudo (the service user opens the AT serial port directly via the `dialout` group).
+
 ## On-device prerequisites
 
-- **QMI:** `sudo apt install libqmi-utils`; expose `/dev/cdc-wdm0` (USB composition
-  with a QMI interface); the SIM7600 typically needs raw-IP on `wwan0`.
-- **PPP:** `sudo apt install ppp`.
-- Both need `sudo` rights for the respective tools under the service user.
+- **QMI:** `libqmi-utils` (qmicli) and `udhcpc` are now declared `.deb`
+  dependencies, so a package install pulls them. Expose `/dev/cdc-wdm0` (USB
+  composition with a QMI interface); the SIM7600 typically needs raw-IP on
+  `wwan0` (`echo Y > /sys/class/net/wwan0/qmi/raw_ip`) before the DHCP lease.
+- **PPP:** `ppp` (pppd/poff) — already a dependency.
+- A SIM must be inserted and the carrier **APN** set on the LTE Modem page.

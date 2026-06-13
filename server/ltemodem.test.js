@@ -1098,6 +1098,9 @@ ppp-fail) echo "pppd error" >&2; exit 1 ;;
 esac
 exit 0`)
       fake.install('poff', 'exit 0')
+      // QMI/PPP commands run via sudo; the fake just passes through to the
+      // faked underlying binary (qmicli/udhcpc/ip/pppd/poff) on PATH.
+      fake.install('sudo', 'exec "$@"')
       fake.activate()
     })
 
@@ -1231,11 +1234,12 @@ exit 0`)
       assert.ok(fake.calls('pppd')[0].includes('/dev/ttyUSB2'))
     })
 
-    it('#_pppStop() runs poff', async function () {
+    it('#_pppStop() runs poff via sudo', async function () {
       settings.clear()
       const modem = new LTEModem(settings)
       await modem._pppStop()
-      assert.ok(fake.calls('poff').length >= 1)
+      // poff takes no args (nothing logged to poff.calls), so assert via sudo
+      assert.ok(fake.calls('sudo').some(c => c === 'poff'))
     })
 
     it('#setSettings() accepts the new data-path fields and persists them', function (done) {

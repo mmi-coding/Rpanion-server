@@ -41,6 +41,10 @@ rpanion ALL=(ALL) NOPASSWD: \
   /usr/sbin/shutdown *, \
   /usr/bin/nmcli *, \
   /usr/sbin/pppd *, \
+  /usr/bin/poff, \
+  /usr/bin/qmicli *, \
+  /usr/sbin/udhcpc *, \
+  /usr/bin/ip link set *, \
   /usr/sbin/iw dev * scan ap-force, \
   /usr/bin/pkill -SIGTERM pppd, \
   /usr/bin/cat /var/lib/NetworkManager/dnsmasq-*
