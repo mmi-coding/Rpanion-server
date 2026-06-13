@@ -39,6 +39,7 @@ const CameraSwitcher = require('./cameraSwitcher')
 const CustomPipelines = require('./customPipelines')
 const CellularTuning = require('./cellularTuning')
 const DynamicDns = require('./dynamicDns')
+const NetworkPriority = require('./networkPriority')
 const LTEModem = require('./ltemodem')
 
 // Shared harness
@@ -1312,6 +1313,59 @@ describe('Package B — delegate HTTP routes', function () {
         try {
           assert.equal(res.status, 200)
           assert.ok(res.body.status)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
+  // Network priority + bandwidth routes
+  // =========================================================================
+  describe('GET /api/networkpriority', function () {
+    it('200 — lists connections', function (done) {
+      sinon.stub(NetworkPriority.prototype, 'listConnections').callsFake(function (cb) {
+        cb(null, [{ name: 'WiFi', uuid: 'uuid-2', type: '802-11-wireless' }])
+      })
+      request('GET', '/api/networkpriority').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(Array.isArray(res.body.connections))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('GET /api/networkbandwidth', function () {
+    it('200 — returns interface bandwidth', function (done) {
+      sinon.stub(NetworkPriority.prototype, 'getBandwidth').returns([{ name: 'eth0', rxBytes: 1, txBytes: 2, rxRate: 0, txRate: 0 }])
+      request('GET', '/api/networkbandwidth').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(Array.isArray(res.body.interfaces))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/networksetpriority', function () {
+    it('422 — invalid UUID', function (done) {
+      request('POST', '/api/networksetpriority', { body: { conName: 'not-a-uuid', priority: 10, metric: 50 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — success path', function (done) {
+      sinon.stub(NetworkPriority.prototype, 'setPriority').callsFake(function (conName, priority, metric, cb) { cb(null) })
+      request('POST', '/api/networksetpriority', { body: { conName: '550e8400-e29b-41d4-a716-446655440000', priority: 10, metric: 50 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(res.body.error, null)
           done()
         } catch (e) { done(e) }
       }).catch(done)
