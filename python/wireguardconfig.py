@@ -5,7 +5,6 @@ Output the curent wireguard config in json format
 
 import json
 from pathlib import Path
-import os
 import subprocess
 
 # Get running links
@@ -24,11 +23,11 @@ for file in files:
     # check if there's a link running with that name
     status = "disabled"
     for link in links:
-        if link['ifname'] == str(os.path.basename(file).rsplit('.', 1)[0]):
+        if link['ifname'] == file.stem:
             # Wireguard doesn't have an up/down state. So just tell the user that it's enabled
             status = "enabled"
             break
 
-    retDevices.append({'profile': str(os.path.basename(file)), 'peer': peerIP, 'server': serverIP, 'status': status, 'interface': ""})
+    retDevices.append({'profile': file.name, 'peer': peerIP, 'server': serverIP, 'status': status, 'interface': ""})
 
 print(json.dumps(retDevices))
