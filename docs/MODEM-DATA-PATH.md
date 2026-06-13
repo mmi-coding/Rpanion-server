@@ -55,11 +55,22 @@ drop-in (`/etc/sudoers.d/allow-vpn-control`) granting the `rpanion` service user
 **passwordless** access to exactly those commands — nothing else. RNDIS needs no
 sudo (the service user opens the AT serial port directly via the `dialout` group).
 
-## On-device prerequisites
+## QMI vs RNDIS — which one your modem exposes
 
-- **QMI:** `libqmi-utils` (qmicli) and `udhcpc` are now declared `.deb`
-  dependencies, so a package install pulls them. Expose `/dev/cdc-wdm0` (USB
-  composition with a QMI interface); the SIM7600 typically needs raw-IP on
-  `wwan0` (`echo Y > /sys/class/net/wwan0/qmi/raw_ip`) before the DHCP lease.
+This is a **modem USB-composition setting, not a hardware limitation**. SIM7600
+(and similar) modules can present their data interface as either **QMI**
+(`qmi_wwan` → `cdc-wdm0` + `wwan0`) or **RNDIS/ECM** (`usb0`), selected by the
+USB PID. A modem on PID `1e0e:9001` enumerates as QMI (no `usb0`); switch it with
+`AT+CUSBPIDSWITCH` if you specifically want RNDIS. QMI is generally the more
+robust choice, so prefer it unless you have a reason not to.
+
+## On-device prerequisites (now mostly automatic)
+
+- **QMI:** `libqmi-utils` (qmicli) and `udhcpc` are `.deb` dependencies. The `.deb`
+  installs a **udev rule** (`77-rpanion-qmi-rawip.rules`) that sets raw-IP
+  (`qmi/raw_ip=Y`) automatically when the `qmi_wwan` interface appears, and a
+  NetworkManager drop-in that marks `wwan0` **unmanaged** (so NM doesn't fight the
+  manual data call). No manual sysfs step needed.
 - **PPP:** `ppp` (pppd/poff) — already a dependency.
-- A SIM must be inserted and the carrier **APN** set on the LTE Modem page.
+- A SIM must be inserted and the carrier **APN** set on the LTE Modem page; then
+  pick QMI mode + `wwan0` and hit **Connect**.

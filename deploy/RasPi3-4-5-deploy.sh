@@ -32,7 +32,7 @@ fi
 
 # Also need gstreamer1.0-libcamera, as the libcamerasrc gst element has moved in bookworm
 source /etc/os-release
-if [[ "$ID" == "debian" || "$ID" == "raspbian" ]] && [ "$VERSION_CODENAME" == "bookworm" ]; then
+if [[ "$ID" == "debian" || "$ID" == "raspbian" ]] && [[ "$VERSION_CODENAME" == "bookworm" || "$VERSION_CODENAME" == "trixie" ]]; then
     sudo apt install -y  gstreamer1.0-libcamera
 fi
 

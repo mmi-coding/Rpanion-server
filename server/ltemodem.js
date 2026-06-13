@@ -564,6 +564,10 @@ class LTEModem {
   // packet-data handle/CID for a clean stop, then leases an address via DHCP.
   async _qmiConnect () {
     this._markReconnect()
+    // Raw-IP framing is set automatically by the shipped udev rule
+    // (77-rpanion-qmi-rawip.rules) when the qmi_wwan interface appears; just
+    // ensure it's up before starting the bearer + leasing an address.
+    await this._exec('sudo', ['ip', 'link', 'set', this.options.netInterface, 'up'])
     const out = await this._exec('sudo', ['qmicli', '-d', this.options.qmiDevice, `--wds-start-network=apn='${this.options.apn}',ip-type=4`, '--client-no-release-cid'])
     const hMatch = out.match(/handle:\s*'?(\d+)'?/i)
     const cMatch = out.match(/CID:\s*'?(\d+)'?/i)
