@@ -23,6 +23,7 @@ const CameraSwitcher = require('./cameraSwitcher.js')
 const CustomPipelines = require('./customPipelines.js')
 const LTEModem = require('./ltemodem.js')
 const CellularTuning = require('./cellularTuning.js')
+const DynamicDns = require('./dynamicDns.js')
 
 const settings = require('settings-store')
 
@@ -103,6 +104,8 @@ const cellularTuning = new CellularTuning(settings, {
   getAckBitrate: () => vManager.currentBitrate
 })
 
+const ddns = new DynamicDns(settings)
+
 // Graceful shutdown implementation
 let isShuttingDown = false
 const SHUTDOWN_TIMEOUT = 10000 // 10 seconds
@@ -170,6 +173,7 @@ async function gracefulShutdown(signal, exitCode = 0) {
     logConversion.quitting()
     lteModem.quitting()
     cellularTuning.quitting()
+    ddns.quitting()
     console.log('All services stopped')
     
     clearTimeout(forceShutdownTimer)
@@ -1196,6 +1200,47 @@ app.post('/api/cellulartuningmodify', authenticateToken, [
     } else {
       res.send(JSON.stringify({ error: null, settings: cellularTuning.getSettings() }))
     }
+  })
+})
+
+// Serve the dynamic DNS settings + status
+app.get('/api/ddns', authenticateToken, (req, res) => {
+  res.setHeader('Content-Type', 'application/json')
+  res.send(JSON.stringify({ settings: ddns.getSettings(), status: ddns.getStatus() }))
+})
+
+// Change dynamic DNS settings
+app.post('/api/ddnsmodify', authenticateToken, [
+  check('enabled').isBoolean(),
+  check('provider').isIn(['duckdns', 'noip']),
+  check('hostname').isLength({ min: 1 }).not().contains(';').trim(),
+  check('intervalMin').isInt({ min: 1, max: 1440 })
+], (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/ddnsmodify', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  ddns.setSettings({
+    enabled: req.body.enabled === true || req.body.enabled === 'true',
+    provider: req.body.provider,
+    hostname: req.body.hostname,
+    token: req.body.token || '',
+    username: req.body.username || '',
+    password: req.body.password,
+    intervalMin: parseInt(req.body.intervalMin, 10)
+  }, (err) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ error: err, settings: ddns.getSettings(), status: ddns.getStatus() }))
+  })
+})
+
+// Trigger an immediate dynamic DNS update
+app.post('/api/ddnsupdate', authenticateToken, (req, res) => {
+  ddns.updateNow().then((status) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ status }))
   })
 })
 

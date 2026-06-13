@@ -134,3 +134,13 @@ The CLI wrappers are fakeBin-tested in WSL; real tailnet behaviour needs the dev
 - [ ] Disconnect → `tailscale down`; reconnect without a new key
 - [ ] Confirm `sudo tailscale` has the needed rights on the Pi (no password prompt under the service user)
 - [ ] With RBAC on, a read-only user cannot Connect/Disconnect (403)
+
+## Feature 18: Dynamic DNS (feature/dynamic-dns)
+
+The updater logic is fully unit-tested (HTTP client stubbed); real DNS round-trips need the device.
+
+- [ ] DuckDNS: enable with a real subdomain + token → Update now shows Success and the hostname resolves to the device's public IP
+- [ ] No-IP: enable with real credentials → Success; verify basic-auth update works
+- [ ] Public-IP detection (api.ipify.org) reachable over the modem link; behind CGNAT the detected IP is the carrier address (expected — pair with VPN)
+- [ ] Timer: leave enabled, confirm periodic updates happen at the configured interval (check provider "last update")
+- [ ] With RBAC on, a read-only user cannot Save/Update (403)

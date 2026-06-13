@@ -13,6 +13,7 @@ import AdhocConfig from './adhocwifi.jsx'
 import CloudConfig from './cloud.jsx'
 import VPN from './vpnconfig.jsx'
 import TailscalePage from './tailscale.jsx'
+import DDNSPage from './ddns.jsx'
 import Logout from './logout.jsx'
 import UserManagement from './userManagement.jsx'
 import PPPPage from './ppp.jsx'
@@ -88,6 +89,7 @@ function AppRouter () {
           <Link className='list-group-item list-group-item-action bg-light' to="/cloud">Cloud Upload</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/vpn">VPN Config</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/tailscale">Tailscale VPN</Link>
+          <Link className='list-group-item list-group-item-action bg-light' to="/ddns">Dynamic DNS</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/about">About</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/users">User Management</Link>
           {isAuthEnabled && (
@@ -116,6 +118,7 @@ function AppRouter () {
             <Route exact path="/cloud" element={<CloudConfig />} />
             <Route exact path="/vpn" element={<VPN/>} />
             <Route exact path="/tailscale" element={<TailscalePage/>} />
+            <Route exact path="/ddns" element={<DDNSPage/>} />
             {isAuthEnabled && (
               <Route path="/logoutconfirm" element={<Logout />} />
             )}
