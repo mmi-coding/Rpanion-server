@@ -3,7 +3,6 @@ const fileUpload = require('express-fileupload')
 const compression = require('compression')
 const pino = require('pino-http')()
 const process = require('process')
-const jwt = require('jsonwebtoken');
 const { common } = require('node-mavlink')
 
 const networkManager = require('./networkManager')
@@ -32,8 +31,6 @@ const settings = require('settings-store')
 const app = express()
 const http = require('http').Server(app)
 const path = require('path')
-const os = require('os')
-const appRoot = require('app-root-path')  // for resolving relative paths
 
 // MEDIA_ROOT is the default storage area used by the Python helpers.
 // For security, user-provided paths are required to live within it.
@@ -41,9 +38,6 @@ const MEDIA_ROOT = logpaths.mediaDir; // absolute path to rpanion-server/media
 
 
 const io = require('socket.io')(http, { cookie: false })
-const { check, validationResult } = require('express-validator')
-const crypto = require('crypto');
-const fs = require('fs');
 
 // Coerce a request-body field to boolean, accepting JSON true or the string 'true'
 const toBool = (v) => v === true || v === 'true'
@@ -61,16 +55,6 @@ const limiter = RateLimit({
   skip: (req) => process.env.NODE_ENV === 'development' && !process.env.ENABLE_RATE_LIMIT
 })
 
-// Generate a new key if not provided
-function generateSecretKey() {
-  return crypto.randomBytes(64).toString('hex');
-}
-const RPANION_SECRET_KEY = process.env.RPANION_SECRET_KEY || generateSecretKey();
-const tokenBlacklist = new Set();
-
-// RBAC: read-only users may not perform mutating (POST) requests. These POST
-// endpoints are exempt because they are not configuration mutations.
-const WRITE_ALLOWLIST = new Set(['/api/auth', '/api/logout']);
 
 // apply rate limiter to all requests
 app.use(limiter)
@@ -115,6 +99,10 @@ const ddns = new DynamicDns(settings)
 const networkPriority = new NetworkPriority()
 
 const telemetryInjector = new TelemetryInjector(settings)
+
+// Authentication: the authenticateToken middleware (injected into every route
+// module) + the auth/user routes (mounted after the body parser, below).
+const { authenticateToken, router: authRouter } = require('./auth.js')({ userMgmt })
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -244,43 +232,6 @@ ntripClient.eventEmitter.on('rtcmpacket', (msg, seq) => {
   }
 })
 
-
-// Capture a single still photo when in photo mode
-// This code responds to the button on the web interface
-app.post('/api/capturestillphoto', authenticateToken, function (req, res) {
-  if (vManager.active && vManager.cameraMode === 'photo') {
-    console.log("[API /api/capturestillphoto] Conditions met. Calling vManager.captureStillPhoto()");
-    const currentPosition = fcManager.getSystemStatus().vehiclePosition;
-    
-    // Call without MAVLink sender/target info as it's a UI trigger
-    vManager.captureStillPhoto(null, null, null, currentPosition);
-    res.status(200).send({ message: 'Capture signal sent.' });
-  } else {
-    console.log("[API /api/capturestillphoto] Conditions NOT met. Sending 400.");
-    res.status(400).send({ error: 'Camera not active or not in photo mode.' });
-  }
-})
-
-// Toggle local video recording on/off
-// This code responds to the button on the web interface
-app.post('/api/togglevideorecording', authenticateToken, function (req, res) {
-  console.log(`[API /togglevideorecording] Received request. Server state: vManager.active=${vManager.active}, vManager.cameraMode=${vManager.cameraMode}`);
-
-  // Check if active and in the correct mode
-  if (vManager.active && vManager.cameraMode === 'video') {
-    try {
-      vManager.toggleVideoRecording(); // Use the new method name
-      console.log('Toggled video recording via API.');
-      res.status(200).send({ success: true, message: 'Toggle signal sent.' });
-    } catch (err) {
-      console.log('Error toggling video recording:', err);
-      res.status(500).send({ error: 'Failed to send toggle signal.' });
-    }
-  } else {
-    console.log(`[API /togglevideorecording] Condition NOT met (active=${vManager.active}, mode=${vManager.cameraMode}). Sending 400.`);
-    res.status(400).send({ error: 'Camera is not active in video recording mode.' });
-  }
-})
 
 // This function responds to a MAVLink command to capture a photo.
 vManager.eventEmitter.on('digicamcontrol', (senderSysId, senderCompId, targetComponent) => {
@@ -423,217 +374,14 @@ app.use(express.json())
 // Serve the static files from the React app
 app.use(express.static(path.join(__dirname, '..', '/build')))
 
-// User login
-app.post('/api/login', [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/login', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  // Capture the input fields
-  let username = req.body.username
-  let password = req.body.password
-
-  userMgmt.checkLoginDetails(username, password).then(async (match) => {
-    if (match) {
-      // Generate a token with user information, including the RBAC role
-      const role = await userMgmt.getUserRole(username)
-      const token = jwt.sign({ username: username, role: role }, RPANION_SECRET_KEY, {
-        expiresIn: '1h', // Token expires in 1 hour
-      })
-      res.send({
-        token: token
-      })
-    } else {
-      res.status(401).send(JSON.stringify({error: 'Invalid username or password'}))
-    }
-  })
-})
-
-// List all users
-app.get('/api/users', authenticateToken, (req, res) => {
-  userMgmt.getAllUsers().then((users) => {
-    res.send(JSON.stringify({users: users}))
-  })
-})
-
-// Update existing user password
-app.post('/api/updateUserPassword', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/updateUserPassword', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username, password } = req.body;
-
-  /* istanbul ignore next -- unreachable: express-validator min:2 on both fields already rejects missing/empty values before this guard */
-  if (!username || !password) {
-    //return res.status(400).send({
-    //  error: 'Username and password are required'
-    //})
-    res.status(400).send(JSON.stringify({error: 'Username and password are required'}))
-  }
-
-  userMgmt.changePassword(username, password).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User password updated successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error updating user password'}))
-    }
-  })
-})
-
-// Create new user
-app.post('/api/createUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 }), check('role').optional().isIn(['admin', 'readonly'])], async (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/createUser', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username, password, role } = req.body
-
-  /* istanbul ignore next -- unreachable: express-validator min:2 on both fields already rejects missing/empty values before this guard */
-  if (!username || !password) {
-    return res.status(400).send(JSON.stringify({error: 'Username and password are required'}))
-  }
-
-  userMgmt.addUser(username, password, role).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User created successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error creating user'}))
-    }
-  })
-})
-
-// Update an existing user's role (admin only, enforced by authenticateToken)
-app.post('/api/updateUserRole', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('role').isIn(['admin', 'readonly'])], (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/updateUserRole', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username, role } = req.body
-
-  userMgmt.updateRole(username, role).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User role updated successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error updating user role'}))
-    }
-  })
-})
-
-// Delete a user
-app.post('/api/deleteUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 })], (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/deleteUser', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username } = req.body
-
-  /* istanbul ignore next -- unreachable: express-validator min:2 on username already rejects missing/empty value before this guard */
-  if (!username) {
-    return res.status(400).send(JSON.stringify({error: 'Username is required'}))
-  }
-
-  userMgmt.deleteUser(username).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User deleted successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error deleting user'}))
-    }
-  })
-})
-
-// User logout
-app.post('/api/logout', authenticateToken, async (req, res) => {
-  const authHeader = req.headers['authorization']
-  const token = authHeader && authHeader.split(' ')[1]
-
-  // Add token to the blacklist
-  tokenBlacklist.add(token)
-
-  res.send({
-    token: token
-  })
-})
-
-// Simple token authentication call
-app.post('/api/auth', authenticateToken, async (req, res) => {
-  const authEnabled = !(process.env.NODE_ENV === 'development' || process.env.DISABLE_AUTH === '1')
-
-  res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify({
-    authEnabled,
-    role: req.user?.role
-  }))
-})
-
-// Middleware to check if the request has a valid token
-function authenticateToken(req, res, next) {
-  // Skip authentication in development mode
-  if (process.env.NODE_ENV === 'development' || process.env.DISABLE_AUTH === '1') {
-    return next();
-  }
-
-  // Determine if this is a Socket.IO request
-  const isSocketIO = typeof res.status !== 'function'
-
-  // Helper function to send error responses
-  const sendError = (statusCode, message) => {
-    if (isSocketIO) {
-      return next(new Error(message))
-    }
-    return res.status(statusCode).json({ message })
-  }
-
-  // Extract token
-  let token;
-  try {
-    const authHeader = req.headers['authorization']
-    token = authHeader && authHeader.split(' ')[1]
-  } catch (err) /* istanbul ignore next -- header property access cannot throw in express */ {
-    return sendError(401, 'Access denied. No token provided.')
-  }
-
-  if (!token) {
-    return sendError(401, 'Access denied. No token provided.')
-  }
-
-  // Check if the token is blacklisted
-  if (tokenBlacklist.has(token)) {
-    return sendError(401, 'Invalid token')
-  }
-
-  // Verify token
-  jwt.verify(token, RPANION_SECRET_KEY, (err, user) => {
-    if (err) {
-      return sendError(403, 'Invalid token')
-    }
-    req.user = user
-    // RBAC: read-only users may only read. Block mutating (POST) requests
-    // except the auth/logout housekeeping endpoints.
-    if (req.method === 'POST' && user.role === 'readonly' && !WRITE_ALLOWLIST.has(req.path)) {
-      return sendError(403, 'Read-only user: write access denied')
-    }
-    next()
-  })
-}
+// Auth + user management routes (extracted to ./auth.js)
+app.use(authRouter)
 
 // PPP connection routes (extracted to ./routes/ppp.js)
 app.use(require('./routes/ppp.js')({ authenticateToken, pppConnectionManager }))
 
-// Serve the logfile
-app.get('/api/logfile', authenticateToken, (req, res) => {
-  aboutPage.getsystemctllog((logStr) => {
-    console.log(logStr)
-    res.setHeader('Content-Disposition', 'attachment; filename="rpanion.log"')
-    res.setHeader('Content-Type', 'text/plain')
-    res.send(logStr)
-  })
-})
+// System / about / logs / settings routes (extracted to ./routes/system.js)
+app.use(require('./routes/system.js')({ authenticateToken, aboutPage, networkClients, logManager, fcManager }))
 
 // VPN routes — ZeroTier/WireGuard/Tailscale (extracted to ./routes/vpn.js)
 app.use(require('./routes/vpn.js')({ authenticateToken, VPNManager }))
@@ -649,6 +397,10 @@ app.use(require('./routes/logConversion.js')({ authenticateToken, logConversion 
 
 // Adhoc WiFi routes (extracted to ./routes/adhoc.js)
 app.use(require('./routes/adhoc.js')({ authenticateToken, adhocManager }))
+
+// Camera control routes (extracted to ./routes/camera.js) — must be after the
+// body-parser middleware so camera/start sees req.body
+app.use(require('./routes/camera.js')({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }))
 
 // Camera switcher routes (extracted to ./routes/cameraSwitcher.js)
 app.use(require('./routes/cameraSwitcher.js')({ authenticateToken, toBool, camSwitcher }))
@@ -671,293 +423,13 @@ app.use(require('./routes/networkPriority.js')({ authenticateToken, networkPrior
 // Dynamic DNS routes (extracted to ./routes/dynamicDns.js)
 app.use(require('./routes/dynamicDns.js')({ authenticateToken, toBool, ddns }))
 
-// Serve the AP clients info
-app.get('/api/networkclients', authenticateToken, (req, res) => {
-  networkClients.getClients((err, apnamev, apclientsv) => {
-    res.setHeader('Content-Type', 'application/json')
-    res.send(JSON.stringify({ error: err, apname: apnamev, apclients: apclientsv }))
-  })
-})
-
 // Serve the logfiles
 app.use('/logdownload', express.static(logpaths.flightsLogsDir))
 // Serve the media files
 app.use('/media', express.static(MEDIA_ROOT))
 
-app.get('/api/logfiles', authenticateToken, (req, res) => {
-  logManager.getLogs((err, tlogs, binlogs, kmzlogs, media) => {
-    res.setHeader('Content-Type', 'application/json')
-    res.send(JSON.stringify({ TlogFiles: tlogs, BinlogFiles: binlogs, KMZlogFiles: kmzlogs, MediaFiles: media, url: req.protocol + '://' + req.headers.host }))
-  })
-})
-
-app.post('/api/deletelogfiles', authenticateToken, [check('logtype').isIn(['tlog', 'binlog', 'kmzlog', 'media'])], (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/deletelogfiles', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-
-  logManager.clearlogs(req.body.logtype, fcManager.binlog)
-  res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify({}))
-})
-
-app.get('/api/approot', authenticateToken, (req, res) => {
-  res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify({ appRoot: appRoot.toString() }))
-})
-
-app.get('/api/softwareinfo', authenticateToken, (req, res) => {
-  aboutPage.getSoftwareInfo((OSV, NodeV, RpanionV, hostname, err) => {
-    if (!err) {
-      res.setHeader('Content-Type', 'application/json')
-      res.send(JSON.stringify({ OSVersion: OSV, Nodejsversion: NodeV, rpanionversion: RpanionV, hostname }))
-      console.log('/api/softwareinfo OS:' + OSV + ' Node:' + NodeV + ' Rpanion:' + RpanionV + ' Hostname: ' + hostname)
-    } else {
-      res.setHeader('Content-Type', 'application/json')
-      res.send(JSON.stringify({ OSVersion: err, Nodejsversion: err, rpanionversion: err, hostname: err }))
-      console.log('Error in /api/softwareinfo ', { message: err })
-    }
-  })
-})
-
-app.get('/api/videodevices', authenticateToken, (req, res) => {
-
-  vManager.getVideoDevices((err, responseData) => {
-    res.setHeader('Content-Type', 'application/json');
-    if (err) {
-      console.error('Error getting video devices /api/videodevices:', err);
-      // Determine appropriate status code and send minimal fallback data
-      const status = (err === 'No video devices found') ? 404 : 500;
-      return res.status(status).json({
-        error: `Failed to get video devices: ${err}`,
-        active: vManager.active,
-        cameraMode: vManager.cameraMode,
-        networkInterfaces: vManager.scanInterfaces()
-      });
-    }
-    // Send the whole responseData object directly
-    res.send(JSON.stringify(responseData));
-  });
-});
-
-// GET Still Camera Device information
-app.get('/api/camera/still_devices', authenticateToken, (req, res) => {
-  vManager.getStillDevices((err, stillData) => {
-    res.setHeader('Content-Type', 'application/json');
-    if (err) {
-      console.error('Error getting still devices:', err);
-      return res.status(500).json({
-        error: `Failed to get still camera devices: ${err}`,
-        devices: []
-      });
-    }
-
-    // stillData contains { devices, selectedDevice, selectedCap }
-    res.send(JSON.stringify({
-      ...stillData,
-      error: null
-    }));
-  });
-});
-
-app.get('/api/hardwareinfo', authenticateToken, (req, res) => {
-  aboutPage.getHardwareInfo((RAM, CPU, hatData, sysData, err) => {
-    if (!err) {
-      res.setHeader('Content-Type', 'application/json')
-      res.send(JSON.stringify({ CPUName: CPU, RAMName: RAM, HATName: hatData, SYSName: sysData }))
-    } else {
-      res.setHeader('Content-Type', 'application/json')
-      res.send(JSON.stringify({ CPUName: err, RAMName: err, HATName: err, SYSName: err }))
-      console.log('Error in /api/hardwareinfo ', { message: err })
-    }
-  })
-})
-
-app.get('/api/diskinfo', authenticateToken, (req, res) => {
-  aboutPage.getDiskInfo((total, used, percent, err) => {
-    if (!err) {
-      res.setHeader('Content-Type', 'application/json')
-      res.send(JSON.stringify({ diskSpaceStatus: 'Used ' + used + '/' + total + ' Gb (' + percent + '%)' }))
-    } else {
-      res.setHeader('Content-Type', 'application/json')
-      res.send(JSON.stringify({ diskSpaceStatus: err }))
-      console.log('Error in /api/diskinfo ', { message: err })
-    }
-  })
-})
-
-app.get('/api/FCOutputs', authenticateToken, (req, res) => {
-  res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify({ UDPoutputs: fcManager.getUDPOutputs() }))
-})
-
-app.get('/api/FCDetails', authenticateToken, (req, res) => {
-  res.setHeader('Content-Type', 'application/json')
-  fcManager.getDeviceSettings((err, devices, bauds, seldevice, selbaud, mavers, selmav,
-    active, enableHeartbeat, enableTCP, enableUDPB, UDPBPort, enableDSRequest, doLogging,
-    udpInputPort, selInputType, inputTypes) => {
-    // hacky way to pass through the
-    if (!err) {
-      console.log('Sending')
-      console.log(devices)
-      res.send(JSON.stringify({
-        telemetryStatus: active,
-        serialPorts: devices,
-        baudRates: bauds,
-        serialPortSelected: seldevice,
-        mavVersions: mavers,
-        mavVersionSelected: selmav,
-        baudRateSelected: selbaud,
-        enableHeartbeat,
-        enableTCP,
-        enableUDPB,
-        UDPBPort,
-        enableDSRequest,
-        doLogging,
-        udpInputPort,
-        selInputType,
-        inputTypes
-      }))
-    } else {
-      console.log(devices)
-      res.send(JSON.stringify({
-        error: err.toString(),
-        telemetryStatus: active,
-        serialPorts: devices,
-        baudRates: bauds,
-        serialPortSelected: seldevice,
-        mavVersions: mavers,
-        mavVersionSelected: selmav,
-        baudRateSelected: selbaud,
-        enableHeartbeat,
-        enableTCP,
-        enableUDPB,
-        UDPBPort,
-        enableDSRequest,
-        doLogging,
-        udpInputPort,
-        selInputType,
-        inputTypes
-      }))
-      console.log('Error in /api/FCDetails ', { message: err })
-    }
-  })
-})
-
-app.post('/api/shutdowncc', authenticateToken, function () {
-  // User wants to shutdown the computer
-  aboutPage.shutdownCC()
-})
-
-app.post('/api/resetsettings', authenticateToken, function (req, res) {
-  // User wants to reset all settings to defaults
-  try {
-    const settingsPath = logpaths.settingsFile
-    
-    // Delete the settings file
-    if (fs.existsSync(settingsPath)) {
-      fs.unlinkSync(settingsPath)
-      console.log('Settings file deleted:', settingsPath)
-    }
-    
-    // Create empty settings object
-    fs.writeFileSync(settingsPath, '{}')
-    console.log('Settings reset to defaults')
-    
-    res.setHeader('Content-Type', 'application/json')
-    res.send(JSON.stringify({ success: true, message: 'Settings have been reset. Please restart the application for changes to take effect.' }))
-  } catch (error) {
-    console.error('Error resetting settings:', error)
-    res.status(500).send(JSON.stringify({ error: 'Failed to reset settings: ' + error.message }))
-  }
-})
-
-app.get('/api/settingsbackup', authenticateToken, function (req, res) {
-  // User wants to download the current settings as a JSON file
-  try {
-    const settingsPath = logpaths.settingsFile
-    const contents = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, 'utf8') : '{}'
-    res.setHeader('Content-Disposition', 'attachment; filename="rpanion-settings.json"')
-    res.setHeader('Content-Type', 'application/json')
-    res.send(contents)
-  } catch (error) {
-    console.error('Error backing up settings:', error)
-    res.status(500).send(JSON.stringify({ error: 'Failed to backup settings: ' + error.message }))
-  }
-})
-
-app.post('/api/settingsrestore', authenticateToken, function (req, res) {
-  // User wants to restore settings from an uploaded settings object
-  try {
-    const settings = req.body
-    // Must be a non-null, non-array plain object
-    if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) {
-      return res.status(400).send(JSON.stringify({ success: false, error: 'Invalid settings: expected a JSON object' }))
-    }
-    fs.writeFileSync(logpaths.settingsFile, JSON.stringify(settings))
-    console.log('Settings restored')
-    res.setHeader('Content-Type', 'application/json')
-    res.send(JSON.stringify({ success: true, message: 'Settings restored. Please restart the application for changes to take effect.' }))
-  } catch (error) {
-    console.error('Error restoring settings:', error)
-    res.status(500).send(JSON.stringify({ error: 'Failed to restore settings: ' + error.message }))
-  }
-})
-
-app.post('/api/FCModify', authenticateToken, [check('device'), check('baud').isInt(), check('mavversion').isInt(), check('enableHeartbeat').isBoolean(), check('enableTCP').isBoolean(), check('enableUDPB').isBoolean(), check('UDPBPort').isPort(), check('enableDSRequest').isBoolean(), check('doLogging').isBoolean()], function (req, res) {
-  // User wants to start/stop FC telemetry
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/FCModify', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-
-  fcManager.startStopTelemetry(req.body.device, req.body.baud, req.body.mavversion, req.body.enableHeartbeat,
-                               req.body.enableTCP, req.body.enableUDPB, req.body.UDPBPort, req.body.enableDSRequest,
-                               req.body.doLogging, req.body.inputType, req.body.udpInputPort, (err, isSuccess) => {
-    if (!err) {
-      res.setHeader('Content-Type', 'application/json')
-      // console.log(isSuccess);
-      res.send(JSON.stringify({ telemetryStatus: isSuccess, error: null }))
-    } else {
-      res.setHeader('Content-Type', 'application/json')
-      res.send(JSON.stringify({ telemetryStatus: false, error: err }))
-      console.log('Error in /api/FCModify ', { message: err })
-    }
-  })
-})
-
-app.post('/api/FCReboot', authenticateToken, function () {
-  fcManager.rebootFC()
-})
-
-app.post('/api/addudpoutput', authenticateToken, [check('newoutputIP').isIP(), check('newoutputPort').isInt({ min: 1 })], function (req, res) {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/addudpoutput ', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-
-  const newOutput = fcManager.addUDPOutput(req.body.newoutputIP, parseInt(req.body.newoutputPort))
-
-  res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify({ UDPoutputs: newOutput }))
-})
-
-app.post('/api/removeudpoutput', authenticateToken, [check('removeoutputIP').isIP(), check('removeoutputPort').isInt({ min: 1 })], function (req, res) {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/removeudpoutput ', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-
-  const newOutput = fcManager.removeUDPOutput(req.body.removeoutputIP, parseInt(req.body.removeoutputPort))
-
-  res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify({ UDPoutputs: newOutput }))
-})
+// Flight controller routes (extracted to ./routes/flightController.js)
+app.use(require('./routes/flightController.js')({ authenticateToken, fcManager }))
 
 io.engine.use((req, res, next) => {
   const isHandshake = req._query.sid === undefined
@@ -990,155 +462,6 @@ io.on('connection', function () {
 
 // NetworkManager (wired/WiFi) routes (extracted to ./routes/network.js)
 app.use(require('./routes/network.js')({ authenticateToken, networkManager }))
-
-// POST to START a specific camera mode (streaming, photo, video)
-app.post('/api/camera/start', authenticateToken, [
-  check('cameraMode').isIn(['streaming', 'photo', 'video']),
-  check('useCameraHeartbeat').isBoolean(),
-  // Validation for modes that use a video pipeline ('streaming' or 'video')
-  check('videoDevice').if(check('cameraMode').isIn(['streaming', 'video'])).isString().notEmpty(),
-  check('height').if(check('cameraMode').isIn(['streaming', 'video'])).isInt({ min: 1 }),
-  check('width').if(check('cameraMode').isIn(['streaming', 'video'])).isInt({ min: 1 }),
-  check('bitrate').if(check('cameraMode').isIn(['streaming', 'video'])).isInt({ min: 50, max: 50000 }),
-  check('fps').if(check('cameraMode').isIn(['streaming', 'video'])).isInt({ min: 0, max: 120 }),
-  check('rotation').if(check('cameraMode').isIn(['streaming', 'video'])).isInt().isIn([0, 90, 180, 270]),
-  // Validation ONLY for 'photo' mode
-  check('stillDevice').if(check('cameraMode').equals('photo')).isString().notEmpty(),
-  check('stillWidth').if(check('cameraMode').equals('photo')).isInt({ min: 1 }),
-  check('stillHeight').if(check('cameraMode').equals('photo')).isInt({ min: 1 }),
-  // Media destination for photo and video modes (optional, but validate if provided)
-  check('mediaDestination')
-    .if(check('cameraMode').isIn(['photo', 'video']))
-    .optional({ checkFalsy: true }) // Allow blank inputs (to save to MEDIA_ROOT without a subdir)
-    .isString()
-    .trim()
-    .customSanitizer(dest => {
-      // For ease of use:
-      // If the user pasted the full absolute media path, strip it down to just the folder name
-      if (dest.startsWith(MEDIA_ROOT)) {
-        dest = dest.slice(MEDIA_ROOT.length);
-      }
-      // Also for ease of use:
-      // Strip leading slashes so that if an absolute path is entered
-      // by mistake, it's converted to a relative path instead of being rejected
-      return dest.replace(/^[\/\\]+/, '');
-    })
-      // Check for path traversal attemptsa and null characters
-    .custom(dest => {
-      if (dest.includes('\0')) {
-        throw new Error('Media Destination contains invalid characters');
-      }
-      if (dest.includes('..')) {
-        throw new Error('Directory traversal is not allowed');
-      }
-      // Final check that an absolute path didn't make it through the sanitizer
-      /* istanbul ignore next -- unreachable on Linux: sanitizer strips all leading slashes so no absolute path can survive to this check */
-      if (path.isAbsolute(dest)) {
-        throw new Error('Media Destination must be a relativefolder name, not an absolute path');
-      }
-      return true;
-    })
-], (req, res) => {
-  console.log("--- Received /api/camera/start request ---");
-  const errors = validationResult(req);
-
-  if (!errors.isEmpty()) {
- console.error('Validation failed for /api/camera/start:', errors.array());
-    return res.status(422).json({ error: 'Invalid media destination', details: errors.array() });
-  }
-
-  const mode = req.body.cameraMode;
-  vManager.cameraMode = mode;
-  vManager.useCameraHeartbeat = req.body.useCameraHeartbeat;
-
-// Sanitize the user-provided media destination
-  let safeMediaDestination = null;
-    if (req.body.mediaDestination) {
-
-      // Force the input into a string format
-      const userInput = String(req.body.mediaDestination);
-
-      // Explicitly check for traversal strings inline
-      if (userInput.includes('..') || userInput.includes('\0')) {
-        return res.status(403).json({ error: 'Path traversal characters detected' });
-      }
-
-      const targetPath = path.join(MEDIA_ROOT, userInput);
-
-      const relative = path.relative(MEDIA_ROOT, targetPath);
-      // Double-check strict path boundaries to prevent any evasion
-      /* istanbul ignore next -- defence-in-depth: the inline ".." and null-byte checks above already block any traversal; path.relative() of a non-traversing join cannot start with ".." */
-      if (relative.startsWith('..') || path.isAbsolute(relative)) {
-        return res.status(403).json({ error: 'Invalid media destination path boundaries' });
-      }
-
-      // Store only the path relative to the media directory
-      /* istanbul ignore next -- path.relative() on Linux returns '' (not '.') for equal paths; the '.' branch is unreachable on POSIX */
-      safeMediaDestination = relative === '.' ? '' : relative;
-      
-    }
-
-  // Map incoming request to the internal settings objects used by videostream.js
-  if (mode === 'streaming' || mode === 'video') {
-    vManager.videoSettings = {
-      device: req.body.videoDevice,
-      isRecording: req.body.isRecording === false || req.body.isRecording === 'false',
-      height: parseInt(req.body.height, 10),
-      width: parseInt(req.body.width, 10),
-      format: req.body.format,
-      bitrate: parseInt(req.body.bitrate, 10),
-      fps: parseInt(req.body.fps, 10),
-      rotation: parseInt(req.body.rotation, 10),
-      useUDP: toBool(req.body.useUDP),
-      useUDPIP: req.body.useUDPIP,
-      useUDPPort: parseInt(req.body.useUDPPort, 10),
-      useTimestamp: toBool(req.body.useTimestamp),
-      mavStreamSelected: req.body.mavStreamSelected,
-      compression: req.body.compression,
-      mediaDestination: safeMediaDestination
-    };
-  }
-  /* istanbul ignore else */ else /* istanbul ignore next -- express-validator isIn(['streaming','photo','video']) ensures mode is always one of these three; the condition-false arm is unreachable */ if (mode === 'photo') {
-    vManager.stillSettings = {
-      device: req.body.stillDevice,
-      width: parseInt(req.body.stillWidth, 10),
-      height: parseInt(req.body.stillHeight, 10),
-      format: req.body.stillFormat,
-      mediaDestination: safeMediaDestination
-    };
-  }
-
-  // Persist the selected media destination and mode settings immediately.
-  vManager.saveSettings();
-
-  // The dual-source video pipeline always starts on source A - keep the
-  // switcher state in sync. The RC logic will re-switch if needed
-  if (mode === 'streaming' && camSwitcher.getSettings().switchMode === 'gstreamer') {
-    camSwitcher.activeSource = 'A'
-  }
-
-  vManager.startCamera((err, result) => {
-    res.setHeader('Content-Type', 'application/json');
-    if (err) {
-      // Use %s for the mode variable so it is treated as data, not a format string
-      console.error(`Error starting camera in %s mode:`, mode, err);
-      return res.status(500).json({ error: err.message || err });
-    }
-    res.send(JSON.stringify({ ...result, error: null }));
-  });
-});
-
-// POST to STOP the currently active camera mode
-app.post('/api/camera/stop', authenticateToken, (req, res) => {
-  vManager.stopCamera((err, active) => {
-    res.setHeader('Content-Type', 'application/json');
-    if (err) {
-      console.error('Error stopping camera:', err);
-      return res.status(500).json({ error: 'Failed to stop camera cleanly' });
-    }
-    res.send(JSON.stringify({ active: active, error: null }));
-  });
-});
 
 // Pass GUI requests to the React app only in production mode
 /* istanbul ignore next -- guarded by NODE_ENV !== development; never registered in test harness; covered by Package C integration tests */
