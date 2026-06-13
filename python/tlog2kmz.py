@@ -19,7 +19,7 @@ def cmd_as_shell(cmd):
     return (" ".join(['"%s"' % x for x in cmd]))
 
 
-def run_cmd(cmd, directory=".", show=True, output=False, checkfail=True):
+def run_cmd(cmd, directory=".", show=True, checkfail=True):
     """Run a shell command."""
     shell = False
     if not isinstance(cmd, list):
@@ -27,9 +27,7 @@ def run_cmd(cmd, directory=".", show=True, output=False, checkfail=True):
         shell = True
     if show:
         print("Running: (%s) in (%s)" % (cmd_as_shell(cmd), directory,))
-    if output:
-        return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, cwd=directory).communicate()[0]
-    elif checkfail:
+    if checkfail:
         return subprocess.check_call(cmd, shell=shell, cwd=directory)
     else:
         return subprocess.call(cmd, shell=shell, cwd=directory)
