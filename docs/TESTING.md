@@ -13,6 +13,7 @@ in the repo, including upstream-inherited modules.
 | `npm run testfront` | frontend vitest suite (plain) |
 | `npm run covback` | backend suite under nyc **with the coverage gate** (per-file table) |
 | `npm run covfront` | frontend suite under vitest/v8 **with the coverage gate** |
+| `npm run e2e` | Playwright end-to-end suite — real browser vs. the live stack (separate from the ratchet, see [E2E-TESTING.md](E2E-TESTING.md)) |
 
 CI parity before every merge (replaces the plain test runs — the cov
 variants run the same tests):

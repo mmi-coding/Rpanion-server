@@ -89,3 +89,16 @@ Needs any real browser (desktop or the Pi's webUI from a phone) - WSL has none:
 - [ ] Tooltips ("?") show on hover and on keyboard focus on all four fork pages; no viewport clipping (HelpTip placement defaults to right)
 - [ ] HelpSections expand/collapse; the RSRP tier table renders inside the Cellular Tuning section
 - [ ] Phone-sized screen: pages read compact with sections collapsed; "?" markers are tappable (touch shows the tooltip)
+
+## Feature 14: E2E Playwright (feature/e2e-playwright)
+
+The e2e suite runs in WSL against the dev stack with **auth disabled**, so the
+login/logout flow and production-mode serving can only be checked on device
+(`/etc/rpanion-server/config/*` + backend-served build). See docs/E2E-TESTING.md.
+
+- [ ] Production install (`.deb`): unauthenticated visit to any page redirects to / and shows the login form (`authEnabled:true`)
+- [ ] Login with the configured admin credentials succeeds, token persists, pages load, the sidebar shows the Logout link
+- [ ] Wrong password shows the error modal and does not authenticate
+- [ ] Logout returns to the login state; protected `/api/*` calls 401 without a token
+- [ ] Backend-served SPA (no Vite): deep-link to a client route (e.g. `/network`) loads via the production catch-all, not a 404
+- [ ] Optional: run `npm run e2e` against the device's IP/build (set `baseURL`) to smoke the same routes with real hardware values present

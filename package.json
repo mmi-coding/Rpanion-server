@@ -69,6 +69,10 @@
     "covfront": "NODE_ENV=development vitest --run --coverage ./src",
     "test-coveralls": "nyc npm run mocha && nyc report --reporter=text-lcov | coveralls",
     "lint": "eslint .",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:report": "playwright show-report",
+    "e2e:install": "playwright install chromium",
     "server": "node-env-run server --exec nodemon | pino-colada",
     "serviceDev": "npm run build && NODE_ENV=development node ./server/index.js",
     "dev": "NODE_ENV=development run-p server start",
@@ -104,6 +108,7 @@
   ],
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/coverage-v8": "^4.1.8",
     "coveralls-next": "^6.0.1",
