@@ -36,3 +36,9 @@ settingsTest.json
 __pycache__/
 
 /media
+
+# playwright e2e
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache

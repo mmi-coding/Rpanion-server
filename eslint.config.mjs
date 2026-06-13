@@ -25,6 +25,9 @@ export default [
       "node_modules/",
       "build/",
       "coverage/",
+      "test-results/",
+      "playwright-report/",
+      "blob-report/",
     ],
   },
   {
