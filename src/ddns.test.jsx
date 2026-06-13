@@ -32,7 +32,7 @@ describe('#DDNSPage()', function () {
     mockFetch({ '/api/ddns': duckdns })
     const page = renderPage(<DDNSPage />)
     await page.flush()
-    expect(page.container.querySelector('input[name="token"]')).not.toBeNull()
+    expect(page.container.querySelector('input[name="ddnsToken"]')).not.toBeNull()
     expect(page.container.querySelector('input[name="username"]')).toBeNull()
     expect(page.container.textContent).toContain('Last result: Disabled')
     page.unmount()
@@ -93,6 +93,27 @@ describe('#DDNSPage()', function () {
     await page.flush()
     const call = fetch.mock.calls.find(c => c[0] === '/api/ddnsmodify')
     expect(JSON.parse(call[1].body).hostname).toBe('newhost')
+    page.unmount()
+  })
+
+  test('Save sends the JWT (not the saved DuckDNS token) in the Authorization header', async function () {
+    // regression: state.token (JWT) must not be shadowed by the DuckDNS API token
+    localStorage.setItem('token', JSON.stringify({ token: 'JWT123' }))
+    const fetch = mockFetch({
+      'POST /api/auth': { authEnabled: true, role: 'admin' },
+      '/api/ddns': duckdns, // settings.token = 'tok' (the DuckDNS API token)
+      'POST /api/ddnsmodify': { error: null, settings: duckdns.settings, status: duckdns.status }
+    })
+    const page = renderPage(<DDNSPage />)
+    await page.flush()
+    const saveBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Save')
+    act(() => { saveBtn.click() })
+    await page.flush()
+    const call = fetch.mock.calls.find(c => c[0] === '/api/ddnsmodify')
+    // Authorization carries the JWT, not the saved DuckDNS token
+    expect(call[1].headers.Authorization).toBe('Bearer JWT123')
+    // the DuckDNS token is still sent in the request body
+    expect(JSON.parse(call[1].body).token).toBe('tok')
     page.unmount()
   })
 

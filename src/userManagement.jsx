@@ -74,10 +74,10 @@ class userManagement extends basePage {
           body: JSON.stringify({ username, password })
         });
         const data = await response.json();
-        this.setState(data);
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
+        this.setState(data);
         console.log('Password updated successfully:', data);
       } catch (error) {
         console.error('Error updating password:', error);
@@ -95,10 +95,10 @@ class userManagement extends basePage {
           body: JSON.stringify({ username, password, role: this.state.role })
         });
         const data = await response.json();
-        this.setState(data);
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
+        this.setState(data);
         console.log('New user added successfully:', data);
       } catch (error) {
         console.error('Error adding new user:', error);
@@ -115,10 +115,10 @@ class userManagement extends basePage {
           body: JSON.stringify({ username })
         });
         const data = await response.json();
-        this.setState(data);
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
+        this.setState(data);
         console.log('User deleted successfully:', data);
       } catch (error) {
         console.error('Error deleting user:', error);
@@ -141,10 +141,10 @@ class userManagement extends basePage {
         body: JSON.stringify({ username, role })
       });
       const data = await response.json();
-      this.setState(data);
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }
+      this.setState(data);
       console.log('User role updated successfully:', data);
     } catch (error) {
       console.error('Error updating user role:', error);

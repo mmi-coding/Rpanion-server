@@ -6,7 +6,9 @@ import basePage from './basePage.jsx'
 import { HelpTip, HelpSection } from './components/Help.jsx'
 
 class AboutPage extends basePage {
-  constructor (props, useSocketIO = true) {
+  // About only fetches REST endpoints; it has no socket.on handlers, so it
+  // does not open a Socket.IO connection.
+  constructor (props, useSocketIO = false) {
     super(props, useSocketIO)
     this.state = {
       ...this.state,
