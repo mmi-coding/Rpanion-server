@@ -61,10 +61,10 @@ and land at 100% coverage on both suites.
 - [x] **Dynamic DNS.** `/ddns` page + `server/dynamicDns.js` updater for DuckDNS
   and No-IP on a timer (+ Update now). Done — see docs/DYNAMIC-DNS.md, feature-18
   report. (Cloudflare is an easy future addition in `buildRequest()`.)
-- [ ] **Network priority + failover + bandwidth monitoring.** Prefer WiFi, fall
-  back to cellular via NetworkManager connection metrics (`nmcli`); show live
-  per-interface throughput (`/proc/net/dev`). Wrapper + monitoring unit-tested;
-  real failover verified on-device.
+- [x] **Network priority + failover + bandwidth monitoring.** `/networkpriority`
+  page: live per-interface throughput (from `/sys/class/net`) + per-connection
+  autoconnect-priority/route-metric via `nmcli`. Done — see docs/NETWORK-PRIORITY.md,
+  feature-19 report. Real failover verified on-device.
 - [ ] **Telemetry injectors.** Accept external sensor data over HTTP/UDP/serial
   and inject it into the MAVLink stream; auto-start on boot.
 

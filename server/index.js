@@ -24,6 +24,7 @@ const CustomPipelines = require('./customPipelines.js')
 const LTEModem = require('./ltemodem.js')
 const CellularTuning = require('./cellularTuning.js')
 const DynamicDns = require('./dynamicDns.js')
+const NetworkPriority = require('./networkPriority.js')
 
 const settings = require('settings-store')
 
@@ -105,6 +106,8 @@ const cellularTuning = new CellularTuning(settings, {
 })
 
 const ddns = new DynamicDns(settings)
+
+const networkPriority = new NetworkPriority()
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -1200,6 +1203,37 @@ app.post('/api/cellulartuningmodify', authenticateToken, [
     } else {
       res.send(JSON.stringify({ error: null, settings: cellularTuning.getSettings() }))
     }
+  })
+})
+
+// List NetworkManager connections for priority configuration
+app.get('/api/networkpriority', authenticateToken, (req, res) => {
+  networkPriority.listConnections((err, connections) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ error: err, connections }))
+  })
+})
+
+// Per-interface bandwidth (totals + rate since the last sample)
+app.get('/api/networkbandwidth', authenticateToken, (req, res) => {
+  res.setHeader('Content-Type', 'application/json')
+  res.send(JSON.stringify({ interfaces: networkPriority.getBandwidth() }))
+})
+
+// Set a connection's autoconnect priority + route metric (WiFi/cellular failover)
+app.post('/api/networksetpriority', authenticateToken, [
+  check('conName').isUUID(),
+  check('priority').isInt({ min: -999, max: 999 }),
+  check('metric').isInt({ min: 0, max: 9999 })
+], (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/networksetpriority', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+  networkPriority.setPriority(req.body.conName, parseInt(req.body.priority, 10), parseInt(req.body.metric, 10), (err) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ error: err }))
   })
 })
 

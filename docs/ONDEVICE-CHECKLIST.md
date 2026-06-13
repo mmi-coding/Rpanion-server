@@ -144,3 +144,13 @@ The updater logic is fully unit-tested (HTTP client stubbed); real DNS round-tri
 - [ ] Public-IP detection (api.ipify.org) reachable over the modem link; behind CGNAT the detected IP is the carrier address (expected — pair with VPN)
 - [ ] Timer: leave enabled, confirm periodic updates happen at the configured interval (check provider "last update")
 - [ ] With RBAC on, a read-only user cannot Save/Update (403)
+
+## Feature 19: Network priority + bandwidth (feature/network-priority)
+
+The wrapper, parsing and rate maths are unit-tested in WSL; real failover needs the Pi.
+
+- [ ] Bandwidth table shows real interfaces (eth0/wlan0/usb0) with live RX/TX rates under traffic
+- [ ] Set WiFi priority higher / metric lower than the SIM7600 (`usb0`) connection; verify with `nmcli -f connection.autoconnect-priority,ipv4.route-metric connection show <uuid>`
+- [ ] Pull the WiFi link → traffic fails over to the modem (`usb0`); restore WiFi → it preempts again (check the default route / `ip route`)
+- [ ] Confirm `sudo nmcli connection modify` has polkit rights under the service user
+- [ ] With RBAC on, a read-only user cannot set priority (403)

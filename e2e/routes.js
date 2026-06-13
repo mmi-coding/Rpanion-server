@@ -23,6 +23,7 @@ export const ROUTES = [
   { path: '/vpn', nav: 'VPN Config', title: 'VPN' },
   { path: '/tailscale', nav: 'Tailscale VPN', title: 'Tailscale VPN' },
   { path: '/ddns', nav: 'Dynamic DNS', title: 'Dynamic DNS' },
+  { path: '/networkpriority', nav: 'Network Priority', title: 'Network Priority & Bandwidth' },
   { path: '/about', nav: 'About', title: 'About' },
   { path: '/users', nav: 'User Management', title: 'User Management' },
 ]
@@ -37,4 +38,5 @@ export const SELF_DOCUMENTING_PAGES = [
   { path: '/users', title: 'User Management' },
   { path: '/tailscale', title: 'Tailscale VPN' },
   { path: '/ddns', title: 'Dynamic DNS' },
+  { path: '/networkpriority', title: 'Network Priority & Bandwidth' },
 ]
