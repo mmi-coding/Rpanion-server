@@ -1373,6 +1373,40 @@ app.post('/api/resetsettings', authenticateToken, function (req, res) {
   }
 })
 
+app.get('/api/settingsbackup', authenticateToken, function (req, res) {
+  // User wants to download the current settings as a JSON file
+  try {
+    const fs = require('fs')
+    const settingsPath = logpaths.settingsFile
+    const contents = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, 'utf8') : '{}'
+    res.setHeader('Content-Disposition', 'attachment; filename="rpanion-settings.json"')
+    res.setHeader('Content-Type', 'application/json')
+    res.send(contents)
+  } catch (error) {
+    console.error('Error backing up settings:', error)
+    res.status(500).send(JSON.stringify({ error: 'Failed to backup settings: ' + error.message }))
+  }
+})
+
+app.post('/api/settingsrestore', authenticateToken, function (req, res) {
+  // User wants to restore settings from an uploaded settings object
+  try {
+    const settings = req.body
+    // Must be a non-null, non-array plain object
+    if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) {
+      return res.status(400).send(JSON.stringify({ success: false, error: 'Invalid settings: expected a JSON object' }))
+    }
+    const fs = require('fs')
+    fs.writeFileSync(logpaths.settingsFile, JSON.stringify(settings))
+    console.log('Settings restored')
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ success: true, message: 'Settings restored. Please restart the application for changes to take effect.' }))
+  } catch (error) {
+    console.error('Error restoring settings:', error)
+    res.status(500).send(JSON.stringify({ error: 'Failed to restore settings: ' + error.message }))
+  }
+})
+
 app.post('/api/FCModify', authenticateToken, [check('device'), check('baud').isInt(), check('mavversion').isInt(), check('enableHeartbeat').isBoolean(), check('enableTCP').isBoolean(), check('enableUDPB').isBoolean(), check('UDPBPort').isPort(), check('enableDSRequest').isBoolean(), check('doLogging').isBoolean()], function (req, res) {
   // User wants to start/stop FC telemetry
   const errors = validationResult(req)
