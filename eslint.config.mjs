@@ -4,7 +4,7 @@ import mochaPlugin from 'eslint-plugin-mocha';
 
 export default [
   {
-    files: ["src/*.jsx"],
+    files: ["src/**/*.jsx"],
     ...react.configs.flat.recommended,
   },
   {
