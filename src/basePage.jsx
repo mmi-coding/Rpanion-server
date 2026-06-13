@@ -91,6 +91,19 @@ class basePage extends Component {
     this.setState({ infoMessage: null });
   }
 
+  // Generic controlled-form handler for pages that keep editable form values in
+  // a `config` state object (checkbox → checked, everything else → value).
+  handleConfigChange = (event) => {
+    const name = event.target.name;
+    const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    this.setState(prevState => ({
+      config: {
+        ...prevState.config,
+        [name]: value
+      }
+    }));
+  }
+
   render() {
     if(this.props.showLogin) {
       return (

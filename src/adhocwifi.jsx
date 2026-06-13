@@ -151,7 +151,7 @@ class AdhocConfig extends basePage {
             <div className="form-group row" style={{ marginBottom: '0px' }}>
               <label className="col-sm-2 col-form-label">Adapter</label>
               <div className="col-sm-10">
-                <Form.Select isDisabled={this.state.curSettings.isActive} onChange={this.handleAdapterChange} value={this.state.netDeviceSelected}>
+                <Form.Select disabled={this.state.curSettings.isActive} onChange={this.handleAdapterChange} value={this.state.netDeviceSelected}>
                   {this.state.netDevice.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}

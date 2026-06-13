@@ -5,6 +5,9 @@ import { HelpTip, HelpSection } from './components/Help.jsx';
 
 import './css/styles.css';
 
+// Baud rates offered for the AT and PPP serial-port selectors
+const MODEM_BAUDS = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000];
+
 function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
     if (!bytes) return '-';
@@ -105,17 +108,6 @@ class LTEModemPage extends basePage {
         }
     };
 
-    handleConfigChange = (event) => {
-        const name = event.target.name;
-        const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
-        this.setState(prevState => ({
-            config: {
-                ...prevState.config,
-                [name]: value
-            }
-        }));
-    };
-
     handleSubmit = async (event) => {
         event.preventDefault();
         try {
@@ -139,9 +131,10 @@ class LTEModemPage extends basePage {
         }
     };
 
-    handleReconnect = async () => {
+    // Shared POST for the three modem control buttons (reconnect/connect/disconnect)
+    handleModemAction = async (endpoint, label, failMsg) => {
         try {
-            const response = await fetch('/api/ltemodemreconnect', {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${this.state.token}` }
             });
@@ -149,46 +142,18 @@ class LTEModemPage extends basePage {
             if (data.error) {
                 this.setState({ error: data.error });
             } else {
-                this.setState({ error: null, infoMessage: 'Reconnect command sent: ' + (data.response || []).join(' ') });
+                this.setState({ error: null, infoMessage: label + ': ' + (data.response || []).join(' ') });
             }
         } catch (error) {
-            this.setState({ error: 'Failed to send reconnect command' });
+            this.setState({ error: failMsg });
         }
     };
 
-    handleConnect = async () => {
-        try {
-            const response = await fetch('/api/ltemodemconnect', {
-                method: 'POST',
-                headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${this.state.token}` }
-            });
-            const data = await response.json();
-            if (data.error) {
-                this.setState({ error: data.error });
-            } else {
-                this.setState({ error: null, infoMessage: 'Connect command sent: ' + (data.response || []).join(' ') });
-            }
-        } catch (error) {
-            this.setState({ error: 'Failed to send connect command' });
-        }
-    };
+    handleReconnect = () => this.handleModemAction('/api/ltemodemreconnect', 'Reconnect command sent', 'Failed to send reconnect command');
 
-    handleDisconnect = async () => {
-        try {
-            const response = await fetch('/api/ltemodemdisconnect', {
-                method: 'POST',
-                headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${this.state.token}` }
-            });
-            const data = await response.json();
-            if (data.error) {
-                this.setState({ error: data.error });
-            } else {
-                this.setState({ error: null, infoMessage: 'Disconnect command sent: ' + (data.response || []).join(' ') });
-            }
-        } catch (error) {
-            this.setState({ error: 'Failed to send disconnect command' });
-        }
-    };
+    handleConnect = () => this.handleModemAction('/api/ltemodemconnect', 'Connect command sent', 'Failed to send connect command');
+
+    handleDisconnect = () => this.handleModemAction('/api/ltemodemdisconnect', 'Disconnect command sent', 'Failed to send disconnect command');
 
     handleUsbMode = async () => {
         try {
@@ -468,7 +433,7 @@ class LTEModemPage extends basePage {
                                 <label className="col-sm-3 col-form-label">PPP baud<HelpTip text="Serial speed for the pppd dial. SIM7600 default 115200." /></label>
                                 <div className="col-sm-8">
                                     <Form.Select name="pppBaud" value={config.pppBaud} onChange={this.handleConfigChange}>
-                                        {[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000].map((b) => (
+                                        {MODEM_BAUDS.map((b) => (
                                             <option key={b} value={b}>{b}</option>
                                         ))}
                                     </Form.Select>
@@ -491,7 +456,7 @@ class LTEModemPage extends basePage {
                         <label className="col-sm-3 col-form-label">Baud rate<HelpTip text="Serial speed of the AT port. Ignored on USB ports; for a UART it must match the modem's setting (SIM7600 default 115200)" /></label>
                         <div className="col-sm-8">
                             <Form.Select name="baud" value={config.baud} onChange={this.handleConfigChange}>
-                                {[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000].map((b) => (
+                                {MODEM_BAUDS.map((b) => (
                                     <option key={b} value={b}>{b}</option>
                                 ))}
                             </Form.Select>

@@ -5,6 +5,13 @@ import React from 'react'
 import basePage from './basePage.jsx'
 import { HelpTip, HelpSection } from './components/Help.jsx'
 
+// Human-readable byte count (no dependency on component state)
+function formatBytes (n) {
+  if (n > 1000000) { return (n / 1000000).toFixed(2) + ' MB' }
+  if (n > 1000) { return (n / 1000).toFixed(1) + ' kB' }
+  return n + ' B'
+}
+
 class NetworkPriorityPage extends basePage {
   constructor (props) {
     super(props)
@@ -63,12 +70,6 @@ class NetworkPriorityPage extends basePage {
       .catch(error => { this.setState({ error: 'Error setting priority: ' + error }) })
   }
 
-  formatBytes (n) {
-    if (n > 1000000) { return (n / 1000000).toFixed(2) + ' MB' }
-    if (n > 1000) { return (n / 1000).toFixed(1) + ' kB' }
-    return n + ' B'
-  }
-
   renderTitle () {
     return 'Network Priority & Bandwidth'
   }
@@ -91,10 +92,10 @@ class NetworkPriorityPage extends basePage {
             {this.state.bandwidth.map((i) => (
               <tr key={i.name}>
                 <td>{i.name}</td>
-                <td>{this.formatBytes(i.rxBytes)}</td>
-                <td>{this.formatBytes(i.txBytes)}</td>
-                <td>{this.formatBytes(i.rxRate)}/s</td>
-                <td>{this.formatBytes(i.txRate)}/s</td>
+                <td>{formatBytes(i.rxBytes)}</td>
+                <td>{formatBytes(i.txBytes)}</td>
+                <td>{formatBytes(i.rxRate)}/s</td>
+                <td>{formatBytes(i.txRate)}/s</td>
               </tr>
             ))}
           </tbody>
