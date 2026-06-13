@@ -69,8 +69,11 @@ and land at 100% coverage on both suites.
   the LTE Modem page — QMI via libqmi, PPP via pppd (ModemManager still banned).
   Done — overrides the former RNDIS-only constraint (CLAUDE.md updated); see
   docs/MODEM-DATA-PATH.md, feature-20 report.
-- [ ] **Telemetry injectors.** Accept external sensor data over HTTP/UDP/serial
-  and inject it into the MAVLink stream; auto-start on boot.
+- [x] **Telemetry injectors.** `/telemetryinjector` page + `server/telemetryInjector.js`
+  accept external sensor data over HTTP/UDP/serial and inject it into the MAVLink
+  stream as NAMED_VALUE_FLOAT / STATUSTEXT (sent to the local mavlink-router endpoint,
+  which rebroadcasts to the FC link and every GCS); auto-start on boot via the saved
+  master switch. Done — see docs/TELEMETRY-INJECTORS.md, feature-24 report.
 
 ### B2. Deferred — needs design first
 

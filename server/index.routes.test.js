@@ -41,6 +41,7 @@ const CellularTuning = require('./cellularTuning')
 const DynamicDns = require('./dynamicDns')
 const NetworkPriority = require('./networkPriority')
 const LTEModem = require('./ltemodem')
+const TelemetryInjector = require('./telemetryInjector')
 
 // Shared harness
 const { getServer, closeServer, request } = require('../test/indexApp')
@@ -1257,6 +1258,121 @@ describe('Package B — delegate HTTP routes', function () {
       })
       sinon.stub(CellularTuning.prototype, 'getSettings').returns({ lowLatency: false, adaptiveBitrate: false, minBitrate: 250 })
       request('POST', '/api/cellulartuningmodify', { body: { lowLatency: false, adaptiveBitrate: false, minBitrate: 250 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          assert.ok(res.body.error)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
+  // Telemetry injector routes
+  // =========================================================================
+  describe('GET /api/telemetryinjector', function () {
+    it('200 — returns settings and status', function (done) {
+      sinon.stub(TelemetryInjector.prototype, 'getSettings').returns({ enabled: false, httpEnabled: true })
+      sinon.stub(TelemetryInjector.prototype, 'getStatus').returns({ enabled: false, sentFloat: 0 })
+      request('GET', '/api/telemetryinjector').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.settings)
+          assert.ok(res.body.status)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/telemetryinjectormodify', function () {
+    const goodBody = { enabled: true, httpEnabled: true, udpEnabled: false, udpPort: 14600, serialEnabled: false, serialPort: '', serialBaud: 57600, sysid: 1, compid: 158 }
+
+    it('422 — missing fields', function (done) {
+      request('POST', '/api/telemetryinjectormodify', { body: {} }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — success path', function (done) {
+      sinon.stub(TelemetryInjector.prototype, 'setSettings').callsFake(function (opts, cb) { cb(null) })
+      sinon.stub(TelemetryInjector.prototype, 'getSettings').returns(goodBody)
+      request('POST', '/api/telemetryinjectormodify', { body: goodBody }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(res.body.error, null)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('422 — setSettings returns error', function (done) {
+      sinon.stub(TelemetryInjector.prototype, 'setSettings').callsFake(function (opts, cb) { cb(new Error('bad value')) })
+      sinon.stub(TelemetryInjector.prototype, 'getSettings').returns(goodBody)
+      request('POST', '/api/telemetryinjectormodify', { body: goodBody }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          assert.ok(res.body.error)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — coerces string-boolean fields', function (done) {
+      let captured = null
+      sinon.stub(TelemetryInjector.prototype, 'setSettings').callsFake(function (opts, cb) { captured = opts; cb(null) })
+      sinon.stub(TelemetryInjector.prototype, 'getSettings').returns(goodBody)
+      request('POST', '/api/telemetryinjectormodify', { body: { ...goodBody, enabled: 'true', httpEnabled: 'true' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(captured.enabled, true)
+          assert.strictEqual(captured.httpEnabled, true)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/telemetryinject', function () {
+    it('422 — invalid reading (name too long)', function (done) {
+      request('POST', '/api/telemetryinject', { body: { name: 'waytoolongname', value: 1 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('409 — HTTP injection disabled', function (done) {
+      sinon.stub(TelemetryInjector.prototype, 'canInjectHttp').returns(false)
+      request('POST', '/api/telemetryinject', { body: { name: 'co2', value: 412 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 409)
+          assert.ok(res.body.error)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — accepted reading', function (done) {
+      sinon.stub(TelemetryInjector.prototype, 'canInjectHttp').returns(true)
+      sinon.stub(TelemetryInjector.prototype, 'ingest').returns(null)
+      request('POST', '/api/telemetryinject', { body: { name: 'co2', value: 412 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(res.body.ok, true)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('422 — ingest rejects the reading', function (done) {
+      sinon.stub(TelemetryInjector.prototype, 'canInjectHttp').returns(true)
+      sinon.stub(TelemetryInjector.prototype, 'ingest').returns(new Error('reading must be {name, value} or {text}'))
+      request('POST', '/api/telemetryinject', { body: { name: 'co2', value: 412 } }).then(function (res) {
         try {
           assert.equal(res.status, 422)
           assert.ok(res.body.error)
