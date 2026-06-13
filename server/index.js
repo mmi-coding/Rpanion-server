@@ -43,6 +43,10 @@ const MEDIA_ROOT = logpaths.mediaDir; // absolute path to rpanion-server/media
 const io = require('socket.io')(http, { cookie: false })
 const { check, validationResult } = require('express-validator')
 const crypto = require('crypto');
+const fs = require('fs');
+
+// Coerce a request-body field to boolean, accepting JSON true or the string 'true'
+const toBool = (v) => v === true || v === 'true'
 
 // set up rate limiter: maximum of fifty requests per minute
 const RateLimit = require('express-rate-limit')
@@ -62,7 +66,7 @@ function generateSecretKey() {
   return crypto.randomBytes(64).toString('hex');
 }
 const RPANION_SECRET_KEY = process.env.RPANION_SECRET_KEY || generateSecretKey();
-let tokenBlacklist = [];
+const tokenBlacklist = new Set();
 
 // RBAC: read-only users may not perform mutating (POST) requests. These POST
 // endpoints are exempt because they are not configuration mutations.
@@ -483,7 +487,7 @@ app.post('/api/updateUserPassword', authenticateToken, [check('username').escape
 app.post('/api/createUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 }), check('role').optional().isIn(['admin', 'readonly'])], async (req, res) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/logout', { message: JSON.stringify(errors.array()) })
+    console.log('Bad POST vars in /api/createUser', { message: JSON.stringify(errors.array()) })
     return res.status(422).json({ error: JSON.stringify(errors.array()) })
   }
   const { username, password, role } = req.body
@@ -524,7 +528,7 @@ app.post('/api/updateUserRole', authenticateToken, [check('username').escape().i
 app.post('/api/deleteUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 })], (req, res) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/logout', { message: JSON.stringify(errors.array()) })
+    console.log('Bad POST vars in /api/deleteUser', { message: JSON.stringify(errors.array()) })
     return res.status(422).json({ error: JSON.stringify(errors.array()) })
   }
   const { username } = req.body
@@ -549,7 +553,7 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
   const token = authHeader && authHeader.split(' ')[1]
 
   // Add token to the blacklist
-  tokenBlacklist.push(token)
+  tokenBlacklist.add(token)
 
   res.send({
     token: token
@@ -599,7 +603,7 @@ function authenticateToken(req, res, next) {
   }
 
   // Check if the token is blacklisted
-  if (tokenBlacklist.includes(token)) {
+  if (tokenBlacklist.has(token)) {
     return sendError(401, 'Invalid token')
   }
 
@@ -984,7 +988,7 @@ app.post('/api/cameraswitchermodify', authenticateToken, [
   }
 
   camSwitcher.setSettings({
-    enabled: req.body.enabled === true || req.body.enabled === 'true',
+    enabled: toBool(req.body.enabled),
     rcChannel: parseInt(req.body.rcChannel, 10),
     threshold: parseInt(req.body.threshold, 10),
     hysteresis: parseInt(req.body.hysteresis, 10),
@@ -1042,7 +1046,7 @@ app.post('/api/custompipelinemodify', authenticateToken, [
     return res.status(422).json({ error: JSON.stringify(errors.array()) })
   }
 
-  const enabled = req.body.enabled === true || req.body.enabled === 'true'
+  const enabled = toBool(req.body.enabled)
   customPipelines.setPipeline(req.body.device, enabled, req.body.pipeline, (err) => {
     res.setHeader('Content-Type', 'application/json')
     if (err) {
@@ -1098,12 +1102,12 @@ app.post('/api/ltemodemmodify', authenticateToken, [
   }
 
   lteModem.setSettings({
-    enabled: req.body.enabled === true || req.body.enabled === 'true',
+    enabled: toBool(req.body.enabled),
     atPort: req.body.atPort,
     baud: parseInt(req.body.baud, 10),
     apn: req.body.apn || '',
     netInterface: req.body.netInterface,
-    autoReconnect: req.body.autoReconnect === true || req.body.autoReconnect === 'true',
+    autoReconnect: toBool(req.body.autoReconnect),
     pollInterval: parseInt(req.body.pollInterval, 10),
     dataPathMode: req.body.dataPathMode || 'rndis',
     qmiDevice: req.body.qmiDevice || '/dev/cdc-wdm0',
@@ -1241,8 +1245,8 @@ app.post('/api/cellulartuningmodify', authenticateToken, [
   }
 
   cellularTuning.setSettings({
-    lowLatency: req.body.lowLatency === true || req.body.lowLatency === 'true',
-    adaptiveBitrate: req.body.adaptiveBitrate === true || req.body.adaptiveBitrate === 'true',
+    lowLatency: toBool(req.body.lowLatency),
+    adaptiveBitrate: toBool(req.body.adaptiveBitrate),
     minBitrate: parseInt(req.body.minBitrate, 10)
   }, (err) => {
     res.setHeader('Content-Type', 'application/json')
@@ -1278,11 +1282,11 @@ app.post('/api/telemetryinjectormodify', authenticateToken, [
     return res.status(422).json({ error: JSON.stringify(errors.array()) })
   }
   telemetryInjector.setSettings({
-    enabled: req.body.enabled === true || req.body.enabled === 'true',
-    httpEnabled: req.body.httpEnabled === true || req.body.httpEnabled === 'true',
-    udpEnabled: req.body.udpEnabled === true || req.body.udpEnabled === 'true',
+    enabled: toBool(req.body.enabled),
+    httpEnabled: toBool(req.body.httpEnabled),
+    udpEnabled: toBool(req.body.udpEnabled),
     udpPort: parseInt(req.body.udpPort, 10),
-    serialEnabled: req.body.serialEnabled === true || req.body.serialEnabled === 'true',
+    serialEnabled: toBool(req.body.serialEnabled),
     serialPort: req.body.serialPort || '',
     serialBaud: parseInt(req.body.serialBaud, 10),
     sysid: parseInt(req.body.sysid, 10),
@@ -1370,7 +1374,7 @@ app.post('/api/ddnsmodify', authenticateToken, [
   }
 
   ddns.setSettings({
-    enabled: req.body.enabled === true || req.body.enabled === 'true',
+    enabled: toBool(req.body.enabled),
     provider: req.body.provider,
     hostname: req.body.hostname,
     token: req.body.token || '',
@@ -1574,7 +1578,6 @@ app.post('/api/shutdowncc', authenticateToken, function () {
 app.post('/api/resetsettings', authenticateToken, function (req, res) {
   // User wants to reset all settings to defaults
   try {
-    const fs = require('fs')
     const settingsPath = logpaths.settingsFile
     
     // Delete the settings file
@@ -1598,7 +1601,6 @@ app.post('/api/resetsettings', authenticateToken, function (req, res) {
 app.get('/api/settingsbackup', authenticateToken, function (req, res) {
   // User wants to download the current settings as a JSON file
   try {
-    const fs = require('fs')
     const settingsPath = logpaths.settingsFile
     const contents = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, 'utf8') : '{}'
     res.setHeader('Content-Disposition', 'attachment; filename="rpanion-settings.json"')
@@ -1618,7 +1620,6 @@ app.post('/api/settingsrestore', authenticateToken, function (req, res) {
     if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) {
       return res.status(400).send(JSON.stringify({ success: false, error: 'Invalid settings: expected a JSON object' }))
     }
-    const fs = require('fs')
     fs.writeFileSync(logpaths.settingsFile, JSON.stringify(settings))
     console.log('Settings restored')
     res.setHeader('Content-Type', 'application/json')
@@ -1890,10 +1891,10 @@ app.post('/api/camera/start', authenticateToken, [
       bitrate: parseInt(req.body.bitrate, 10),
       fps: parseInt(req.body.fps, 10),
       rotation: parseInt(req.body.rotation, 10),
-      useUDP: req.body.useUDP === true || req.body.useUDP === 'true',
+      useUDP: toBool(req.body.useUDP),
       useUDPIP: req.body.useUDPIP,
       useUDPPort: parseInt(req.body.useUDPPort, 10),
-      useTimestamp: req.body.useTimestamp === true || req.body.useTimestamp === 'true',
+      useTimestamp: toBool(req.body.useTimestamp),
       mavStreamSelected: req.body.mavStreamSelected,
       compression: req.body.compression,
       mediaDestination: safeMediaDestination
