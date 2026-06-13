@@ -12,7 +12,9 @@ class DDNSPage extends basePage {
       enabled: false,
       provider: 'duckdns',
       hostname: '',
-      token: '',
+      // DuckDNS API token — named distinctly so it never shadows the basePage
+      // JWT held in this.state.token (used for the Authorization header)
+      ddnsToken: '',
       username: '',
       password: '',
       hasPassword: false,
@@ -24,7 +26,11 @@ class DDNSPage extends basePage {
   componentDidMount () {
     fetch('/api/ddns', { headers: { Authorization: `Bearer ${this.state.token}` } })
       .then(response => response.json())
-      .then(data => { this.setState({ ...data.settings, ddnsStatus: data.status, password: '' }); this.loadDone() })
+      .then(data => {
+        const { token: ddnsToken, ...settings } = data.settings
+        this.setState({ ...settings, ddnsToken, ddnsStatus: data.status, password: '' })
+        this.loadDone()
+      })
       .catch(error => { this.setState({ error: 'Error fetching DDNS settings: ' + error }); this.loadDone() })
   }
 
@@ -41,14 +47,17 @@ class DDNSPage extends basePage {
         enabled: this.state.enabled,
         provider: this.state.provider,
         hostname: this.state.hostname,
-        token: this.state.token,
+        token: this.state.ddnsToken,
         username: this.state.username,
         password: this.state.password,
         intervalMin: parseInt(this.state.intervalMin, 10)
       })
     })
       .then(response => response.json())
-      .then(data => { this.setState({ ...data.settings, ddnsStatus: data.status, password: '' }) })
+      .then(data => {
+        const { token: ddnsToken, ...settings } = data.settings
+        this.setState({ ...settings, ddnsToken, ddnsStatus: data.status, password: '' })
+      })
       .catch(error => { this.setState({ error: 'Error saving DDNS settings: ' + error }) })
   }
 
@@ -107,7 +116,7 @@ class DDNSPage extends basePage {
         ) : (
           <div className="form-group row" style={{ marginBottom: '5px' }}>
             <label className="col-sm-3 col-form-label">Token<HelpTip text="Your DuckDNS account token (from the DuckDNS website)." /></label>
-            <div className="col-sm-5"><Form.Control type="text" name="token" value={this.state.token} onChange={this.handleChange} /></div>
+            <div className="col-sm-5"><Form.Control type="text" name="ddnsToken" value={this.state.ddnsToken} onChange={this.handleChange} /></div>
           </div>
         )}
 
