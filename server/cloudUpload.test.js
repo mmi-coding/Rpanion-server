@@ -162,6 +162,15 @@ describe('Cloud Upload Functions', function () {
       assert.notEqual(cloudVar.rsyncPid, null)
       await rsyncDone()
 
+      // the bin upload must restrict to .bin files: include */ and *.bin,
+      // then exclude everything else (otherwise --include is a no-op and
+      // every file is uploaded)
+      const rsyncArgs = fake.calls('rsync')
+      assert.ok(
+        rsyncArgs.some((c) => c.includes('--include=*/') && c.includes('--include=*.bin') && c.includes('--exclude=*')),
+        'rsync should be invoked with the .bin-only filter flags'
+      )
+
       // second run: the old pid is killed, the new rsync fails
       cloudVar.options.syncDeletions = false
       process.env.FAKE_SCENARIO = 'fail'

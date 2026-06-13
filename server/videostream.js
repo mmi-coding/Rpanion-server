@@ -498,18 +498,24 @@ class videoStream {
   // Retune the encoder bitrate (kbps) on a running stream via the video
   // server's stdin control channel. Returns true if the command was sent;
   // the BITRATE: ack from the video server updates this.currentBitrate
-  setBitrate(kbps) {
-    if (!Number.isInteger(kbps) || kbps < 50 || kbps > 100000) {
-      return false
-    }
+  // Send one JSON control line to the running video server over stdin.
+  // Returns true only if the stream is live and stdin accepted the write.
+  _sendStdinCommand(payload) {
     if (this.deviceStream === null || this.cameraMode !== 'streaming') {
       return false
     }
     if (this.deviceStream.stdin && this.deviceStream.stdin.writable) {
-      this.deviceStream.stdin.write(JSON.stringify({ cmd: 'bitrate', kbps }) + '\n')
+      this.deviceStream.stdin.write(JSON.stringify(payload) + '\n')
       return true
     }
     return false
+  }
+
+  setBitrate(kbps) {
+    if (!Number.isInteger(kbps) || kbps < 50 || kbps > 100000) {
+      return false
+    }
+    return this._sendStdinCommand({ cmd: 'bitrate', kbps })
   }
 
   // Flip the active source on a running dual-source stream.
@@ -518,14 +524,7 @@ class videoStream {
     if (source !== 'A' && source !== 'B') {
       return false
     }
-    if (this.deviceStream === null || this.cameraMode !== 'streaming') {
-      return false
-    }
-    if (this.deviceStream.stdin && this.deviceStream.stdin.writable) {
-      this.deviceStream.stdin.write(JSON.stringify({ cmd: 'switch', source }) + '\n')
-      return true
-    }
-    return false
+    return this._sendStdinCommand({ cmd: 'switch', source })
   }
 
   async startVideoStreaming(callback) {
@@ -587,6 +586,21 @@ class videoStream {
     }
   }
 
+  // Best-effort create the media destination directory and append the
+  // --destination arg for photovideo.py.
+  _ensureAndPushDest(args, dest) {
+    /* istanbul ignore else -- toAbsolutePath() always returns a non-empty string */
+    if (dest) {
+      try {
+        fs.mkdirSync(dest, { recursive: true });
+        console.log('Ensured media directory exists:', dest);
+      } catch (e) {
+        console.error('Failed to create media directory:', dest, e);
+      }
+      args.push('--destination=' + dest);
+    }
+  }
+
   startPhotoMode(callback) {
     if (!this.stillSettings) return callback(new Error('No still settings provided'));
 
@@ -600,16 +614,7 @@ class videoStream {
     if (this.stillSettings.device) args.push('--device=' + this.stillSettings.device);
     if (this.stillSettings.width) args.push('--width=' + this.stillSettings.width);
     if (this.stillSettings.height) args.push('--height=' + this.stillSettings.height);
-    /* istanbul ignore else -- toAbsolutePath() always returns a non-empty string */
-    if (dest) {
-      try {
-        fs.mkdirSync(dest, { recursive: true });
-        console.log('Ensured media directory exists:', dest);
-      } catch (e) {
-        console.error('Failed to create media directory:', dest, e);
-      }
-      args.push('--destination=' + dest);
-    }
+    this._ensureAndPushDest(args, dest);
 
     const pythonPath = logpaths.getPythonPath()
     this.deviceStream = spawn(pythonPath, args)
@@ -643,16 +648,7 @@ class videoStream {
       '--format=' + this.videoSettings.format
     ];
 
-    /* istanbul ignore else -- toAbsolutePath() always returns a non-empty string */
-    if (dest) {
-      try {
-        fs.mkdirSync(dest, { recursive: true });
-        console.log('Ensured media directory exists:', dest);
-      } catch (e) {
-        console.error('Failed to create media directory:', dest, e);
-      }
-      args.push('--destination=' + dest);
-    }
+    this._ensureAndPushDest(args, dest);
 
     const pythonPath = logpaths.getPythonPath()
     this.deviceStream = spawn(pythonPath, args)
@@ -706,7 +702,6 @@ class videoStream {
       // also generic "recording started"
       if (lower.includes('recording started')) {
         this.setRecordingFlag(true);
-        this.saveSettings();
         console.log('Detected recorder START; isRecording=true');
       }
       // stop patterns printed by photovideo.py:
@@ -715,7 +710,6 @@ class videoStream {
       // also generic "recording stopped"
       if (lower.includes('recording stopped')) {
         this.setRecordingFlag(false);
-        this.saveSettings();
         console.log('Detected recorder STOP; isRecording=false');
       }
 
@@ -787,10 +781,9 @@ class videoStream {
       clearTimeout(timeout);
       console.log(`${modeName} exited with code ${code}`);
       this.active = false;
-      // Clear the video recording flag
+      // Clear the video recording flag (setRecordingFlag persists)
       if (this.videoSettings) {
         this.setRecordingFlag(false);
-        this.saveSettings();
       }
       if (!callbackCalled) {
         callbackCalled = true;
@@ -914,8 +907,10 @@ class videoStream {
   // Helper to set the isRecording flag by replacing the object
   // instead of mutating the property
   setRecordingFlag(val) {
-    if (!this.videoSettings) return;
-    this.videoSettings = { ...this.videoSettings, isRecording: val };
+    if (this.videoSettings) {
+      this.videoSettings = { ...this.videoSettings, isRecording: val };
+    }
+    // persist unconditionally so callers don't need a redundant saveSettings()
     this.saveSettings();
   }
 
