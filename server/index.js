@@ -3,7 +3,6 @@ const fileUpload = require('express-fileupload')
 const compression = require('compression')
 const pino = require('pino-http')()
 const process = require('process')
-const jwt = require('jsonwebtoken');
 const { common } = require('node-mavlink')
 
 const networkManager = require('./networkManager')
@@ -39,8 +38,6 @@ const MEDIA_ROOT = logpaths.mediaDir; // absolute path to rpanion-server/media
 
 
 const io = require('socket.io')(http, { cookie: false })
-const { check, validationResult } = require('express-validator')
-const crypto = require('crypto');
 
 // Coerce a request-body field to boolean, accepting JSON true or the string 'true'
 const toBool = (v) => v === true || v === 'true'
@@ -58,16 +55,6 @@ const limiter = RateLimit({
   skip: (req) => process.env.NODE_ENV === 'development' && !process.env.ENABLE_RATE_LIMIT
 })
 
-// Generate a new key if not provided
-function generateSecretKey() {
-  return crypto.randomBytes(64).toString('hex');
-}
-const RPANION_SECRET_KEY = process.env.RPANION_SECRET_KEY || generateSecretKey();
-const tokenBlacklist = new Set();
-
-// RBAC: read-only users may not perform mutating (POST) requests. These POST
-// endpoints are exempt because they are not configuration mutations.
-const WRITE_ALLOWLIST = new Set(['/api/auth', '/api/logout']);
 
 // apply rate limiter to all requests
 app.use(limiter)
@@ -112,6 +99,10 @@ const ddns = new DynamicDns(settings)
 const networkPriority = new NetworkPriority()
 
 const telemetryInjector = new TelemetryInjector(settings)
+
+// Authentication: the authenticateToken middleware (injected into every route
+// module) + the auth/user routes (mounted after the body parser, below).
+const { authenticateToken, router: authRouter } = require('./auth.js')({ userMgmt })
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -383,204 +374,8 @@ app.use(express.json())
 // Serve the static files from the React app
 app.use(express.static(path.join(__dirname, '..', '/build')))
 
-// User login
-app.post('/api/login', [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/login', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  // Capture the input fields
-  let username = req.body.username
-  let password = req.body.password
-
-  userMgmt.checkLoginDetails(username, password).then(async (match) => {
-    if (match) {
-      // Generate a token with user information, including the RBAC role
-      const role = await userMgmt.getUserRole(username)
-      const token = jwt.sign({ username: username, role: role }, RPANION_SECRET_KEY, {
-        expiresIn: '1h', // Token expires in 1 hour
-      })
-      res.send({
-        token: token
-      })
-    } else {
-      res.status(401).send(JSON.stringify({error: 'Invalid username or password'}))
-    }
-  })
-})
-
-// List all users
-app.get('/api/users', authenticateToken, (req, res) => {
-  userMgmt.getAllUsers().then((users) => {
-    res.send(JSON.stringify({users: users}))
-  })
-})
-
-// Update existing user password
-app.post('/api/updateUserPassword', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/updateUserPassword', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username, password } = req.body;
-
-  /* istanbul ignore next -- unreachable: express-validator min:2 on both fields already rejects missing/empty values before this guard */
-  if (!username || !password) {
-    //return res.status(400).send({
-    //  error: 'Username and password are required'
-    //})
-    res.status(400).send(JSON.stringify({error: 'Username and password are required'}))
-  }
-
-  userMgmt.changePassword(username, password).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User password updated successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error updating user password'}))
-    }
-  })
-})
-
-// Create new user
-app.post('/api/createUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 }), check('role').optional().isIn(['admin', 'readonly'])], async (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/createUser', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username, password, role } = req.body
-
-  /* istanbul ignore next -- unreachable: express-validator min:2 on both fields already rejects missing/empty values before this guard */
-  if (!username || !password) {
-    return res.status(400).send(JSON.stringify({error: 'Username and password are required'}))
-  }
-
-  userMgmt.addUser(username, password, role).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User created successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error creating user'}))
-    }
-  })
-})
-
-// Update an existing user's role (admin only, enforced by authenticateToken)
-app.post('/api/updateUserRole', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('role').isIn(['admin', 'readonly'])], (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/updateUserRole', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username, role } = req.body
-
-  userMgmt.updateRole(username, role).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User role updated successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error updating user role'}))
-    }
-  })
-})
-
-// Delete a user
-app.post('/api/deleteUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 })], (req, res) => {
-  const errors = validationResult(req)
-  if (!errors.isEmpty()) {
-    console.log('Bad POST vars in /api/deleteUser', { message: JSON.stringify(errors.array()) })
-    return res.status(422).json({ error: JSON.stringify(errors.array()) })
-  }
-  const { username } = req.body
-
-  /* istanbul ignore next -- unreachable: express-validator min:2 on username already rejects missing/empty value before this guard */
-  if (!username) {
-    return res.status(400).send(JSON.stringify({error: 'Username is required'}))
-  }
-
-  userMgmt.deleteUser(username).then((success) => {
-    if (success) {
-      res.send(JSON.stringify({infoMessage: 'User deleted successfully'}))
-    } else {
-      res.status(500).send(JSON.stringify({error: 'Error deleting user'}))
-    }
-  })
-})
-
-// User logout
-app.post('/api/logout', authenticateToken, async (req, res) => {
-  const authHeader = req.headers['authorization']
-  const token = authHeader && authHeader.split(' ')[1]
-
-  // Add token to the blacklist
-  tokenBlacklist.add(token)
-
-  res.send({
-    token: token
-  })
-})
-
-// Simple token authentication call
-app.post('/api/auth', authenticateToken, async (req, res) => {
-  const authEnabled = !(process.env.NODE_ENV === 'development' || process.env.DISABLE_AUTH === '1')
-
-  res.setHeader('Content-Type', 'application/json')
-  res.send(JSON.stringify({
-    authEnabled,
-    role: req.user?.role
-  }))
-})
-
-// Middleware to check if the request has a valid token
-function authenticateToken(req, res, next) {
-  // Skip authentication in development mode
-  if (process.env.NODE_ENV === 'development' || process.env.DISABLE_AUTH === '1') {
-    return next();
-  }
-
-  // Determine if this is a Socket.IO request
-  const isSocketIO = typeof res.status !== 'function'
-
-  // Helper function to send error responses
-  const sendError = (statusCode, message) => {
-    if (isSocketIO) {
-      return next(new Error(message))
-    }
-    return res.status(statusCode).json({ message })
-  }
-
-  // Extract token
-  let token;
-  try {
-    const authHeader = req.headers['authorization']
-    token = authHeader && authHeader.split(' ')[1]
-  } catch (err) /* istanbul ignore next -- header property access cannot throw in express */ {
-    return sendError(401, 'Access denied. No token provided.')
-  }
-
-  if (!token) {
-    return sendError(401, 'Access denied. No token provided.')
-  }
-
-  // Check if the token is blacklisted
-  if (tokenBlacklist.has(token)) {
-    return sendError(401, 'Invalid token')
-  }
-
-  // Verify token
-  jwt.verify(token, RPANION_SECRET_KEY, (err, user) => {
-    if (err) {
-      return sendError(403, 'Invalid token')
-    }
-    req.user = user
-    // RBAC: read-only users may only read. Block mutating (POST) requests
-    // except the auth/logout housekeeping endpoints.
-    if (req.method === 'POST' && user.role === 'readonly' && !WRITE_ALLOWLIST.has(req.path)) {
-      return sendError(403, 'Read-only user: write access denied')
-    }
-    next()
-  })
-}
+// Auth + user management routes (extracted to ./auth.js)
+app.use(authRouter)
 
 // PPP connection routes (extracted to ./routes/ppp.js)
 app.use(require('./routes/ppp.js')({ authenticateToken, pppConnectionManager }))
