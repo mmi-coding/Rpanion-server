@@ -1145,6 +1145,22 @@ app.post('/api/ltemodemdisconnect', authenticateToken, function (req, res) {
   })
 })
 
+// switch the modem's USB composition (QMI <-> RNDIS). Reboots the modem.
+app.post('/api/ltemodemusbmode', authenticateToken, [check('mode').isIn(['qmi', 'rndis'])], function (req, res) {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/ltemodemusbmode', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+  const pid = { qmi: '9001', rndis: '9011' }[req.body.mode]
+  res.setHeader('Content-Type', 'application/json')
+  lteModem.setUsbMode(pid).then((lines) => {
+    res.send(JSON.stringify({ error: null, response: lines }))
+  }).catch((err) => {
+    res.status(422).send(JSON.stringify({ error: err.message, response: [] }))
+  })
+})
+
 // reset the data usage counters
 app.post('/api/ltemodemresetusage', authenticateToken, function (req, res) {
   lteModem.resetUsage()

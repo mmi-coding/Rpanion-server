@@ -1242,6 +1242,14 @@ exit 0`)
       assert.ok(fake.calls('sudo').some(c => c === 'poff'))
     })
 
+    it('#setUsbMode() sends AT+CUSBPIDSWITCH', async function () {
+      settings.clear()
+      const modem = new LTEModem(settings)
+      const at = sinon.stub(modem, 'sendAT').resolves(['OK'])
+      await modem.setUsbMode('9011')
+      assert.ok(at.calledWith('AT+CUSBPIDSWITCH=9011,1,1', 15000))
+    })
+
     it('#setSettings() accepts the new data-path fields and persists them', function (done) {
       settings.clear()
       const modem = new LTEModem(settings)

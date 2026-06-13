@@ -609,6 +609,13 @@ class LTEModem {
     return ['PPP stopped']
   }
 
+  // Switch the modem's USB composition by PID (e.g. 9001=QMI, 9011=RNDIS) via
+  // AT+CUSBPIDSWITCH. This REBOOTS the modem and re-enumerates its USB
+  // interfaces, so the AT port drops out for ~30s afterwards.
+  async setUsbMode (pid) {
+    return this.sendAT(`AT+CUSBPIDSWITCH=${pid},1,1`, 15000)
+  }
+
   // --- modem discovery ---
 
   // Probe one serial path at one baud rate: open it, expect OK to AT,

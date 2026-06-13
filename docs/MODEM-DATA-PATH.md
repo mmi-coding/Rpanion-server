@@ -60,9 +60,14 @@ sudo (the service user opens the AT serial port directly via the `dialout` group
 This is a **modem USB-composition setting, not a hardware limitation**. SIM7600
 (and similar) modules can present their data interface as either **QMI**
 (`qmi_wwan` → `cdc-wdm0` + `wwan0`) or **RNDIS/ECM** (`usb0`), selected by the
-USB PID. A modem on PID `1e0e:9001` enumerates as QMI (no `usb0`); switch it with
-`AT+CUSBPIDSWITCH` if you specifically want RNDIS. QMI is generally the more
-robust choice, so prefer it unless you have a reason not to.
+USB PID. A modem on PID `1e0e:9001` enumerates as QMI (no `usb0`). QMI is
+generally the more robust choice, so prefer it unless you have a reason not to.
+
+You can switch composition from the LTE Modem page (**USB composition** → choose
+QMI/RNDIS → *Switch USB mode & reboot modem*), which sends
+`AT+CUSBPIDSWITCH=<pid>,1,1` (QMI `9001`, RNDIS `9011`) and **reboots the modem**
+(~30 s; interfaces re-enumerate). Afterwards set the **Data path mode** to match,
+re-scan and reconnect.
 
 ## On-device prerequisites (now mostly automatic)
 
