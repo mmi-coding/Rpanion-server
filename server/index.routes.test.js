@@ -649,6 +649,58 @@ describe('Package B — delegate HTTP routes', function () {
     })
   })
 
+  describe('GET /api/vpntailscale', function () {
+    it('200 — returns tailscale status', function (done) {
+      sinon.stub(vpn, 'getVPNStatusTailscale').callsFake(function (errpass, cb) {
+        cb(null, { installed: true, status: true, text: [] })
+      })
+      request('GET', '/api/vpntailscale').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.statusTailscale)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/vpntailscaleconnect', function () {
+    it('422 — empty auth key fails validation', function (done) {
+      request('POST', '/api/vpntailscaleconnect', { body: { authkey: '' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — success path', function (done) {
+      sinon.stub(vpn, 'connectTailscale').callsFake(function (key, cb) {
+        cb(null, { installed: true, status: true, text: [] })
+      })
+      request('POST', '/api/vpntailscaleconnect', { body: { authkey: 'tskey-auth-abc123' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/vpntailscaledisconnect', function () {
+    it('200 — success path', function (done) {
+      sinon.stub(vpn, 'disconnectTailscale').callsFake(function (cb) {
+        cb(null, { installed: true, status: false, text: [] })
+      })
+      request('POST', '/api/vpntailscaledisconnect').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
   // =========================================================================
   // NTRIP routes
   // =========================================================================

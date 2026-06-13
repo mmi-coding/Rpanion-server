@@ -54,9 +54,10 @@ and land at 100% coverage on both suites.
 - [x] **Settings backup & restore.** Download `config/settings.json` and restore
   it from a file, on the About page (`/api/settingsbackup` + `/api/settingsrestore`).
   Done — see docs/BACKUP-RESTORE.md, feature-16 report.
-- [ ] **Tailscale VPN.** Add alongside ZeroTier/WireGuard on the VPN page (status
-  / up / down / IP) via the `tailscale` CLI — wrapper unit-tested with
-  `test/fakeBin.js`; real auth verified on-device.
+- [x] **Tailscale VPN.** New `/tailscale` page (auth-key connect/disconnect,
+  peer table) via the `tailscale` CLI — wrapper `fakeBin`-tested; real auth
+  on-device. Done — dedicated page (kept upstream VPN page untouched); see
+  docs/TAILSCALE.md, feature-17 report.
 - [ ] **Dynamic DNS.** Periodic updater for a DDNS provider (DuckDNS / No-IP /
   Cloudflare) with a config page; HTTP calls mocked in tests.
 - [ ] **Network priority + failover + bandwidth monitoring.** Prefer WiFi, fall

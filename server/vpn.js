@@ -185,11 +185,71 @@ function getVPNStatusWireguard (errpass, callback) {
   })
 }
 
+function getVPNStatusTailscale (errpass, callback) {
+  execFile('which', ['tailscale'], (error, stdout) => {
+    // which returns exit code 1 when binary not found (stdout empty)
+    if (error !== null || stdout.toString().trim() === '') {
+      console.log('Tailscale not installed')
+      return callback(null, { installed: false, status: false, text: JSON.parse('[]') })
+    }
+
+    exec('sudo tailscale status --json', (err, sout, serr) => {
+      if (serr.toString().trim() !== '') {
+        console.log(`exec error: ${err}`)
+        return callback(serr.toString().trim(), { installed: false, status: false, text: JSON.parse('[]') })
+      }
+      let parsed
+      try {
+        parsed = JSON.parse(sout)
+      } catch (e) {
+        return callback('Unable to parse tailscale status', { installed: true, status: false, text: JSON.parse('[]') })
+      }
+      const isUp = parsed.BackendState === 'Running'
+      const text = []
+      const addNode = (node, isSelf) => {
+        const ips = node.TailscaleIPs || []
+        text.push({ host: node.HostName, ip: ips[0] || '', online: node.Online, self: isSelf })
+      }
+      if (parsed.Self) {
+        addNode(parsed.Self, true)
+      }
+      const peers = parsed.Peer || {}
+      for (const key in peers) {
+        addNode(peers[key], false)
+      }
+      return callback(errpass, { installed: true, status: isUp, text })
+    })
+  })
+}
+
+function connectTailscale (authkey, callback) {
+  console.log('Tailscale connecting')
+  execFile('sudo', ['tailscale', 'up', '--authkey=' + authkey], (error, stdout, stderr) => {
+    if (stderr.toString().trim() !== '') {
+      return getVPNStatusTailscale(stderr.toString().trim(), callback)
+    }
+    return getVPNStatusTailscale(null, callback)
+  })
+}
+
+function disconnectTailscale (callback) {
+  console.log('Tailscale disconnecting')
+  execFile('sudo', ['tailscale', 'down'], (error, stdout, stderr) => {
+    if (stderr.toString().trim() !== '') {
+      return getVPNStatusTailscale(stderr.toString().trim(), callback)
+    }
+    return getVPNStatusTailscale(null, callback)
+  })
+}
+
 module.exports = {
   getVPNStatusZerotier,
   getVPNStatusWireguard,
+  getVPNStatusTailscale,
   addZerotier,
   removeZerotier,
+  connectTailscale,
+  disconnectTailscale,
   addWireguardProfile,
   deleteWireguardProfile,
   activateWireguardProfile,

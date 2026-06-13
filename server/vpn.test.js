@@ -16,36 +16,49 @@ describe('VPN Functions', function () {
 
   before(function () {
     fake = new FakeBin()
-    fake.install('which', 'case "$FAKE_SCENARIO" in\n' +
-      'zt-missing) [ "$1" = "zerotier-cli" ] && exit 1 ;;\n' +
-      'zt-empty) [ "$1" = "zerotier-cli" ] && exit 0 ;;\n' +
-      'wg-missing) [ "$1" = "wg-quick" ] && exit 1 ;;\n' +
-      'wg-empty) [ "$1" = "wg-quick" ] && exit 0 ;;\n' +
-      'esac\n' +
-      'echo "/usr/bin/$1"')
-    fake.install('sudo', 'case "$FAKE_SCENARIO" in\n' +
-      'zt-err) echo boom >&2; exit 0 ;;\n' +
-      'zt-connfail) echo "connection failed"; exit 0 ;;\n' +
-      'esac\n' +
-      'case "$1 $2" in\n' +
-      '"zerotier-cli info")\n' +
-      '  case "$FAKE_SCENARIO" in\n' +
-      '  zt-offline) echo "200 info abc 1.10.1 OFFLINE" ;;\n' +
-      '  zt-tunneled) echo "200 info abc 1.10.1 TUNNELED" ;;\n' +
-      '  *) echo "200 info abc 1.10.1 ONLINE" ;;\n' +
-      '  esac ;;\n' +
-      '"zerotier-cli listnetworks") echo "[]" ;;\n' +
-      '"zerotier-cli join")\n' +
-      '  if [ "$FAKE_SCENARIO" = "zt-joinfail" ]; then echo "500 join failed"; else echo "200 join OK"; fi ;;\n' +
-      '"zerotier-cli leave")\n' +
-      '  if [ "$FAKE_SCENARIO" = "zt-leavefail" ]; then echo "500 leave failed"; else echo "200 leave OK"; fi ;;\n' +
-      '"wg-quick up"|"wg-quick down")\n' +
-      '  if [ "$FAKE_SCENARIO" = "wg-fail" ]; then echo "wg boom" >&2; exit 1; fi ;;\n' +
-      '"systemctl enable"|"systemctl disable")\n' +
-      '  if [ "$FAKE_SCENARIO" = "sysctl-fail" ]; then exit 1; fi\n' +
-      '  if [ "$FAKE_SCENARIO" = "wg-noexist" ]; then echo "wg-quick@xxxxx.service does not exist"; fi ;;\n' +
-      'esac\n' +
-      'exit 0')
+    fake.install('which', `case "$FAKE_SCENARIO" in
+zt-missing) [ "$1" = "zerotier-cli" ] && exit 1 ;;
+zt-empty) [ "$1" = "zerotier-cli" ] && exit 0 ;;
+wg-missing) [ "$1" = "wg-quick" ] && exit 1 ;;
+wg-empty) [ "$1" = "wg-quick" ] && exit 0 ;;
+ts-missing) [ "$1" = "tailscale" ] && exit 1 ;;
+ts-empty) [ "$1" = "tailscale" ] && exit 0 ;;
+esac
+echo "/usr/bin/$1"`)
+    fake.install('sudo', `case "$FAKE_SCENARIO" in
+zt-err) echo boom >&2; exit 0 ;;
+zt-connfail) echo "connection failed"; exit 0 ;;
+esac
+case "$1 $2" in
+"zerotier-cli info")
+  case "$FAKE_SCENARIO" in
+  zt-offline) echo "200 info abc 1.10.1 OFFLINE" ;;
+  zt-tunneled) echo "200 info abc 1.10.1 TUNNELED" ;;
+  *) echo "200 info abc 1.10.1 ONLINE" ;;
+  esac ;;
+"zerotier-cli listnetworks") echo "[]" ;;
+"zerotier-cli join")
+  if [ "$FAKE_SCENARIO" = "zt-joinfail" ]; then echo "500 join failed"; else echo "200 join OK"; fi ;;
+"zerotier-cli leave")
+  if [ "$FAKE_SCENARIO" = "zt-leavefail" ]; then echo "500 leave failed"; else echo "200 leave OK"; fi ;;
+"tailscale status")
+  case "$FAKE_SCENARIO" in
+  ts-err) echo "ts boom" >&2; exit 0 ;;
+  ts-badjson) echo "not json" ;;
+  ts-stopped) echo '{"BackendState":"Stopped"}' ;;
+  *) echo '{"BackendState":"Running","Self":{"HostName":"pi","TailscaleIPs":["100.64.0.1"],"Online":true},"Peer":{"k":{"HostName":"laptop","Online":true}}}' ;;
+  esac ;;
+"tailscale up")
+  if [ "$FAKE_SCENARIO" = "ts-upfail" ]; then echo "ts up boom" >&2; fi ;;
+"tailscale down")
+  if [ "$FAKE_SCENARIO" = "ts-downfail" ]; then echo "ts down boom" >&2; fi ;;
+"wg-quick up"|"wg-quick down")
+  if [ "$FAKE_SCENARIO" = "wg-fail" ]; then echo "wg boom" >&2; exit 1; fi ;;
+"systemctl enable"|"systemctl disable")
+  if [ "$FAKE_SCENARIO" = "sysctl-fail" ]; then exit 1; fi
+  if [ "$FAKE_SCENARIO" = "wg-noexist" ]; then echo "wg-quick@xxxxx.service does not exist"; fi ;;
+esac
+exit 0`)
     fake.install('cp', 'if [ "$FAKE_SCENARIO" = "cp-fail" ]; then echo "cp: cannot create" >&2; exit 1; fi')
     fake.install('rm', 'if [ "$FAKE_SCENARIO" = "rm-stderr" ]; then echo "rm: cannot remove" >&2; fi')
     fake.activate()
@@ -191,6 +204,103 @@ describe('VPN Functions', function () {
         setTimeout(check, 25)
       }
       check()
+    })
+  })
+
+  describe('#getVPNStatusTailscale()', function () {
+    it('should report a running tailscale with self + peers', function (done) {
+      VPNManager.getVPNStatusTailscale(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, true)
+        assert.equal(statusJSON.text.length, 2)
+        const self = statusJSON.text.find(n => n.self)
+        assert.equal(self.ip, '100.64.0.1')
+        const peer = statusJSON.text.find(n => !n.self)
+        assert.equal(peer.ip, '') // peer has no TailscaleIPs → falls back to ''
+        done()
+      })
+    })
+
+    it('should report a stopped tailscale (no self/peers)', function (done) {
+      process.env.FAKE_SCENARIO = 'ts-stopped'
+      VPNManager.getVPNStatusTailscale(null, (stderr, statusJSON) => {
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, false)
+        assert.deepEqual(statusJSON.text, [])
+        done()
+      })
+    })
+
+    it('should report tailscale as not installed (which exit 1)', function (done) {
+      process.env.FAKE_SCENARIO = 'ts-missing'
+      VPNManager.getVPNStatusTailscale(null, (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should treat an empty which result as not installed', function (done) {
+      process.env.FAKE_SCENARIO = 'ts-empty'
+      VPNManager.getVPNStatusTailscale(null, (stderr, statusJSON) => {
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should pass through cli errors on stderr', function (done) {
+      process.env.FAKE_SCENARIO = 'ts-err'
+      VPNManager.getVPNStatusTailscale(null, (stderr, statusJSON) => {
+        assert.ok(stderr.includes('ts boom'))
+        assert.equal(statusJSON.installed, false)
+        done()
+      })
+    })
+
+    it('should handle unparseable status output', function (done) {
+      process.env.FAKE_SCENARIO = 'ts-badjson'
+      VPNManager.getVPNStatusTailscale(null, (stderr, statusJSON) => {
+        assert.ok(stderr.includes('Unable to parse'))
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, false)
+        done()
+      })
+    })
+  })
+
+  describe('#connectTailscale() and #disconnectTailscale()', function () {
+    it('should connect with an auth key', function (done) {
+      VPNManager.connectTailscale('tskey-auth-abc123', (stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, true)
+        done()
+      })
+    })
+
+    it('should pass through a connect failure', function (done) {
+      process.env.FAKE_SCENARIO = 'ts-upfail'
+      VPNManager.connectTailscale('badkey', (stderr, statusJSON) => {
+        assert.ok(stderr.includes('ts up boom'))
+        done()
+      })
+    })
+
+    it('should disconnect', function (done) {
+      VPNManager.disconnectTailscale((stderr, statusJSON) => {
+        assert.equal(stderr, null)
+        assert.equal(statusJSON.installed, true)
+        done()
+      })
+    })
+
+    it('should pass through a disconnect failure', function (done) {
+      process.env.FAKE_SCENARIO = 'ts-downfail'
+      VPNManager.disconnectTailscale((stderr, statusJSON) => {
+        assert.ok(stderr.includes('ts down boom'))
+        done()
+      })
     })
   })
 
