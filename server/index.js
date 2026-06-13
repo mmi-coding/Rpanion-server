@@ -780,6 +780,36 @@ app.post('/api/vpnwireguardelete', authenticateToken, [check('network').not().is
   })
 })
 
+// Serve the tailscale info
+app.get('/api/vpntailscale', authenticateToken, (req, res) => {
+  VPNManager.getVPNStatusTailscale(null, (stderr, statusJSON) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ error: stderr, statusTailscale: statusJSON }))
+  })
+})
+
+// Connect tailscale with an auth key
+app.post('/api/vpntailscaleconnect', authenticateToken, [check('authkey').not().isEmpty().not().contains(';').not().contains('\'').not().contains('"').trim()], (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/vpntailscaleconnect', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+
+  VPNManager.connectTailscale(req.body.authkey, (stderr, statusJSON) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ error: stderr, statusTailscale: statusJSON }))
+  })
+})
+
+// Disconnect tailscale
+app.post('/api/vpntailscaledisconnect', authenticateToken, (req, res) => {
+  VPNManager.disconnectTailscale((stderr, statusJSON) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ error: stderr, statusTailscale: statusJSON }))
+  })
+})
+
 // Serve the ntrip info
 app.get('/api/ntripconfig', authenticateToken, (req, res) => {
   ntripClient.getSettings((host, port, mountpoint, username, password, active, useTLS) => {

@@ -123,3 +123,14 @@ Mostly WSL-verified (endpoints + UI unit/e2e tested). Confirm the round-trip on 
 - [ ] Restore that file on a freshly-flashed Pi, restart the service → all settings (network/video/modem/NTRIP/cellular) come back
 - [ ] Clone: restore a backup from device A onto identical device B; verify nothing device-specific breaks
 - [ ] With RBAC on, a read-only user cannot restore (Restore returns 403)
+
+## Feature 17: Tailscale VPN (feature/vpn-tailscale)
+
+The CLI wrappers are fakeBin-tested in WSL; real tailnet behaviour needs the device.
+
+- [ ] Install tailscale on the Pi; generate an auth key in the admin console
+- [ ] Connect from the Tailscale VPN page with the auth key → status shows Connected: Yes, the device's Tailscale IP, and tailnet peers
+- [ ] From a ground station on the same tailnet, reach Mission Planner telemetry over the modem link (CGNAT, no port-forward)
+- [ ] Disconnect → `tailscale down`; reconnect without a new key
+- [ ] Confirm `sudo tailscale` has the needed rights on the Pi (no password prompt under the service user)
+- [ ] With RBAC on, a read-only user cannot Connect/Disconnect (403)
