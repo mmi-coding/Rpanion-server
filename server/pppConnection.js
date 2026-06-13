@@ -244,31 +244,6 @@ class PPPConnection {
         });
     }
 
-    // istanbul ignore next - calls exec() which is not imported at module top; dead code, upstream bug
-    getPPPdatarate(callback) {
-        if (!this.isConnected) {
-            return callback(new Error('PPP is not connected'));
-        }
-        // get current data transfer stats for connected PPP session
-        return new Promise((resolve, reject) => {
-            exec('ifconfig ppp0', (error, stdout, stderr) => {
-                if (error) {
-                    reject(`Error getting PPP data rate: ${stderr}`);
-                } else {
-                    // match format RX packets 110580  bytes 132651067 (132.6 MB)
-                    const match = stdout.match(/RX packets \d+  bytes (\d+) \(\d+\.\d+ MB\).*TX packets \d+  bytes (\d+) \(\d+\.\d+ MB\)/);
-                    if (match) {
-                        const rxBytes = parseInt(match[1], 10);
-                        const txBytes = parseInt(match[5], 10);
-                        resolve({ rxBytes, txBytes });
-                    } else {
-                        reject('Could not parse PPP data rate');
-                    }
-                }
-            });
-        });
-    }
-
     getPPPSettings(callback) {
         this.getDevices((err, devices) => {
             if (err) {
@@ -362,11 +337,8 @@ class PPPConnection {
         if (this.pppProcess && this.pppProcess.pid) {
             //get datarate
             const { rxRate, txRate, percentusedRx, percentusedTx } = this.getPPPDataRate();
-            let status = 'Connected';
-            /* istanbul ignore else - outer guard (pppProcess && pppProcess.pid) already requires pid truthy; else arm unreachable */
-            if (this.pppProcess.pid) {
-                status += ` (PID: ${this.pppProcess.pid})`;
-            }
+            // outer guard already requires a truthy pid
+            let status = `Connected (PID: ${this.pppProcess.pid})`;
             if (rxRate > 0 || txRate > 0) {
                 status += `, RX: ${rxRate.toFixed(2)} B/s (${(percentusedRx * 100).toFixed(2)}%), TX: ${txRate.toFixed(2)} B/s (${(percentusedTx * 100).toFixed(2)}%)`;
             } else {

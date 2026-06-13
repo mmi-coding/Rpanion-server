@@ -6,6 +6,51 @@ const path = require('path')
 const fs = require('fs')
 const logpaths = require('./paths.js')
 
+// Recursively delete a file or directory tree.
+function deleteRecursively (targetPath) {
+  const targetStat = fs.lstatSync(targetPath)
+  if (targetStat.isDirectory()) {
+    const entries = fs.readdirSync(targetPath)
+    entries.forEach((entry) => {
+      deleteRecursively(path.join(targetPath, entry))
+    })
+    fs.rmdirSync(targetPath)
+  } else {
+    fs.unlinkSync(targetPath)
+  }
+}
+
+// Recursively delete files matching a predicate.
+function deleteMatchingFiles (dir, matcher) {
+  const entries = fs.readdirSync(dir)
+  entries.forEach((entry) => {
+    const entryPath = path.join(dir, entry)
+    const entryStat = fs.lstatSync(entryPath)
+    if (entryStat.isDirectory()) {
+      deleteMatchingFiles(entryPath, matcher)
+    } else if (matcher(entryPath)) {
+      fs.unlinkSync(entryPath)
+    }
+  })
+}
+
+// Recursively remove now-empty subdirectories.
+function removeEmptySubDirs (dir) {
+  const entries = fs.readdirSync(dir)
+  entries.forEach((entry) => {
+    const entryPath = path.join(dir, entry)
+    const stat = fs.lstatSync(entryPath)
+    if (stat.isDirectory()) {
+      removeEmptySubDirs(entryPath)
+      try {
+        fs.rmdirSync(entryPath)
+      } catch (e) {
+        // Directory not empty, skip
+      }
+    }
+  })
+}
+
 class flightLogger {
   constructor () {
     this.topfolder = logpaths.flightsLogsDir
@@ -29,48 +74,6 @@ class flightLogger {
 
   // Delete all logs - tlog or binlog or kmz files
   clearlogs (logtype, curBinLog) {
-    function deleteRecursively (targetPath) {
-      const targetStat = fs.lstatSync(targetPath)
-      if (targetStat.isDirectory()) {
-        const entries = fs.readdirSync(targetPath)
-        entries.forEach((entry) => {
-          deleteRecursively(path.join(targetPath, entry))
-        })
-        fs.rmdirSync(targetPath)
-      } else {
-        fs.unlinkSync(targetPath)
-      }
-    }
-
-    function deleteMatchingFiles (dir, matcher) {
-      const entries = fs.readdirSync(dir)
-      entries.forEach((entry) => {
-        const entryPath = path.join(dir, entry)
-        const entryStat = fs.lstatSync(entryPath)
-        if (entryStat.isDirectory()) {
-          deleteMatchingFiles(entryPath, matcher)
-        } else if (matcher(entryPath)) {
-          fs.unlinkSync(entryPath)
-        }
-      })
-    }
-
-    function removeEmptySubDirs (dir) {
-      const entries = fs.readdirSync(dir)
-      entries.forEach((entry) => {
-        const entryPath = path.join(dir, entry)
-        const stat = fs.lstatSync(entryPath)
-        if (stat.isDirectory()) {
-          removeEmptySubDirs(entryPath)
-          try {
-            fs.rmdirSync(entryPath)
-          } catch (e) {
-            // Directory not empty, skip
-          }
-        }
-      })
-    }
-
     if (logtype === 'tlog') {
       deleteMatchingFiles(this.topfolder, (filePath) => filePath.endsWith('.tlog'))
       removeEmptySubDirs(this.topfolder)

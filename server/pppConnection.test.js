@@ -790,25 +790,6 @@ describe('PPPConnection', function () {
     });
   });
 
-  // ── getPPPdatarate (legacy dead-code method — istanbul-ignored) ──────────────
-
-  describe('getPPPdatarate (legacy upstream dead-code)', function () {
-    it('calls back with error immediately when not connected (before exec is reached)', function (done) {
-      const ppp = new PPPConnection(mockSettings);
-      ppp.isConnected = false;
-      // The callback fires synchronously before the missing exec() ReferenceError is reached
-      ppp.getPPPdatarate(function (err) {
-        try {
-          assert.ok(err instanceof Error);
-          assert.match(err.message, /PPP is not connected/);
-          done();
-        } catch (e) {
-          done(e);
-        }
-      });
-    });
-  });
-
   // ── conStatusStr ────────────────────────────────────────────────────────────
 
   describe('conStatusStr', function () {

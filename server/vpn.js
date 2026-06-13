@@ -10,17 +10,17 @@ function getVPNStatusZerotier (errpass, callback) {
     // which returns exit code 1 when binary not found (stderr is empty)
     if (errorzt !== null || stdoutzt.toString().trim() === '') {
       console.log('ZT not installed:', errorzt?.code || 'binary not found')
-      return callback(null, { installed: false, status: false, text: JSON.parse('[]') })
+      return callback(null, { installed: false, status: false, text: [] })
     }
     
     exec('sudo zerotier-cli info && sudo zerotier-cli listnetworks -j', (error, stdout, stderr) => {
       if (stderr.toString().trim() !== '') {
         console.log(`exec error3: ${error}`)
-        return callback(stderr.toString().trim(), { installed: false, status: false, text: JSON.parse('[]') })
+        return callback(stderr.toString().trim(), { installed: false, status: false, text: [] })
       } else {
         // zerotier's in JSON format anyway, so just pipe through
         if (stdout.search('connection failed') > -1) {
-          return callback(error, { installed: true, status: false, text: JSON.parse('[]') })
+          return callback(error, { installed: true, status: false, text: [] })
         } else {
           const infoout = stdout.slice(0, stdout.indexOf('[\n]'))
           const networkout = stdout.slice(stdout.indexOf('\n') + 1)
@@ -168,13 +168,13 @@ function getVPNStatusWireguard (errpass, callback) {
     // check if installed
     if (errorwg !== null || stdoutwg.toString().trim() === '') {
       console.log('Wireguard not installed:', errorwg?.code || 'binary not found')
-      return callback(null, { installed: false, status: false, text: JSON.parse('[]') })
+      return callback(null, { installed: false, status: false, text: [] })
     } else {
       const pythonPath = logpaths.getPythonPath()
       execFile(pythonPath, ['./python/wireguardconfig.py'], (error, stdout, stderr) => {
         if (error !== null) {
           console.error(`exec error: ${error}`)
-          return callback(stderr, { installed: false, status: false, text: JSON.parse('[]') })
+          return callback(stderr, { installed: false, status: false, text: [] })
         } else {
           // output in JSON format anyway, so just pipe through
           console.log(stdout)
@@ -190,19 +190,19 @@ function getVPNStatusTailscale (errpass, callback) {
     // which returns exit code 1 when binary not found (stdout empty)
     if (error !== null || stdout.toString().trim() === '') {
       console.log('Tailscale not installed')
-      return callback(null, { installed: false, status: false, text: JSON.parse('[]') })
+      return callback(null, { installed: false, status: false, text: [] })
     }
 
     exec('sudo tailscale status --json', (err, sout, serr) => {
       if (serr.toString().trim() !== '') {
         console.log(`exec error: ${err}`)
-        return callback(serr.toString().trim(), { installed: false, status: false, text: JSON.parse('[]') })
+        return callback(serr.toString().trim(), { installed: false, status: false, text: [] })
       }
       let parsed
       try {
         parsed = JSON.parse(sout)
       } catch (e) {
-        return callback('Unable to parse tailscale status', { installed: true, status: false, text: JSON.parse('[]') })
+        return callback('Unable to parse tailscale status', { installed: true, status: false, text: [] })
       }
       const isUp = parsed.BackendState === 'Running'
       const text = []

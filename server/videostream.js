@@ -147,12 +147,6 @@ class videoStream {
     this.ifaces = this.scanInterfaces()
     this.deviceAddresses = []
 
-    // Remove leading slash if it exists to prevent double slashes
-    let mountPoint = factory.toString();
-    if (mountPoint.startsWith('/')) {
-      mountPoint = mountPoint.substring(1);
-    }
-
     for (let j = 0; j < this.ifaces.length; j++) {
       if (factory.includes('rtsp://')) {
         // remove any rtsp username or passwords, format rtsp://admin:admin@192.168.1.217:554/11
@@ -401,18 +395,11 @@ class videoStream {
     const ifaces = os.networkInterfaces()
 
     for (const ifacename in ifaces) {
-      let alias = 0
       for (let j = 0; j < ifaces[ifacename].length; j++) {
-        if (ifaces[ifacename][j].family === 'IPv4' && alias >= 1) {
-          // this single interface has multiple ipv4 addresses
-          // console.log("Found IP " + ifacename + ':' + alias, ifaces[ifacename][j].address);
-          iface.push(ifaces[ifacename][j].address)
-        } else if (ifaces[ifacename][j].family === 'IPv4') {
-          // this interface has only one ipv4 adress
-          // console.log("Found IP " + ifacename, ifaces[ifacename][j].address);
+        // collect every IPv4 address (an interface may have more than one)
+        if (ifaces[ifacename][j].family === 'IPv4') {
           iface.push(ifaces[ifacename][j].address)
         }
-        ++alias
       }
     }
     return iface
@@ -717,7 +704,7 @@ class videoStream {
       // "Picamera2 recording started to <path>"
       // "V4L2 recording started to <path>"
       // also generic "recording started"
-      if (lower.includes('recording started') || lower.includes('recording started to')) {
+      if (lower.includes('recording started')) {
         this.setRecordingFlag(true);
         this.saveSettings();
         console.log('Detected recorder START; isRecording=true');
@@ -876,14 +863,10 @@ class videoStream {
   }
 
   captureStillPhoto(senderSysId, senderCompId, targetComponent, positionData = null) {
-    console.log('Attempting captureStillPhoto. Internal state: active=', this.active, 'mode=', this.cameraMode, 'deviceStream exists=', !!this.deviceStream);
-
-    // Capture a single still photo
-    console.log('Capturing still photo')
+    console.log('Capturing still photo. Internal state: active=', this.active, 'mode=', this.cameraMode, 'deviceStream exists=', !!this.deviceStream);
 
     if (!this.active || !this.deviceStream) {
-      console.log('Cannot capture photo - camera not active')
-      console.log('Internal check failed: Cannot capture photo - camera not active or no deviceStream.');
+      console.log('Cannot capture photo: camera not active or no deviceStream')
       return
     }
 

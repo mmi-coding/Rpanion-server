@@ -14,7 +14,6 @@ class logConverter {
     this.pythonScript = path.join(this.pythonFolder, 'tlog2kmz.py')
 
     this.converterPid = null
-    this.tlogfilename = null
 
     // load settings
     this.settings = settings

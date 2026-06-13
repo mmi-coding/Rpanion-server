@@ -3,7 +3,6 @@ const { NtripClient } = require('ntrip-client')
 const { geoToEcef } = require('ntrip-client/lib/nmea/ecef')
 const { UNKOWN_HEADER_ERROR } = require('ntrip-decoder/lib/config'); // NOTE: depends on internal path of ntrip-client's dependency ntrip-decoder
 const events = require('events')
-const os = require('os')
 const { common } = require('node-mavlink')
 
 class ntrip {
