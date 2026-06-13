@@ -52,4 +52,21 @@ EOF
 
 chmod 440 /etc/sudoers.d/allow-vpn-control
 
+# QMI modems (qmi_wwan): set raw-IP framing automatically when the interface
+# appears, so the QMI data path is turnkey (SIM7600 etc. need raw_ip=Y).
+cat <<'EOF' > /etc/udev/rules.d/77-rpanion-qmi-rawip.rules
+ACTION=="add|change", SUBSYSTEM=="net", DRIVERS=="qmi_wwan", ATTR{qmi/raw_ip}="Y"
+EOF
+udevadm control --reload-rules 2>/dev/null || true
+udevadm trigger --subsystem-match=net 2>/dev/null || true
+
+# Keep NetworkManager from managing the modem's wwan0 (the app drives it via
+# qmicli/udhcpc); otherwise NM fights the manual data call.
+mkdir -p /etc/NetworkManager/conf.d
+cat <<'EOF' > /etc/NetworkManager/conf.d/rpanion-wwan-unmanaged.conf
+[keyfile]
+unmanaged-devices=interface-name:wwan0
+EOF
+nmcli general reload 2>/dev/null || true
+
 
