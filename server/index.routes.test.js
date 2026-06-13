@@ -1916,6 +1916,39 @@ describe('Package B — delegate HTTP routes', function () {
     })
   })
 
+  describe('POST /api/ltemodemusbmode', function () {
+    it('200 — switches USB mode (maps mode to PID)', function (done) {
+      const stub = sinon.stub(LTEModem.prototype, 'setUsbMode').resolves(['OK'])
+      request('POST', '/api/ltemodemusbmode', { body: { mode: 'rndis' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(stub.calledWith('9011'))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('422 — invalid mode', function (done) {
+      request('POST', '/api/ltemodemusbmode', { body: { mode: 'bogus' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('422 — setUsbMode rejects', function (done) {
+      sinon.stub(LTEModem.prototype, 'setUsbMode').rejects(new Error('no modem'))
+      request('POST', '/api/ltemodemusbmode', { body: { mode: 'qmi' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          assert.ok(res.body.error)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
   describe('POST /api/ltemodemresetusage', function () {
     it('200 — resets usage counters', function (done) {
       sinon.stub(LTEModem.prototype, 'resetUsage').returns(undefined)

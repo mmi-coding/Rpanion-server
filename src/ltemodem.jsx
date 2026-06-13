@@ -73,7 +73,9 @@ class LTEModemPage extends basePage {
             pingHost: '8.8.8.8',
             // AT console
             atCommand: '',
-            atLog: []
+            atLog: [],
+            // USB composition switch
+            usbMode: 'qmi'
         };
 
         // Socket.io client for reading in update values
@@ -185,6 +187,24 @@ class LTEModemPage extends basePage {
             }
         } catch (error) {
             this.setState({ error: 'Failed to send disconnect command' });
+        }
+    };
+
+    handleUsbMode = async () => {
+        try {
+            const response = await fetch('/api/ltemodemusbmode', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.state.token}` },
+                body: JSON.stringify({ mode: this.state.usbMode })
+            });
+            const data = await response.json();
+            if (data.error) {
+                this.setState({ error: data.error });
+            } else {
+                this.setState({ error: null, infoMessage: 'USB mode switch sent. The modem will reboot and re-enumerate in ~30s — then re-scan and reconnect.' });
+            }
+        } catch (error) {
+            this.setState({ error: 'Failed to switch USB mode' });
         }
     };
 
@@ -507,6 +527,19 @@ class LTEModemPage extends basePage {
                         </div>
                     </div>
                 </Form>
+
+                <h2 style={{ marginTop: '20px' }}>USB composition<HelpTip text="Switch the modem's USB mode and REBOOT it (~30s; ports re-enumerate). QMI (cdc-wdm0/wwan0) is recommended; RNDIS exposes usb0. After switching, change the Data path mode to match, re-scan and reconnect." /></h2>
+                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="col-sm-4">
+                        <Form.Select name="usbMode" value={this.state.usbMode} onChange={(e) => this.setState({ usbMode: e.target.value })}>
+                            <option value="qmi">QMI (cdc-wdm0 / wwan0)</option>
+                            <option value="rndis">RNDIS (usb0)</option>
+                        </Form.Select>
+                    </div>
+                    <div className="col-sm-6">
+                        <Button variant="warning" onClick={this.handleUsbMode}>Switch USB mode &amp; reboot modem</Button>
+                    </div>
+                </div>
 
                 <h2>Connection test</h2>
                 <p><i>Check the whole modem chain end-to-end, with a per-step diagnosis.</i></p>

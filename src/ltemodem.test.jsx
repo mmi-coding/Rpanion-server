@@ -719,6 +719,57 @@ describe('#ltemodemp age()', function () {
     })
 
     // ------------------------------------------------------------------
+    // USB composition switch
+    // ------------------------------------------------------------------
+    function findUsbBtn (page) {
+        return [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Switch USB mode'))
+    }
+
+    test('handleUsbMode POSTs the selected mode', async function () {
+        const fetch = mockFetch({ ...defaultFetch, 'POST /api/ltemodemusbmode': { response: ['OK'] } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        const sel = page.container.querySelector('select[name="usbMode"]')
+        act(() => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+            setter.call(sel, 'rndis')
+            sel.dispatchEvent(new Event('change', { bubbles: true }))
+        })
+        await page.flush()
+        act(() => { findUsbBtn(page).click() })
+        await page.flush()
+        const call = fetch.mock.calls.find(c => c[0] === '/api/ltemodemusbmode')
+        expect(JSON.parse(call[1].body).mode).toBe('rndis')
+        expect(document.body.textContent).toContain('USB mode switch sent')
+        page.unmount()
+    })
+
+    test('handleUsbMode sets error when API returns data.error', async function () {
+        mockFetch({ ...defaultFetch, 'POST /api/ltemodemusbmode': { error: 'modem busy' } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        act(() => { findUsbBtn(page).click() })
+        await page.flush()
+        expect(document.body.textContent).toContain('modem busy')
+        page.unmount()
+    })
+
+    test('handleUsbMode catch branch sets error', async function () {
+        vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
+            if ((opts.method || 'GET').toUpperCase() === 'GET') {
+                return { ok: true, status: 200, json: async () => ({ settings: defaultConfig, status: defaultStatus, serialPorts: [] }) }
+            }
+            throw new Error('network failure')
+        }))
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        act(() => { findUsbBtn(page).click() })
+        await page.flush()
+        expect(document.body.textContent).toContain('Failed to switch USB mode')
+        page.unmount()
+    })
+
+    // ------------------------------------------------------------------
     // handleResetUsage — success (status path), catch
     // ------------------------------------------------------------------
 
