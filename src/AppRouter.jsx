@@ -23,6 +23,7 @@ import CellularTuningPage from './cellulartuning.jsx'
 function AppRouter () {
   const [isAuthenticated, setIsAuthenticated] = useState(null)
   const [isAuthEnabled, setIsAuthEnabled] = useState(true)
+  const [role, setRole] = useState(null)
   const location = useLocation()
 
   useEffect(() => {
@@ -47,6 +48,7 @@ function AppRouter () {
         if (data?.authEnabled === false) {
           setIsAuthEnabled(false)
         }
+        setRole(data?.role ?? null)
       }
     })
     .catch(() => {
@@ -67,7 +69,7 @@ function AppRouter () {
   return (
     <div id="wrapper" className="d-flex">
       <div id="sidebar-wrapper" className="bg-light border-right">
-        <div id="sidebarheading" className="sidebar-heading">Rpanion Web UI</div>
+        <div id="sidebarheading" className="sidebar-heading">Rpanion Web UI{role === 'readonly' && <span id="readonly-badge" className="badge bg-secondary" style={{ marginLeft: '6px', fontSize: '0.6em', verticalAlign: 'middle' }}>read-only</span>}</div>
         <div id="sidebar-items" className="list-group list-group-flush">
           <Link className='list-group-item list-group-item-action bg-light' to="/">Home</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/flightlogs">Flight Logs and Media</Link>

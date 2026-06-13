@@ -61,6 +61,10 @@ function generateSecretKey() {
 const RPANION_SECRET_KEY = process.env.RPANION_SECRET_KEY || generateSecretKey();
 let tokenBlacklist = [];
 
+// RBAC: read-only users may not perform mutating (POST) requests. These POST
+// endpoints are exempt because they are not configuration mutations.
+const WRITE_ALLOWLIST = new Set(['/api/auth', '/api/logout']);
+
 // apply rate limiter to all requests
 app.use(limiter)
 
@@ -415,10 +419,11 @@ app.post('/api/login', [check('username').escape().isLength({ min: 2, max:20 }),
   let username = req.body.username
   let password = req.body.password
 
-  userMgmt.checkLoginDetails(username, password).then((match) => {
+  userMgmt.checkLoginDetails(username, password).then(async (match) => {
     if (match) {
-      // Generate a token with user information
-      const token = jwt.sign({ username: username }, RPANION_SECRET_KEY, {
+      // Generate a token with user information, including the RBAC role
+      const role = await userMgmt.getUserRole(username)
+      const token = jwt.sign({ username: username, role: role }, RPANION_SECRET_KEY, {
         expiresIn: '1h', // Token expires in 1 hour
       })
       res.send({
@@ -464,24 +469,42 @@ app.post('/api/updateUserPassword', authenticateToken, [check('username').escape
 })
 
 // Create new user
-app.post('/api/createUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req, res) => {
+app.post('/api/createUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 }), check('role').optional().isIn(['admin', 'readonly'])], async (req, res) => {
   const errors = validationResult(req)
   if (!errors.isEmpty()) {
     console.log('Bad POST vars in /api/logout', { message: JSON.stringify(errors.array()) })
     return res.status(422).json({ error: JSON.stringify(errors.array()) })
   }
-  const { username, password } = req.body
+  const { username, password, role } = req.body
 
   /* istanbul ignore next -- unreachable: express-validator min:2 on both fields already rejects missing/empty values before this guard */
   if (!username || !password) {
     return res.status(400).send(JSON.stringify({error: 'Username and password are required'}))
   }
 
-  userMgmt.addUser(username, password).then((success) => {
+  userMgmt.addUser(username, password, role).then((success) => {
     if (success) {
       res.send(JSON.stringify({infoMessage: 'User created successfully'}))
     } else {
       res.status(500).send(JSON.stringify({error: 'Error creating user'}))
+    }
+  })
+})
+
+// Update an existing user's role (admin only, enforced by authenticateToken)
+app.post('/api/updateUserRole', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('role').isIn(['admin', 'readonly'])], (req, res) => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    console.log('Bad POST vars in /api/updateUserRole', { message: JSON.stringify(errors.array()) })
+    return res.status(422).json({ error: JSON.stringify(errors.array()) })
+  }
+  const { username, role } = req.body
+
+  userMgmt.updateRole(username, role).then((success) => {
+    if (success) {
+      res.send(JSON.stringify({infoMessage: 'User role updated successfully'}))
+    } else {
+      res.status(500).send(JSON.stringify({error: 'Error updating user role'}))
     }
   })
 })
@@ -528,7 +551,8 @@ app.post('/api/auth', authenticateToken, async (req, res) => {
 
   res.setHeader('Content-Type', 'application/json')
   res.send(JSON.stringify({
-    authEnabled
+    authEnabled,
+    role: req.user?.role
   }))
 })
 
@@ -574,6 +598,11 @@ function authenticateToken(req, res, next) {
       return sendError(403, 'Invalid token')
     }
     req.user = user
+    // RBAC: read-only users may only read. Block mutating (POST) requests
+    // except the auth/logout housekeeping endpoints.
+    if (req.method === 'POST' && user.role === 'readonly' && !WRITE_ALLOWLIST.has(req.path)) {
+      return sendError(403, 'Read-only user: write access denied')
+    }
     next()
   })
 }

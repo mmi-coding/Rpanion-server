@@ -47,10 +47,10 @@ and land at 100% coverage on both suites.
 
 ### B1. Buildable now — WSL-testable, within constraints
 
-- [ ] **RBAC: Admin / Read-only roles.** Add a `role` to `config/user.json`,
-  carry it in the JWT, gate every mutating `/api/*` route (read-only → 403 on
-  POST), and reflect it in the UI (disable controls, hide destructive actions).
-  Fully unit-testable.
+- [x] **RBAC: Admin / Read-only roles.** Role in `config/user.json`, carried in
+  the JWT, enforced at `authenticateToken` (read-only → 403 on non-allowlisted
+  POST); UI gains a Role column, role toggle, Add-User role selector and a
+  sidebar read-only badge. Done — see docs/USER-ROLES.md, feature-15 report.
 - [ ] **Settings backup & restore.** Export `settings.json` (+ optionally
   `user.json`) as a download; import to restore. Fully unit-testable.
 - [ ] **Tailscale VPN.** Add alongside ZeroTier/WireGuard on the VPN page (status

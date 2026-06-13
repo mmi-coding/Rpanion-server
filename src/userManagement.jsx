@@ -5,6 +5,7 @@ import Table from 'react-bootstrap/Table'
 import React from 'react'
 
 import basePage from './basePage.jsx'
+import { HelpTip, HelpSection } from './components/Help.jsx'
 
 import './css/styles.css';
 
@@ -17,6 +18,7 @@ class userManagement extends basePage {
       modalType: '',
       username: '',
       password: '',
+      role: 'readonly',
       users: []
     }
   }
@@ -50,7 +52,7 @@ class userManagement extends basePage {
   }
 
   handleCloseModal = () => {
-    this.setState({ showModal: false, modalType: '', username: '', password: '' });
+    this.setState({ showModal: false, modalType: '', username: '', password: '', role: 'readonly' });
   }
 
   handleInputChange = (event) => {
@@ -90,7 +92,7 @@ class userManagement extends basePage {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${this.state.token}`
             },
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password, role: this.state.role })
         });
         const data = await response.json();
         this.setState(data);
@@ -127,6 +129,29 @@ class userManagement extends basePage {
     this.setState({ password: '', confirmPassword: '' });
   }
 
+  handleChangeRole = async (username, role) => {
+    try {
+      const response = await fetch('/api/updateUserRole', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.state.token}`
+          },
+        body: JSON.stringify({ username, role })
+      });
+      const data = await response.json();
+      this.setState(data);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      console.log('User role updated successfully:', data);
+    } catch (error) {
+      console.error('Error updating user role:', error);
+    }
+    this.fetchUsers();
+  }
+
   renderTitle () {
     return 'User Management'
   }
@@ -135,12 +160,16 @@ class userManagement extends basePage {
     const isFormValid = this.state.username && (this.state.modalType === 'deleteUser' || (this.state.password && this.state.password === this.state.confirmPassword));
     return (
     <div>
-      <p><i>Manage access to Web GUI</i></p>
-      <p>Add and remove user access to Rpanion-server. Usernames and passwords must be 2-20 characters.</p>
+      <p><i>Manage access to the Web GUI.</i></p>
+      <HelpSection title="How users and roles work">
+        <p>Add and remove user access to Rpanion-server. Usernames and passwords must be 2–20 characters.</p>
+        <p><b>Admin</b> users have full access. <b>Read-only</b> users can view every page but cannot change any setting: the server rejects their write requests (HTTP 403), so read-only access is enforced on the backend, not merely hidden in the UI.</p>
+      </HelpSection>
       <Table id='users' striped bordered hover size="sm">
       <thead>
         <tr>
         <th>Username</th>
+        <th>Role <HelpTip text="Admin = full access; Read-only = view only. Use the button in Actions to switch a user's role." /></th>
         <th>Actions</th>
         </tr>
       </thead>
@@ -148,9 +177,11 @@ class userManagement extends basePage {
         {this.state.users.map(user => (
         <tr key={user.username}>
           <td>{user.username}</td>
+          <td>{user.role}</td>
           <td>
           <Button size="sm"className="btn" onClick={() => this.handleShowModal('deleteUser', user.username)}>Delete User</Button>{' '}
-          <Button size="sm" className="btn" onClick={() => this.handleShowModal('changePassword', user.username)}>Change Password</Button>
+          <Button size="sm" className="btn" onClick={() => this.handleShowModal('changePassword', user.username)}>Change Password</Button>{' '}
+          <Button size="sm" className="btn" onClick={() => this.handleChangeRole(user.username, user.role === 'admin' ? 'readonly' : 'admin')}>{user.role === 'admin' ? 'Make Read-only' : 'Make Admin'}</Button>
           </td>
         </tr>
         ))}
@@ -184,6 +215,15 @@ class userManagement extends basePage {
         <Form.Label>Confirm Password</Form.Label>
         <Form.Control type="password" name="confirmPassword" value={this.state.confirmPassword} onChange={this.handleInputChange} />
         </Form.Group>
+        </Form.Group>
+        )}
+        {this.state.modalType === 'addUser' && (
+        <Form.Group controlId="formRole">
+        <Form.Label>Role <HelpTip text="New users default to Read-only (view only). Choose Admin to grant full configuration access." /></Form.Label>
+        <Form.Select name="role" value={this.state.role} onChange={this.handleInputChange}>
+        <option value="readonly">Read-only (view only)</option>
+        <option value="admin">Admin (full access)</option>
+        </Form.Select>
         </Form.Group>
         )}
         </Form>

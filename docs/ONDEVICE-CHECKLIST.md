@@ -102,3 +102,15 @@ login/logout flow and production-mode serving can only be checked on device
 - [ ] Logout returns to the login state; protected `/api/*` calls 401 without a token
 - [ ] Backend-served SPA (no Vite): deep-link to a client route (e.g. `/network`) loads via the production catch-all, not a 404
 - [ ] Optional: run `npm run e2e` against the device's IP/build (set `baseURL`) to smoke the same routes with real hardware values present
+
+## Feature 15: RBAC — Admin/Read-only roles (feature/rbac)
+
+RBAC is enforced only when auth is enabled (production mode); dev/WSL bypasses it.
+Verify on a production install. See docs/USER-ROLES.md.
+
+- [ ] Create a read-only user from the Add User dialog (role selector = Read-only); it appears with role `readonly` in the table
+- [ ] Log in as that read-only user: a "read-only" badge shows by the sidebar title; every page still loads
+- [ ] As the read-only user, attempt a change on any page (e.g. save a setting) → backend returns 403 and the change is rejected
+- [ ] Direct API check: `POST /api/<anything>` with the read-only token returns 403; `GET` still returns 200; `POST /api/logout` still works
+- [ ] As an admin, toggle the user to Admin (Make Admin) → they can now save changes; toggle back to Read-only
+- [ ] Pre-RBAC upgrade: an existing `config/user.json` without a `role` field still logs in as admin (no lock-out)

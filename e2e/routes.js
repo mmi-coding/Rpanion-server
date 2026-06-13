@@ -32,4 +32,5 @@ export const SELF_DOCUMENTING_PAGES = [
   { path: '/cellulartuning', title: 'Cellular Video Tuning' },
   { path: '/ltemodem', title: 'LTE Modem' },
   { path: '/pipelineeditor', title: 'Video Pipeline Editor' },
+  { path: '/users', title: 'User Management' },
 ]
