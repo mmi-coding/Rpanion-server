@@ -22,6 +22,7 @@ export const ROUTES = [
   { path: '/cloud', nav: 'Cloud Upload', title: 'Cloud Upload' },
   { path: '/vpn', nav: 'VPN Config', title: 'VPN' },
   { path: '/tailscale', nav: 'Tailscale VPN', title: 'Tailscale VPN' },
+  { path: '/ddns', nav: 'Dynamic DNS', title: 'Dynamic DNS' },
   { path: '/about', nav: 'About', title: 'About' },
   { path: '/users', nav: 'User Management', title: 'User Management' },
 ]
@@ -35,4 +36,5 @@ export const SELF_DOCUMENTING_PAGES = [
   { path: '/pipelineeditor', title: 'Video Pipeline Editor' },
   { path: '/users', title: 'User Management' },
   { path: '/tailscale', title: 'Tailscale VPN' },
+  { path: '/ddns', title: 'Dynamic DNS' },
 ]

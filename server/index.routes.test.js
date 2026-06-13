@@ -38,6 +38,7 @@ const flightLogger = require('./flightLogger')
 const CameraSwitcher = require('./cameraSwitcher')
 const CustomPipelines = require('./customPipelines')
 const CellularTuning = require('./cellularTuning')
+const DynamicDns = require('./dynamicDns')
 const LTEModem = require('./ltemodem')
 
 // Shared harness
@@ -1258,6 +1259,59 @@ describe('Package B — delegate HTTP routes', function () {
         try {
           assert.equal(res.status, 422)
           assert.ok(res.body.error)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
+  // Dynamic DNS routes
+  // =========================================================================
+  describe('GET /api/ddns', function () {
+    it('200 — returns settings + status', function (done) {
+      request('GET', '/api/ddns').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.settings)
+          assert.ok(res.body.status)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/ddnsmodify', function () {
+    it('422 — invalid provider', function (done) {
+      request('POST', '/api/ddnsmodify', { body: { enabled: false, provider: 'badprovider', hostname: 'h', intervalMin: 5 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — success path', function (done) {
+      sinon.stub(DynamicDns.prototype, 'setSettings').callsFake(function (cfg, cb) { cb(null) })
+      sinon.stub(DynamicDns.prototype, 'getSettings').returns({ enabled: false, provider: 'duckdns', hostname: 'h', token: '', username: '', hasPassword: false, intervalMin: 5 })
+      sinon.stub(DynamicDns.prototype, 'getStatus').returns({ status: 'Disabled', lastIp: null, lastUpdate: null })
+      request('POST', '/api/ddnsmodify', { body: { enabled: false, provider: 'duckdns', hostname: 'mypi', intervalMin: 5 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(res.body.error, null)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/ddnsupdate', function () {
+    it('200 — triggers an immediate update', function (done) {
+      sinon.stub(DynamicDns.prototype, 'updateNow').resolves({ status: 'Disabled', lastIp: null, lastUpdate: null })
+      request('POST', '/api/ddnsupdate').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.status)
           done()
         } catch (e) { done(e) }
       }).catch(done)

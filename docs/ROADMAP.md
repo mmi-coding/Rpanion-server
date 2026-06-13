@@ -58,8 +58,9 @@ and land at 100% coverage on both suites.
   peer table) via the `tailscale` CLI — wrapper `fakeBin`-tested; real auth
   on-device. Done — dedicated page (kept upstream VPN page untouched); see
   docs/TAILSCALE.md, feature-17 report.
-- [ ] **Dynamic DNS.** Periodic updater for a DDNS provider (DuckDNS / No-IP /
-  Cloudflare) with a config page; HTTP calls mocked in tests.
+- [x] **Dynamic DNS.** `/ddns` page + `server/dynamicDns.js` updater for DuckDNS
+  and No-IP on a timer (+ Update now). Done — see docs/DYNAMIC-DNS.md, feature-18
+  report. (Cloudflare is an easy future addition in `buildRequest()`.)
 - [ ] **Network priority + failover + bandwidth monitoring.** Prefer WiFi, fall
   back to cellular via NetworkManager connection metrics (`nmcli`); show live
   per-interface throughput (`/proc/net/dev`). Wrapper + monitoring unit-tested;
