@@ -704,6 +704,24 @@ describe('PPPConnection', function () {
       });
     });
 
+    it('does not throw when a stale device is set but no ports are detected', function (done) {
+      detectStub.resolves([]);
+      const ppp = new PPPConnection(mockSettings);
+      ppp.device = 'stale-device-value';
+
+      ppp.getPPPSettings(function (err, result) {
+        try {
+          assert.strictEqual(err, null);
+          // stale device is kept (cannot index into an empty list)
+          assert.strictEqual(result.selDevice, 'stale-device-value');
+          assert.deepStrictEqual(result.serialDevices, []);
+          done();
+        } catch (e) {
+          done(e);
+        }
+      });
+    });
+
     it('calls back with error when detectSerialDevices rejects', function (done) {
       const boom = new Error('scan bombed');
       detectStub.rejects(boom);

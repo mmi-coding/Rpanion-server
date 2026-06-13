@@ -16,6 +16,9 @@ const { SerialPort, ReadlineParser } = require('serialport')
 // required as an object (not destructured) so tests can stub the detection seam
 const serialDetection = require('./serialDetection.js')
 
+// Baud rates accepted on the modem's AT / PPP serial ports
+const VALID_BAUDS = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000]
+
 // SIM7600 +CREG / +CGREG registration states
 const REG_STATES = {
   0: 'Not registered',
@@ -503,9 +506,7 @@ class LTEModem {
 
   // (re)start the RNDIS data call
   async reconnect () {
-    this.lastReconnectAttempt = Date.now()
-    this.status.lastReconnect = new Date().toISOString()
-    this.status.reconnectCount += 1
+    this._markReconnect()
     if (this.options.apn !== '') {
       await this.sendAT(`AT+CGDCONT=1,"IP","${this.options.apn}"`, 5000)
     }
@@ -965,7 +966,7 @@ class LTEModem {
     }
     if (newSettings.baud !== undefined) {
       const baud = parseInt(newSettings.baud, 10)
-      if (![9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000].includes(baud)) {
+      if (!VALID_BAUDS.includes(baud)) {
         errors.push('Invalid baud rate')
       } else {
         next.baud = baud
@@ -1019,7 +1020,7 @@ class LTEModem {
     }
     if (newSettings.pppBaud !== undefined) {
       const pppBaud = parseInt(newSettings.pppBaud, 10)
-      if (![9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000].includes(pppBaud)) {
+      if (!VALID_BAUDS.includes(pppBaud)) {
         errors.push('Invalid PPP baud rate')
       } else {
         next.pppBaud = pppBaud

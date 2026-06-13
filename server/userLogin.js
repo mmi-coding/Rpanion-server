@@ -8,6 +8,17 @@ class userLogin {
     this.usersFile = logpaths.usersFile
   }
 
+  // Read and parse the users file. Throws on I/O / parse error, which each
+  // public method catches.
+  async _loadUsers () {
+    return JSON.parse(await fs.readFile(this.usersFile, 'utf8'))
+  }
+
+  // Serialize and persist the users array.
+  async _saveUsers (users) {
+    await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
+  }
+
   /**
    * Checks the login details of a user.
    *
@@ -18,8 +29,7 @@ class userLogin {
    */
   async checkLoginDetails(username, password) {
     try {
-      const data = await fs.readFile(this.usersFile, 'utf8')
-      const users = JSON.parse(data)
+      const users = await this._loadUsers()
 
       const user = users.find(user => user.username === username)
       if (user) {
@@ -41,8 +51,7 @@ class userLogin {
    */
   async getAllUsers() {
     try {
-      const data = await fs.readFile(this.usersFile, 'utf8')
-      const users = JSON.parse(data)
+      const users = await this._loadUsers()
       // Normalise: users created before RBAC have no role; treat them as admin.
       return users.map(user => ({ ...user, role: user.role || 'admin' }))
     } catch (error) {
@@ -60,8 +69,7 @@ class userLogin {
    */
   async getUserRole(username) {
     try {
-      const data = await fs.readFile(this.usersFile, 'utf8')
-      const users = JSON.parse(data)
+      const users = await this._loadUsers()
       const user = users.find(user => user.username === username)
       if (!user) {
         return null
@@ -89,8 +97,7 @@ class userLogin {
         return false
       }
 
-      const data = await fs.readFile(this.usersFile, 'utf8')
-      const users = JSON.parse(data)
+      const users = await this._loadUsers()
 
       const user = users.find(user => user.username === username)
       if (user) {
@@ -100,7 +107,7 @@ class userLogin {
       const passwordhash = await bcrypt.hash(password, 10)
       users.push({ username, passwordhash, role })
 
-      await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
+      await this._saveUsers(users)
       return true
     } catch (error) {
       console.error('Error adding user:', error)
@@ -117,8 +124,7 @@ class userLogin {
    */
   async deleteUser(username) {
     try {
-      const data = await fs.readFile(this.usersFile, 'utf8')
-      const users = JSON.parse(data)
+      const users = await this._loadUsers()
 
       //if there's only 1 user remaining, don't allow deletion
       if (users.length === 1) {
@@ -132,7 +138,7 @@ class userLogin {
 
       users.splice(index, 1)
 
-      await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
+      await this._saveUsers(users)
       return true
     } catch (error) {
       console.error('Error deleting user:', error)
@@ -150,8 +156,7 @@ class userLogin {
    */
   async changePassword(username, password) {
     try {
-      const data = await fs.readFile(this.usersFile, 'utf8')
-      const users = JSON.parse(data)
+      const users = await this._loadUsers()
 
       const user = users.find(user => user.username === username)
       if (!user) {
@@ -164,7 +169,7 @@ class userLogin {
 
       user.passwordhash = await bcrypt.hash(password, 10)
 
-      await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
+      await this._saveUsers(users)
       return true
     } catch (error) {
       console.error('Error changing password:', error)
@@ -186,8 +191,7 @@ class userLogin {
         return false
       }
 
-      const data = await fs.readFile(this.usersFile, 'utf8')
-      const users = JSON.parse(data)
+      const users = await this._loadUsers()
 
       const user = users.find(user => user.username === username)
       if (!user) {
@@ -196,7 +200,7 @@ class userLogin {
 
       user.role = role
 
-      await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
+      await this._saveUsers(users)
       return true
     } catch (error) {
       console.error('Error changing role:', error)

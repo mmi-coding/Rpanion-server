@@ -95,54 +95,37 @@ class PPPConnection {
         }
     }
 
+    // The settings/status object returned to the UI by every PPP entry point.
+    // Pass overrides for the error case (e.g. { selDevice: null, serialDevices: [] }).
+    _stateSnapshot(overrides = {}) {
+        return {
+            selDevice: this.device,
+            selBaudRate: this.baudRate,
+            localIP: this.localIP,
+            remoteIP: this.remoteIP,
+            enabled: this.isConnected,
+            baudRates: this.baudRates,
+            serialDevices: this.serialDevices,
+            ...overrides,
+        };
+    }
+
     startPPP(device, baudRate, localIP, remoteIP, callback) {
         this.badbaudRate = false;
         if (this.isConnected) {
-            return callback(new Error('PPP is already connected'), {
-                selDevice: this.device,
-                selBaudRate: this.baudRate,
-                localIP: this.localIP,
-                remoteIP: this.remoteIP,
-                enabled: this.isConnected,
-                baudRates: this.baudRates,
-                serialDevices: this.serialDevices,
-            });
+            return callback(new Error('PPP is already connected'), this._stateSnapshot());
         }
         if (!device) {
-            return callback(new Error('Device is required'), {
-                selDevice: this.device,
-                selBaudRate: this.baudRate,
-                localIP: this.localIP,
-                remoteIP: this.remoteIP,
-                enabled: this.isConnected,
-                baudRates: this.baudRates,
-                serialDevices: this.serialDevices,
-            });
+            return callback(new Error('Device is required'), this._stateSnapshot());
         }
         if (this.pppProcess) {
-            return callback(new Error('PPP still running. Please wait for it to finish.'), {
-                selDevice: this.device,
-                selBaudRate: this.baudRate,
-                localIP: this.localIP,
-                remoteIP: this.remoteIP,
-                enabled: this.isConnected,
-                baudRates: this.baudRates,
-                serialDevices: this.serialDevices,
-            });
+            return callback(new Error('PPP still running. Please wait for it to finish.'), this._stateSnapshot());
         }
 
         //ensure device string is valid in the serialdevices list
         const devicePath = serialDetection.getSerialPathFromValue(device, this.serialDevices);
         if (!devicePath) {
-            return callback(new Error('Invalid device selected'), {
-                selDevice: this.device,
-                selBaudRate: this.baudRate,
-                localIP: this.localIP,
-                remoteIP: this.remoteIP,
-                enabled: this.isConnected,
-                baudRates: this.baudRates,
-                serialDevices: this.serialDevices,
-            });
+            return callback(new Error('Invalid device selected'), this._stateSnapshot());
         }
 
         this.device = device;
@@ -200,28 +183,12 @@ class PPPConnection {
         });
         this.isConnected = true;
         this.setSettings();
-        return callback(null, {
-            selDevice: this.device,
-            selBaudRate: this.baudRate,
-            localIP: this.localIP,
-            remoteIP: this.remoteIP,
-            enabled: this.isConnected,
-            baudRates: this.baudRates,
-            serialDevices: this.serialDevices,
-        });
+        return callback(null, this._stateSnapshot());
     }
 
     stopPPP(callback) {
         if (!this.isConnected) {
-            return callback(new Error('PPP is not connected'), {
-                selDevice: this.device,
-                selBaudRate: this.baudRate,
-                localIP: this.localIP,
-                remoteIP: this.remoteIP,
-                enabled: this.isConnected,
-                baudRates: this.baudRates,
-                serialDevices: this.serialDevices,
-            });
+            return callback(new Error('PPP is not connected'), this._stateSnapshot());
         }
         if (this.pppProcess) {
             // Gracefully kill the PPP process
@@ -233,30 +200,14 @@ class PPPConnection {
             this.isConnected = false;
             this.setSettings();
         }
-        return callback(null, {
-            selDevice: this.device,
-            selBaudRate: this.baudRate,
-            localIP: this.localIP,
-            remoteIP: this.remoteIP,
-            enabled: this.isConnected,
-            baudRates: this.baudRates,
-            serialDevices: this.serialDevices,
-        });
+        return callback(null, this._stateSnapshot());
     }
 
     getPPPSettings(callback) {
         this.getDevices((err, devices) => {
             if (err) {
                 console.error('Error fetching serial devices:', err);
-                return callback(err, {
-                    selDevice: null,
-                    selBaudRate: this.baudRate,
-                    localIP: this.localIP,
-                    remoteIP: this.remoteIP,
-                    enabled: this.isConnected,
-                    baudRates: this.baudRates,
-                    serialDevices: [],
-                });
+                return callback(err, this._stateSnapshot({ selDevice: null, serialDevices: [] }));
             }
             
             this.serialDevices = devices;
@@ -267,20 +218,14 @@ class PPPConnection {
             }
             
             // if this.device is not in the list, set it to first available device
-            if (this.device && !this.serialDevices.some(d => d.value === this.device)) {
+            // (guard the empty-list case: a stale device with no ports detected
+            //  must not index into serialDevices[0])
+            if (this.device && this.serialDevices.length > 0 && !this.serialDevices.some(d => d.value === this.device)) {
                 this.device = this.serialDevices[0].value;
             }
             
             // Always return callback
-            return callback(null, {
-                selDevice: this.device,
-                selBaudRate: this.baudRate,
-                localIP: this.localIP,
-                remoteIP: this.remoteIP,
-                enabled: this.isConnected,
-                baudRates: this.baudRates,
-                serialDevices: this.serialDevices,
-            });
+            return callback(null, this._stateSnapshot());
         });
     }
 

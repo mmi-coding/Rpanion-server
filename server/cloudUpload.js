@@ -36,12 +36,18 @@ class cloudUpload {
       console.log('Upload interval')
       if (this.options.doBinUpload) {
         console.log('Doing binfile')
+        // Upload only .bin logs: descend into all directories (*/), include
+        // .bin files, then exclude everything else. Without the trailing
+        // exclude, --include is a no-op and rsync uploads ALL files (tlogs,
+        // media, ...) over the (possibly metered) link.
         const rsync = new Rsync()
           .shell('ssh -o StrictHostKeyChecking=no')
           .flags('avzP')
           .source(this.topfolder + '/')
           .destination(this.options.binUploadLink)
+          .include('*/')
           .include('*.bin')
+          .exclude('*')
 
         if (this.options.syncDeletions) {
           rsync.set('delete')
