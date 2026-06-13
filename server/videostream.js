@@ -1,11 +1,11 @@
 const { exec, execSync, spawn } = require('child_process')
-const os = require('os')
 const path = require('path')
 const si = require('systeminformation')
 const events = require('events')
 const { minimal, common } = require('node-mavlink')
 const logpaths = require('./paths.js')
 const fs = require('fs')
+const vsHelpers = require('./videostreamHelpers.js')
 
 class videoStream {
   constructor (settings) {
@@ -60,13 +60,7 @@ class videoStream {
   // e.g., 'subdir' stays as 'subdir'
   // and '/abs/path' is stored as a relative path under mediaDir
   toRelativePath(dest) {
-    if (!dest || dest === '.') return '';
-    if (path.isAbsolute(dest)) {
-      dest = path.relative(logpaths.mediaDir, dest);
-      /* istanbul ignore next -- unreachable on Linux (relative() returns '' not '.') */
-      if (dest === '.') return '';
-    }
-    return dest;
+    return vsHelpers.toRelativePath(dest);
   }
 
   // Convert relative path to absolute before it is passed to Python.
@@ -164,39 +158,15 @@ class videoStream {
   }
 
   getCompressionSelect(val) {
-    // return the compression select object for a given value
-    const options = [
-      { value: 'H264', label: 'H.264' },
-      { value: 'H265', label: 'H.265' },
-    ]
-    const sel = options.filter(it => it.value === val)
-    if (sel.length === 1) {
-      return sel[0]
-    } else {
-      return options[0]
-    }
+    return vsHelpers.getCompressionSelect(val);
   }
 
   getTransportSelect(val) {
-    // return the transport select object for a given value
-    const options = [
-      { value: 'RTP', label: 'RTP' },
-      { value: 'RTSP', label: 'RTSP' },
-    ]
-    const sel = options.filter(it => it.value === val)
-    if (sel.length === 1) {
-      return sel[0]
-    } else {
-      return options[1]
-    }
+    return vsHelpers.getTransportSelect(val);
   }
 
   getTransportOptions(){
-    // get transport options
-    return [
-      { value: 'RTP', label: 'RTP' },
-      { value: 'RTSP', label: 'RTSP' },
-    ];
+    return vsHelpers.getTransportOptions();
   }
 
   // video streaming
@@ -390,19 +360,7 @@ class videoStream {
   }
 
   scanInterfaces() {
-    // scan for available IP (v4 only) interfaces
-    const iface = []
-    const ifaces = os.networkInterfaces()
-
-    for (const ifacename in ifaces) {
-      for (let j = 0; j < ifaces[ifacename].length; j++) {
-        // collect every IPv4 address (an interface may have more than one)
-        if (ifaces[ifacename][j].family === 'IPv4') {
-          iface.push(ifaces[ifacename][j].address)
-        }
-      }
-    }
-    return iface
+    return vsHelpers.scanInterfaces()
   }
 
   startCamera(callback) {
@@ -916,12 +874,7 @@ class videoStream {
 
   // Helper to convert JS strings to the Array<string> format node-mavlink expects for char[]
   toMavChars(str, length) {
-    const buf = new Uint8Array(length);
-    if (!str) return buf;
-
-    const encoded = new TextEncoder().encode(str);
-    buf.set(encoded.slice(0, length));
-    return buf;
+    return vsHelpers.toMavChars(str, length);
   }
 
   sendCameraInformation(senderSysId, senderCompId, targetComponent) {
