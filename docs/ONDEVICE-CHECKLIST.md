@@ -114,3 +114,12 @@ Verify on a production install. See docs/USER-ROLES.md.
 - [ ] Direct API check: `POST /api/<anything>` with the read-only token returns 403; `GET` still returns 200; `POST /api/logout` still works
 - [ ] As an admin, toggle the user to Admin (Make Admin) → they can now save changes; toggle back to Read-only
 - [ ] Pre-RBAC upgrade: an existing `config/user.json` without a `role` field still logs in as admin (no lock-out)
+
+## Feature 16: Settings backup & restore (feature/settings-backup)
+
+Mostly WSL-verified (endpoints + UI unit/e2e tested). Confirm the round-trip on real hardware:
+
+- [ ] Backup on a configured Pi downloads a non-empty `rpanion-settings.json` with the real config
+- [ ] Restore that file on a freshly-flashed Pi, restart the service → all settings (network/video/modem/NTRIP/cellular) come back
+- [ ] Clone: restore a backup from device A onto identical device B; verify nothing device-specific breaks
+- [ ] With RBAC on, a read-only user cannot restore (Restore returns 403)

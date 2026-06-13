@@ -51,8 +51,9 @@ and land at 100% coverage on both suites.
   the JWT, enforced at `authenticateToken` (read-only → 403 on non-allowlisted
   POST); UI gains a Role column, role toggle, Add-User role selector and a
   sidebar read-only badge. Done — see docs/USER-ROLES.md, feature-15 report.
-- [ ] **Settings backup & restore.** Export `settings.json` (+ optionally
-  `user.json`) as a download; import to restore. Fully unit-testable.
+- [x] **Settings backup & restore.** Download `config/settings.json` and restore
+  it from a file, on the About page (`/api/settingsbackup` + `/api/settingsrestore`).
+  Done — see docs/BACKUP-RESTORE.md, feature-16 report.
 - [ ] **Tailscale VPN.** Add alongside ZeroTier/WireGuard on the VPN page (status
   / up / down / IP) via the `tailscale` CLI — wrapper unit-tested with
   `test/fakeBin.js`; real auth verified on-device.

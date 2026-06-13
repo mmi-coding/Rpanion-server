@@ -312,6 +312,89 @@ describe('Package B — delegate HTTP routes', function () {
   })
 
   // =========================================================================
+  // /api/settingsbackup + /api/settingsrestore — stub fs narrowly.
+  // =========================================================================
+  describe('GET /api/settingsbackup', function () {
+    it('200 — returns the settings file as a download', function (done) {
+      const fs = require('fs')
+      sinon.stub(fs, 'existsSync').returns(true)
+      sinon.stub(fs, 'readFileSync').returns('{"a":1}')
+      request('GET', '/api/settingsbackup', { raw: true }).then(function (res) {
+        try {
+          assert.equal(res.statusCode, 200)
+          assert.ok(res.headers['content-disposition'].includes('rpanion-settings.json'))
+          assert.equal(res.body, '{"a":1}')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — file missing returns empty object', function (done) {
+      const fs = require('fs')
+      sinon.stub(fs, 'existsSync').returns(false)
+      const readStub = sinon.stub(fs, 'readFileSync')
+      request('GET', '/api/settingsbackup', { raw: true }).then(function (res) {
+        try {
+          assert.equal(res.statusCode, 200)
+          assert.equal(res.body, '{}')
+          assert.ok(!readStub.called, 'readFileSync should not be called when file missing')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('500 — fs error returns 500 JSON', function (done) {
+      const fs = require('fs')
+      sinon.stub(fs, 'existsSync').throws(new Error('disk full'))
+      request('GET', '/api/settingsbackup').then(function (res) {
+        try {
+          assert.equal(res.status, 500)
+          assert.ok(res.body.error.includes('disk full'))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/settingsrestore', function () {
+    it('200 — writes a valid settings object', function (done) {
+      const fs = require('fs')
+      const writeStub = sinon.stub(fs, 'writeFileSync')
+      request('POST', '/api/settingsrestore', { body: { foo: 'bar' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.strictEqual(res.body.success, true)
+          assert.ok(writeStub.called, 'writeFileSync should be called')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('400 — rejects a non-object (array) body', function (done) {
+      request('POST', '/api/settingsrestore', { body: [1, 2, 3] }).then(function (res) {
+        try {
+          assert.equal(res.status, 400)
+          assert.strictEqual(res.body.success, false)
+          assert.ok(res.body.error.includes('Invalid'))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('500 — fs write error returns 500 JSON', function (done) {
+      const fs = require('fs')
+      sinon.stub(fs, 'writeFileSync').throws(new Error('disk full'))
+      request('POST', '/api/settingsrestore', { body: { foo: 'bar' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 500)
+          assert.ok(res.body.error.includes('disk full'))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
   // PPP routes
   // =========================================================================
   describe('GET /api/pppconfig', function () {
