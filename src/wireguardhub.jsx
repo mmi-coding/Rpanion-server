@@ -64,6 +64,27 @@ class WireguardHubPage extends basePage {
     URL.revokeObjectURL(url)
   }
 
+  // The exact commands to copy the downloaded script onto the VPS and run it,
+  // with the entered IP/SSH port baked in (the Pi can't push it — the user does).
+  deployCommands () {
+    const ip = this.state.vpsIp
+    const p = this.state.sshPort
+    return [
+      "# Run on your LAPTOP. Replace 'root' with your VPS login if root SSH is",
+      "# disabled (e.g. 'ubuntu'). Download the script first (button above).",
+      `scp -P ${p} setup-wireguard-hub.sh root@${ip}:`,
+      `ssh -p ${p} root@${ip} 'sudo bash setup-wireguard-hub.sh'`,
+      '',
+      '# ...or run it in one line without saving it on the VPS:',
+      `ssh -p ${p} root@${ip} 'sudo bash -s' < setup-wireguard-hub.sh`
+    ].join('\n')
+  }
+
+  copyDeploy = () => {
+    navigator.clipboard.writeText(this.deployCommands())
+    this.setState({ infoMessage: 'Deploy commands copied to clipboard.' })
+  }
+
   renderTitle () {
     return 'WireGuard Hub'
   }
@@ -130,6 +151,14 @@ class WireguardHubPage extends basePage {
               {' '}
               <Button id="downloadwg" variant="secondary" onClick={this.downloadScript}>Download .sh</Button>
               <HelpTip text="Downloads the script as setup-wireguard-hub.sh to scp to the VPS." />
+            </p>
+
+            <h2>Deploy to your VPS</h2>
+            <p><i>The Pi can&#39;t send the script to the VPS — you carry it across. Download it (above), then run these on your laptop.</i></p>
+            <Form.Control as="textarea" id="deployout" readOnly rows={6} value={this.deployCommands()} style={{ fontFamily: 'monospace', fontSize: '0.8em' }} />
+            <p style={{ marginTop: '6px' }}>
+              <Button id="copydeploy" variant="secondary" onClick={this.copyDeploy}>Copy commands</Button>
+              <HelpTip text="Copies the scp/ssh commands (with your VPS IP and SSH port filled in) to run on your laptop. Replace 'root' with your VPS login if needed." />
             </p>
           </div>
         )}
