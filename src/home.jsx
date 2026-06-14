@@ -89,7 +89,7 @@ class Home extends basePage {
     const cameraBadgeVariant = this.getStatusVariant(videoStatus);
 
     return (
-      <div style={{ width: 650 }}>
+      <div style={{ maxWidth: 650 }}>
         <div className="mb-4">
           <h5>Quick Links</h5>
           <p>Use the navigation menu to configure system components:</p>

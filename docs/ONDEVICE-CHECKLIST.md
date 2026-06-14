@@ -206,3 +206,15 @@ with no internet. See docs/GROUND-STATION-THEME.md.
 - [ ] Sidebar collapse toggle (☰) shrinks the rail to the waypoint-code strip and re-expands; active route is highlighted
 - [ ] Home dashboard status badges show as green/amber/red lamps; `code`/`pre` blocks render in mono
 - [ ] Spot-check a form-heavy page (LTE Modem / WireGuard Hub) at the Pi's typical screen size — controls legible, focus rings visible, no contrast regressions
+
+## Feature 27: Light/dark toggle + mobile responsive (feature/theme-toggle-responsive)
+
+Pure frontend/CSS — WSL-verified via build + 825 frontend tests + headless-Chromium
+screenshots of dark/light/mobile against the compiled bundle. On-device checks are
+real-browser confirmations on the deployed Pi. See docs/GROUND-STATION-THEME.md.
+
+- [ ] Toggle light/dark from the sidebar footer → theme switches; reload → choice persists (localStorage); first paint shows the saved theme with no dark→light flash
+- [ ] Light mode is legible on the Pi (status badges, mono `code`/`pre`, form controls, nav contrast)
+- [ ] On a phone/narrow browser: the sidebar is hidden behind the top-bar hamburger; tapping it opens the drawer with a backdrop; tapping a nav link or the backdrop closes it
+- [ ] Dashboard cards stack and page content fits the viewport width (no horizontal scroll) on a phone
+- [ ] Desktop collapse rail (waypoint codes) still works ≥ 768px and is not used on phones

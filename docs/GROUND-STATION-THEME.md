@@ -2,22 +2,52 @@
 
 The fork's webUI uses a single cohesive visual language called **Ground Station**:
 a night-cockpit / avionics instrument aesthetic, fitting for a console that flies
-a drone over 4G LTE. It is a **theme layer on top of Bootstrap 5.3's dark mode** —
-not a component-library swap — so every existing react-bootstrap page is re-skinned
-with no structural changes.
+a drone over 4G LTE. It is a **theme layer on top of Bootstrap 5.3** — not a
+component-library swap — so every existing react-bootstrap page is re-skinned with
+no structural changes. **Light and dark are both first-class** (user-toggleable),
+and the shell is **responsive** down to phones.
 
 ## How it's wired
 
-- `index.html` sets `data-bs-theme="dark"` + `class="gs-theme"` on `<html>`. The
-  `data-bs-theme` switch puts every react-bootstrap component (forms, tables,
-  modals, tooltips, dropdowns, badges) into dark mode automatically.
+- `index.html` sets `class="gs-theme"` on `<html>` plus a tiny inline script that
+  applies the saved (or OS-preferred) `data-bs-theme` **before first paint** to
+  avoid a flash; `data-bs-theme="dark"` stays on the tag as the no-JS fallback.
+  The `data-bs-theme` switch puts every react-bootstrap component (forms, tables,
+  modals, tooltips, dropdowns, badges) into the matching mode automatically.
 - `src/index.jsx` imports the self-hosted fonts (`@fontsource/*`) then
   `src/css/styles.css` **last**, so the theme's variable overrides win the cascade
   over `bootstrap.css` and `startbootstrap-simple-sidebar`.
-- `src/css/styles.css` is the whole design system: it remaps Bootstrap's `--bs-*`
-  variables to the palette below, then adds targeted styling for the shell,
-  sidebar, cards, buttons, forms, badges, tables, modals and motion. Sections are
-  numbered (1 Tokens … 15 a11y).
+- `src/css/styles.css` is the whole design system. Tokens are split into a
+  **shared** block (`html.gs-theme` — fonts, signal hues, Bootstrap mappings) and
+  two **per-theme** blocks (`html.gs-theme[data-bs-theme="dark"|"light"]` — surfaces,
+  lines, ink, foreground/contrast tones, shadows, glows). Every component rule is
+  token-driven, so it adapts to whichever theme is active. Sections are numbered
+  (1 Tokens … 16 Responsive).
+
+> **Don't add Bootstrap `.bg-*` utility classes to themed shell elements.** Those
+> ship with `!important` and will override the theme's surfaces. The sidebar is
+> styled entirely by `#id`/class selectors in `styles.css` (the upstream
+> `bg-light`/`border-right` classes were removed from the markup).
+
+## Light / dark toggle
+
+The toggle lives in the **sidebar footer** (`#gs-themetoggle`, a sun/moon button).
+`AppRouter` holds the `theme` state, applies it to `document.documentElement`'s
+`data-bs-theme`, and persists it to `localStorage('gs-theme')`. The light palette
+darkens the "foreground" tones (`--gs-*-fg`, links, code) for contrast on light
+surfaces while keeping the amber/green/cyan/red **solid** hues identical, so the
+brand reads the same in both modes.
+
+## Responsive (mobile)
+
+Above `768px` the sidebar is the sticky rail (with the desktop collapse-to-
+waypoint-codes mode). Below `768px` (`§16`) it becomes an **off-canvas drawer**:
+hidden by default, opened by a hamburger in a sticky **mobile top bar**
+(`#gs-topbar` / `#gs-menubtn`), dimmed by a tap-to-close **backdrop**
+(`#gs-backdrop`), and auto-closed when a nav link is tapped. `AppRouter` seeds the
+open/closed default from `window.matchMedia('(min-width: 768px)')`. Page content
+uses Bootstrap's responsive grid; a CSS safety net neutralises fixed pixel widths
+on `.pagedetails` wrappers at phone widths.
 
 ## Type system (self-hosted, offline-safe)
 

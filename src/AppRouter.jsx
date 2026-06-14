@@ -56,8 +56,22 @@ function AppRouter () {
   const [isAuthenticated, setIsAuthenticated] = useState(null)
   const [isAuthEnabled, setIsAuthEnabled] = useState(true)
   const [role, setRole] = useState(null)
-  const [navOpen, setNavOpen] = useState(true)
+  // Sidebar starts expanded on desktop, collapsed (off-canvas drawer) on phones.
+  const [navOpen, setNavOpen] = useState(() => window.matchMedia('(min-width: 768px)').matches)
+  // Theme is read from the attribute the index.html bootstrap script already set.
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-bs-theme') || 'dark')
   const location = useLocation()
+
+  const toggleNav = () => setNavOpen(open => !open)
+  const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'))
+  // On phones the sidebar is an off-canvas drawer; tapping a nav link closes it.
+  const closeNavOnMobile = () => { if (!window.matchMedia('(min-width: 768px)').matches) setNavOpen(false) }
+
+  // Apply + persist the light/dark choice whenever it changes.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-bs-theme', theme)
+    localStorage.setItem('gs-theme', theme)
+  }, [theme])
 
   useEffect(() => {
     // Check authentication on mount and when location changes
@@ -101,7 +115,7 @@ function AppRouter () {
 
   return (
     <div id="wrapper" className={`d-flex${navOpen ? '' : ' gs-collapsed'}`}>
-      <div id="sidebar-wrapper" className="bg-light border-right">
+      <div id="sidebar-wrapper">
         <div id="sidebarheading" className="sidebar-heading">
           <span className="gs-pip" aria-hidden="true"></span>
           <span className="gs-brand">
@@ -113,7 +127,7 @@ function AppRouter () {
             type="button"
             aria-label="Toggle navigation"
             aria-expanded={navOpen}
-            onClick={() => setNavOpen(open => !open)}
+            onClick={toggleNav}
           >☰</button>
         </div>
         <div id="sidebar-items" className="list-group list-group-flush">
@@ -124,16 +138,29 @@ function AppRouter () {
               to={item.to}
               data-code={item.code}
               title={item.label}
-              className='list-group-item list-group-item-action bg-light'
+              onClick={closeNavOnMobile}
+              className='list-group-item list-group-item-action'
             >{item.label}</NavLink>
           ))}
           {isAuthEnabled && (
-            <NavLink data-code="OUT" title="Logout" className='list-group-item list-group-item-action bg-light' to="/logoutconfirm">Logout</NavLink>
+            <NavLink onClick={closeNavOnMobile} data-code="OUT" title="Logout" className='list-group-item list-group-item-action' to="/logoutconfirm">Logout</NavLink>
           )}
+        </div>
+        <div id="sidebar-footer">
+          <button id="gs-themetoggle" type="button" aria-label="Toggle light/dark theme" onClick={toggleTheme}>
+            <span className="gs-themeicon" aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
+            <span className="gs-themelabel">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
+          </button>
         </div>
       </div>
 
+      <div id="gs-backdrop" aria-hidden="true" onClick={toggleNav}></div>
+
       <div className="page-content-wrapper" style={{ width: '100%' }}>
+        <div id="gs-topbar">
+          <button id="gs-menubtn" type="button" aria-label="Open navigation" onClick={toggleNav}>☰</button>
+          <span className="gs-topbar-brand">Rpanion · Ground Station</span>
+        </div>
         <div className="container-fluid">
           <Routes>
             <Route exact path="/" element={<Home showLogin={!isAuthenticated} />} />

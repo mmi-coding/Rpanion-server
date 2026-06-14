@@ -6,6 +6,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
   <meta name="theme-color" content="#080b11">
   <title>Rpanion · Ground Station</title>
+  <script>
+    // Apply the saved (or OS-preferred) theme before first paint to avoid a flash.
+    // Defaults to dark (the brand default) if nothing is saved and OS has no preference.
+    (function () {
+      try {
+        var t = localStorage.getItem('gs-theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-bs-theme', t);
+      } catch (e) { /* keep the static data-bs-theme="dark" fallback */ }
+    })();
+  </script>
   <!--
       manifest.json provides metadata used when your web app is added to the
       homescreen on Android. See https://developers.google.com/web/fundamentals/engage-and-retain/web-app-manifest/
