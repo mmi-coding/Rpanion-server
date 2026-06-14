@@ -12,6 +12,7 @@ import NTRIPPage from './ntripcontroller.jsx'
 import AdhocConfig from './adhocwifi.jsx'
 import CloudConfig from './cloud.jsx'
 import VPN from './vpnconfig.jsx'
+import WireguardHubPage from './wireguardhub.jsx'
 import TailscalePage from './tailscale.jsx'
 import DDNSPage from './ddns.jsx'
 import NetworkPriorityPage from './networkpriority.jsx'
@@ -91,6 +92,7 @@ function AppRouter () {
           <Link className='list-group-item list-group-item-action bg-light' to="/telemetryinjector">Telemetry Injector</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/cloud">Cloud Upload</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/vpn">VPN Config</Link>
+          <Link className='list-group-item list-group-item-action bg-light' to="/wireguardhub">WireGuard Hub</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/tailscale">Tailscale VPN</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/ddns">Dynamic DNS</Link>
           <Link className='list-group-item list-group-item-action bg-light' to="/networkpriority">Network Priority</Link>
@@ -122,6 +124,7 @@ function AppRouter () {
             <Route exact path="/adhoc" element={<AdhocConfig />} />
             <Route exact path="/cloud" element={<CloudConfig />} />
             <Route exact path="/vpn" element={<VPN/>} />
+            <Route exact path="/wireguardhub" element={<WireguardHubPage/>} />
             <Route exact path="/tailscale" element={<TailscalePage/>} />
             <Route exact path="/ddns" element={<DDNSPage/>} />
             <Route exact path="/networkpriority" element={<NetworkPriorityPage/>} />
