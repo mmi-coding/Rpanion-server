@@ -2194,3 +2194,32 @@ describe('Package B — delegate HTTP routes', function () {
   /* istanbul ignore next -- spa-catch-all: guarded by NODE_ENV !== development; unreachable in test harness without process restart */
 
 })
+
+// ===========================================================================
+// WireGuard Hub — POST /api/wireguardhubscript (generates a VPS setup script)
+// ===========================================================================
+describe('WireGuard Hub route', function () {
+  const validBody = { vpsIp: '203.0.113.10', domain: 'wg.example.com', port: '51820', subnet: '10.13.13.0/24', sshPort: '22' }
+
+  it('200 — returns a generated bash script for the VPS', function (done) {
+    request('POST', '/api/wireguardhubscript', { body: validBody }).then(function (res) {
+      try {
+        assert.equal(res.status, 200)
+        assert.ok(res.body.script.startsWith('#!/usr/bin/env bash'))
+        assert.ok(res.body.script.includes('Endpoint = wg.example.com:51820'))
+        assert.ok(res.body.script.includes('203.0.113.10'))
+        done()
+      } catch (e) { done(e) }
+    }).catch(done)
+  })
+
+  it('422 — invalid VPS IP is rejected before generation', function (done) {
+    request('POST', '/api/wireguardhubscript', { body: { ...validBody, vpsIp: 'not-an-ip' } }).then(function (res) {
+      try {
+        assert.equal(res.status, 422)
+        assert.ok(res.body.error)
+        done()
+      } catch (e) { done(e) }
+    }).catch(done)
+  })
+})

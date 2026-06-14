@@ -16,6 +16,7 @@ const ntrip = require('./ntrip')
 const Adhoc = require('./adhocManager')
 const cloudManager = require('./cloudUpload')
 const VPNManager = require('./vpn')
+const wireguardHub = require('./wireguardHub')
 const logConversionManager = require('./logConverter')
 const userLogin = require('./userLogin')
 const logpaths = require('./paths')
@@ -386,6 +387,9 @@ app.use(require('./routes/system')({ authenticateToken, aboutPage, networkClient
 
 // VPN routes — ZeroTier/WireGuard/Tailscale (extracted to ./routes/vpn.js)
 app.use(require('./routes/vpn')({ authenticateToken, VPNManager }))
+
+// WireGuard Hub — generates a VPS setup script (extracted to ./routes/wireguardHub.js)
+app.use(require('./routes/wireguardHub')({ authenticateToken, wireguardHub }))
 
 // NTRIP routes (extracted to ./routes/ntrip.js)
 app.use(require('./routes/ntrip')({ authenticateToken, ntripClient }))
