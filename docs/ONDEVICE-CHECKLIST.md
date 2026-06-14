@@ -181,3 +181,16 @@ docs/TELEMETRY-INJECTORS.md.
 - [ ] Component ID is distinct from the autopilot, so injected values are attributable in the GCS
 - [ ] Master switch off → all sources stop, `/api/telemetryinject` returns 409, no messages injected; on reboot the saved enabled state auto-starts the sources
 - [ ] With RBAC on, a read-only user cannot modify settings or inject (403)
+
+## Feature 25: WireGuard Hub (feature/wireguard-hub)
+
+The generated script's *content* is unit-tested in WSL; actually running it on a
+VPS and bringing up the tunnel is real-world only. See docs/WIREGUARD-HUB.md.
+
+- [ ] Generate a script on the page, run it on a fresh Debian/Ubuntu VPS (`sudo bash setup-wireguard-hub.sh`) → `wg0` comes up (`wg show`), `ufw` keeps SSH reachable, UDP port open
+- [ ] Re-run the script (idempotency) → keys/config reused, no breakage
+- [ ] Create the DNS A record (domain → VPS IP) beforehand; confirm the Endpoint resolves
+- [ ] Upload the printed `pi.conf` on the drone's VPN page + Activate → handshake with the hub (`wg show` latest-handshake)
+- [ ] Import `laptop.conf` on the ground station + activate → laptop pings the drone's VPN IP (e.g. `10.13.13.2`) over the LTE link
+- [ ] Mission Planner connects to the drone through the tunnel (UDP/TCP to the VPN IP)
+- [ ] VPS provider firewall/security group allows inbound UDP on the chosen port
