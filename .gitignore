@@ -92,3 +92,4 @@ __pycache__/
 /server/routes/system.js
 /server/routes/telemetryInjector.js
 /server/routes/vpn.js
+/server/index.js

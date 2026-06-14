@@ -135,7 +135,7 @@ async function gracefulShutdown(signal, exitCode = 0) {
             console.error('Error closing HTTP server:', err)
             reject(err)
           } else {
-            resolve()
+            resolve(undefined)
           }
         })
       })
@@ -501,12 +501,11 @@ app.use((req, res, next) => {
   next()
 })
 
-module.exports = app;
-
 // Test-only seam: exposes module-level singletons so test/index.io.test.js
 // can emit events, trigger shutdown, and connect via the real socket.io server.
-// Pure addition — zero production behaviour change.
-module.exports.testHooks = {
+// Attached to `app` (which is the module export) so require('./index').testHooks
+// works. Pure addition — zero production behaviour change.
+;(app as any).testHooks = {
   fcManager,
   vManager,
   ntripClient,
@@ -535,4 +534,6 @@ if (require.main === module) {
     console.log('Press Ctrl+C to stop');
   });
 }
+
+export = app;
 
