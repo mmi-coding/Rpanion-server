@@ -194,3 +194,15 @@ VPS and bringing up the tunnel is real-world only. See docs/WIREGUARD-HUB.md.
 - [ ] Import `laptop.conf` on the ground station + activate → laptop pings the drone's VPN IP (e.g. `10.13.13.2`) over the LTE link
 - [ ] Mission Planner connects to the drone through the tunnel (UDP/TCP to the VPN IP)
 - [ ] VPS provider firewall/security group allows inbound UDP on the chosen port
+
+## Feature 26: Ground Station theme (feature/ground-station-theme)
+
+Pure frontend/CSS — fully WSL-verifiable (build + 822 frontend tests + visual
+preview against the compiled bundle). The only on-device items are confirming it
+renders correctly on the real device/browser and that the self-hosted fonts load
+with no internet. See docs/GROUND-STATION-THEME.md.
+
+- [ ] Load the webUI on the deployed Pi (over the VPN / LAN) → the dark Ground Station theme renders; Chakra Petch / IBM Plex fonts are applied (not the system fallback), confirming the bundled woff2 served offline
+- [ ] Sidebar collapse toggle (☰) shrinks the rail to the waypoint-code strip and re-expands; active route is highlighted
+- [ ] Home dashboard status badges show as green/amber/red lamps; `code`/`pre` blocks render in mono
+- [ ] Spot-check a form-heavy page (LTE Modem / WireGuard Hub) at the Pi's typical screen size — controls legible, focus rings visible, no contrast regressions

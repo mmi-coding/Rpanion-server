@@ -5,6 +5,21 @@ import React from 'react'
 import 'bootstrap/dist/css/bootstrap.css'
 import 'startbootstrap-simple-sidebar/dist/css/styles.css'
 
+// Self-hosted fonts (bundled by Vite → no CDN dependency on the Pi).
+// Chakra Petch = display, IBM Plex Sans = body, IBM Plex Mono = telemetry data.
+import '@fontsource/chakra-petch/500.css'
+import '@fontsource/chakra-petch/600.css'
+import '@fontsource/chakra-petch/700.css'
+import '@fontsource/ibm-plex-sans/400.css'
+import '@fontsource/ibm-plex-sans/500.css'
+import '@fontsource/ibm-plex-sans/600.css'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/ibm-plex-mono/600.css'
+
+// Ground Station theme — must load last so its overrides win the cascade.
+import './css/styles.css'
+
 import AppRouter from './AppRouter'
 import * as serviceWorker from './serviceWorker'
 

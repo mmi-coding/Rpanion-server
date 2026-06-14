@@ -1,4 +1,4 @@
-import { Route, Routes, Link, useLocation, Navigate } from 'react-router-dom'
+import { Route, Routes, NavLink, useLocation, Navigate } from 'react-router-dom'
 import React, { useState, useEffect } from 'react'
 
 import About from './about.jsx'
@@ -25,10 +25,38 @@ import LTEModemPage from './ltemodem.jsx'
 import CellularTuningPage from './cellulartuning.jsx'
 import TelemetryInjectorPage from './telemetryinjector.jsx'
 
+// Sidebar navigation. `code` is the short "waypoint" tag shown when the rail is
+// collapsed (via CSS data-code); `end` marks an exact-match route (Home only).
+const NAV = [
+  { to: '/', code: 'HOM', label: 'Home', end: true },
+  { to: '/flightlogs', code: 'LOG', label: 'Flight Logs and Media' },
+  { to: '/controller', code: 'FC', label: 'Flight Controller' },
+  { to: '/ppp', code: 'PPP', label: 'PPP Config' },
+  { to: '/ntrip', code: 'NTR', label: 'NTRIP Config' },
+  { to: '/network', code: 'NET', label: 'Network Config' },
+  { to: '/adhoc', code: 'ADH', label: 'Adhoc Wifi Config' },
+  { to: '/apclients', code: 'AP', label: 'Access Point Clients' },
+  { to: '/video', code: 'VID', label: 'Photo and Video' },
+  { to: '/cameraswitcher', code: 'CAM', label: 'Camera Switcher' },
+  { to: '/pipelineeditor', code: 'PIP', label: 'Video Pipeline Editor' },
+  { to: '/ltemodem', code: 'LTE', label: 'LTE Modem' },
+  { to: '/cellulartuning', code: 'CVT', label: 'Cellular Video Tuning' },
+  { to: '/telemetryinjector', code: 'TEL', label: 'Telemetry Injector' },
+  { to: '/cloud', code: 'CLD', label: 'Cloud Upload' },
+  { to: '/vpn', code: 'VPN', label: 'VPN Config' },
+  { to: '/wireguardhub', code: 'WG', label: 'WireGuard Hub' },
+  { to: '/tailscale', code: 'TS', label: 'Tailscale VPN' },
+  { to: '/ddns', code: 'DNS', label: 'Dynamic DNS' },
+  { to: '/networkpriority', code: 'NPR', label: 'Network Priority' },
+  { to: '/about', code: 'ABT', label: 'About' },
+  { to: '/users', code: 'USR', label: 'User Management' },
+]
+
 function AppRouter () {
   const [isAuthenticated, setIsAuthenticated] = useState(null)
   const [isAuthEnabled, setIsAuthEnabled] = useState(true)
   const [role, setRole] = useState(null)
+  const [navOpen, setNavOpen] = useState(true)
   const location = useLocation()
 
   useEffect(() => {
@@ -72,34 +100,35 @@ function AppRouter () {
   }
 
   return (
-    <div id="wrapper" className="d-flex">
+    <div id="wrapper" className={`d-flex${navOpen ? '' : ' gs-collapsed'}`}>
       <div id="sidebar-wrapper" className="bg-light border-right">
-        <div id="sidebarheading" className="sidebar-heading">Rpanion Web UI{role === 'readonly' && <span id="readonly-badge" className="badge bg-secondary" style={{ marginLeft: '6px', fontSize: '0.6em', verticalAlign: 'middle' }}>read-only</span>}</div>
+        <div id="sidebarheading" className="sidebar-heading">
+          <span className="gs-pip" aria-hidden="true"></span>
+          <span className="gs-brand">
+            <span className="gs-brand-name">Rpanion Web UI{role === 'readonly' && <span id="readonly-badge" className="badge bg-secondary" style={{ marginLeft: '6px', fontSize: '0.6em', verticalAlign: 'middle' }}>read-only</span>}</span>
+            <span className="gs-brand-sub" aria-hidden="true">COMPANION · LTE · GCS</span>
+          </span>
+          <button
+            id="sidebar-toggle"
+            type="button"
+            aria-label="Toggle navigation"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen(open => !open)}
+          >☰</button>
+        </div>
         <div id="sidebar-items" className="list-group list-group-flush">
-          <Link className='list-group-item list-group-item-action bg-light' to="/">Home</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/flightlogs">Flight Logs and Media</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/controller">Flight Controller</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/ppp">PPP Config</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/ntrip">NTRIP Config</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/network">Network Config</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/adhoc">Adhoc Wifi Config</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/apclients">Access Point Clients</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/video">Photo and Video</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/cameraswitcher">Camera Switcher</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/pipelineeditor">Video Pipeline Editor</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/ltemodem">LTE Modem</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/cellulartuning">Cellular Video Tuning</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/telemetryinjector">Telemetry Injector</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/cloud">Cloud Upload</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/vpn">VPN Config</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/wireguardhub">WireGuard Hub</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/tailscale">Tailscale VPN</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/ddns">Dynamic DNS</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/networkpriority">Network Priority</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/about">About</Link>
-          <Link className='list-group-item list-group-item-action bg-light' to="/users">User Management</Link>
+          {NAV.map(item => (
+            <NavLink
+              key={item.to}
+              end={item.end}
+              to={item.to}
+              data-code={item.code}
+              title={item.label}
+              className='list-group-item list-group-item-action bg-light'
+            >{item.label}</NavLink>
+          ))}
           {isAuthEnabled && (
-            <Link className='list-group-item list-group-item-action bg-light' to="/logoutconfirm">Logout</Link>
+            <NavLink data-code="OUT" title="Logout" className='list-group-item list-group-item-action bg-light' to="/logoutconfirm">Logout</NavLink>
           )}
         </div>
       </div>

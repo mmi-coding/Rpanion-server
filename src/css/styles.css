@@ -1,1 +1,711 @@
+/* ===========================================================================
+   GROUND STATION — design system for the Rpanion LTE companion console
+   ---------------------------------------------------------------------------
+   A night-cockpit / avionics instrument aesthetic layered on top of Bootstrap
+   5.3's dark theme (data-bs-theme="dark" is set on <html>). Everything here is
+   variable overrides + targeted component styling, so the existing react-
+   bootstrap markup is re-skinned with no structural changes.
 
+   Type system (self-hosted via @fontsource, imported in index.jsx):
+     · Chakra Petch  — squared, mechanical display face → headings, nav, labels
+     · IBM Plex Sans — engineering body face            → prose, controls
+     · IBM Plex Mono — telemetry readout face           → data, code, badges
+
+   Palette: deep blue-slate "cockpit at night", runway-amber as the signal
+   colour, phosphor-green for anything live/connected.
+   Sections: 1 Tokens · 2 Atmosphere · 3 Shell · 4 Sidebar · 5 Typography
+             6 Cards · 7 Buttons · 8 Forms · 9 Badges · 10 Tables · 11 Modals
+             12 Feedback · 13 Help affordances · 14 Motion · 15 a11y
+   =========================================================================== */
+
+/* ── 1 · Design tokens ──────────────────────────────────────────────────── */
+html.gs-theme {
+  /* Surfaces — darkest at the back, each panel a step lighter */
+  --gs-bg-0:        #080b11;   /* page void */
+  --gs-bg-1:        #0c121b;   /* body */
+  --gs-panel:       #111a26;   /* sidebar, cards */
+  --gs-panel-2:     #16212f;   /* inputs, raised */
+  --gs-panel-3:     #1c2937;   /* hover / active wash */
+
+  /* Hairlines — instrument-panel seams */
+  --gs-line:        #233241;
+  --gs-line-soft:   rgba(120, 150, 180, 0.12);
+  --gs-line-strong: #31465a;
+
+  /* Ink */
+  --gs-text:        #e8eef5;
+  --gs-text-dim:    #9bb0c4;
+  --gs-text-faint:  #62788d;
+
+  /* Signal colours */
+  --gs-amber:       #ffb224;   /* primary / runway lighting */
+  --gs-amber-hi:    #ffc658;
+  --gs-amber-lo:    #c47e00;
+  --gs-amber-rgb:   255, 178, 36;
+  --gs-green:       #2fe0a0;   /* live / connected */
+  --gs-green-rgb:   47, 224, 160;
+  --gs-cyan:        #4fd1ff;   /* info / links */
+  --gs-cyan-rgb:    79, 209, 255;
+  --gs-red:         #ff5d61;   /* fault / danger */
+  --gs-red-rgb:     255, 93, 97;
+  --gs-slate:       #56708a;   /* neutral / secondary */
+  --gs-slate-rgb:   86, 112, 138;
+
+  --gs-glow-amber:  0 0 0 1px rgba(var(--gs-amber-rgb), 0.45), 0 0 18px -4px rgba(var(--gs-amber-rgb), 0.55);
+  --gs-glow-green:  0 0 16px -3px rgba(var(--gs-green-rgb), 0.7);
+
+  /* Type */
+  --gs-font-display: 'Chakra Petch', 'IBM Plex Sans', system-ui, sans-serif;
+  --gs-font-body:    'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --gs-font-mono:    'IBM Plex Mono', ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+
+  /* ── Map onto Bootstrap so every react-bootstrap component follows along ── */
+  --bs-body-bg:               var(--gs-bg-1);
+  --bs-body-color:            var(--gs-text);
+  --bs-body-font-family:      var(--gs-font-body);
+  --bs-font-monospace:        var(--gs-font-mono);
+  --bs-emphasis-color:        #ffffff;
+  --bs-secondary-color:       var(--gs-text-dim);
+  --bs-tertiary-color:        var(--gs-text-faint);
+  --bs-border-color:          var(--gs-line);
+  --bs-border-color-translucent: var(--gs-line-soft);
+
+  --bs-primary:               var(--gs-amber);
+  --bs-primary-rgb:           var(--gs-amber-rgb);
+  --bs-success:               var(--gs-green);
+  --bs-success-rgb:           var(--gs-green-rgb);
+  --bs-danger:                var(--gs-red);
+  --bs-danger-rgb:            var(--gs-red-rgb);
+  --bs-warning:               var(--gs-amber);
+  --bs-warning-rgb:           var(--gs-amber-rgb);
+  --bs-info:                  var(--gs-cyan);
+  --bs-info-rgb:              var(--gs-cyan-rgb);
+  --bs-secondary:             var(--gs-slate);
+  --bs-secondary-rgb:         var(--gs-slate-rgb);
+
+  --bs-link-color:            var(--gs-cyan);
+  --bs-link-color-rgb:        var(--gs-cyan-rgb);
+  --bs-link-hover-color:      var(--gs-amber);
+  --bs-link-hover-color-rgb:  var(--gs-amber-rgb);
+
+  --bs-border-radius:         0.3rem;
+  --bs-border-radius-sm:      0.2rem;
+  --bs-border-radius-lg:      0.4rem;
+
+  --bs-heading-color:         var(--gs-text);
+  color-scheme: dark;
+}
+
+/* ── 2 · Atmosphere ─────────────────────────────────────────────────────── */
+html.gs-theme,
+html.gs-theme body {
+  background-color: var(--gs-bg-0);
+}
+
+html.gs-theme body {
+  font-family: var(--gs-font-body);
+  color: var(--gs-text);
+  /* A faint nav-display grid + horizon glow, fixed behind everything. */
+  background-color: var(--gs-bg-1);
+  background-image:
+    radial-gradient(120% 80% at 78% -10%, rgba(var(--gs-amber-rgb), 0.10), transparent 60%),
+    radial-gradient(90% 60% at 0% 0%, rgba(var(--gs-cyan-rgb), 0.06), transparent 55%),
+    linear-gradient(var(--gs-line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--gs-line-soft) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 34px 34px, 34px 34px;
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html.gs-theme ::selection {
+  background: rgba(var(--gs-amber-rgb), 0.85);
+  color: #120c02;
+}
+
+/* Thin instrument scrollbars */
+html.gs-theme * { scrollbar-width: thin; scrollbar-color: var(--gs-line-strong) transparent; }
+html.gs-theme ::-webkit-scrollbar { width: 10px; height: 10px; }
+html.gs-theme ::-webkit-scrollbar-track { background: transparent; }
+html.gs-theme ::-webkit-scrollbar-thumb {
+  background: var(--gs-line-strong);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+html.gs-theme ::-webkit-scrollbar-thumb:hover { background: var(--gs-amber-lo); background-clip: content-box; }
+
+/* ── 3 · Shell layout ───────────────────────────────────────────────────── */
+html.gs-theme #wrapper {
+  min-height: 100vh;
+  align-items: stretch;
+}
+
+html.gs-theme .page-content-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;            /* let mono/pre blocks scroll instead of pushing layout */
+  display: flex;
+  flex-direction: column;
+}
+
+html.gs-theme .container-fluid {
+  padding: 1.9rem 2.1rem 2.6rem;
+  max-width: 1280px;
+}
+
+/* ── 4 · Sidebar — the console rail ─────────────────────────────────────── */
+html.gs-theme #sidebar-wrapper {
+  margin-left: 0;                       /* override simple-sidebar off-canvas default */
+  width: 15.5rem;
+  flex: 0 0 15.5rem;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--gs-bg-0);           /* flat: one continuous dark surface with the page */
+  border-right: 1px solid var(--gs-line);
+  box-shadow: 14px 0 40px -30px #000;
+  transition: width .22s ease, flex-basis .22s ease;
+}
+
+html.gs-theme #sidebar-wrapper .list-group { width: 100%; }
+
+/* Brand heading — station identity. Real elements (not pseudo-hacks) so the
+   collapsed rail can hide them cleanly. */
+html.gs-theme #sidebarheading.sidebar-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 1rem 0.85rem 0.95rem 1.1rem;
+  border-bottom: 1px solid var(--gs-line);
+  white-space: nowrap;
+  overflow: hidden;
+}
+html.gs-theme .gs-pip {
+  width: 9px; height: 9px; flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--gs-green);
+  box-shadow: var(--gs-glow-green);
+  animation: gs-pulse 2.4s ease-in-out infinite;
+}
+html.gs-theme .gs-brand {
+  display: flex; flex-direction: column;
+  flex: 1 1 auto; min-width: 0; line-height: 1.12;
+}
+html.gs-theme .gs-brand-name {
+  font-family: var(--gs-font-display);
+  font-weight: 600; font-size: 0.98rem;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--gs-text);
+  overflow: hidden; text-overflow: ellipsis;
+}
+html.gs-theme .gs-brand-sub {
+  font-family: var(--gs-font-mono);
+  font-size: 0.57rem; font-weight: 500; letter-spacing: 0.2em;
+  color: var(--gs-text-faint); margin-top: 3px;
+}
+
+/* Collapse toggle — a cockpit switch in the header */
+html.gs-theme #sidebar-toggle {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--gs-text-dim);
+  border: 1px solid var(--gs-line); border-radius: 0.3rem;
+  font-size: 0.95rem; line-height: 1; cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+html.gs-theme #sidebar-toggle:hover,
+html.gs-theme #sidebar-toggle:focus-visible {
+  color: var(--gs-amber-hi);
+  border-color: rgba(var(--gs-amber-rgb), 0.5);
+  background: rgba(var(--gs-amber-rgb), 0.1);
+  outline: none;
+}
+
+html.gs-theme #sidebar-items { padding-top: 0.85rem; }
+
+/* Nav items */
+html.gs-theme #sidebar-items .list-group-item {
+  background-color: transparent;
+  border: 0;
+  border-left: 2px solid transparent;
+  color: var(--gs-text-dim);
+  font-family: var(--gs-font-body);
+  font-size: 0.86rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 0.5rem 1.25rem;
+  border-radius: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color .16s ease, background-color .16s ease, border-color .16s ease, padding-left .16s ease;
+}
+html.gs-theme #sidebar-items .list-group-item:hover,
+html.gs-theme #sidebar-items .list-group-item:focus-visible {
+  background-color: var(--gs-panel-3);
+  border-left-color: rgba(var(--gs-amber-rgb), 0.55);
+  color: var(--gs-text);
+  padding-left: 1.5rem;
+  outline: none;
+}
+html.gs-theme #sidebar-items .list-group-item.active {
+  background: linear-gradient(90deg, rgba(var(--gs-amber-rgb), 0.16), transparent 80%);
+  border-left-color: var(--gs-amber);
+  color: var(--gs-amber-hi);
+  font-weight: 600;
+}
+html.gs-theme #sidebar-items .list-group-item.active::before {
+  content: "❯";
+  margin-right: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--gs-amber);
+  vertical-align: 1px;
+}
+/* read-only chip in the heading */
+html.gs-theme #readonly-badge {
+  font-family: var(--gs-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── 4b · Collapsed rail — waypoint-code mode ───────────────────────────── */
+html.gs-theme #wrapper.gs-collapsed #sidebar-wrapper {
+  width: 4.1rem; flex-basis: 4.1rem;
+}
+html.gs-theme #wrapper.gs-collapsed #sidebarheading {
+  justify-content: center;
+  padding-left: 0.85rem; padding-right: 0.85rem;
+}
+html.gs-theme #wrapper.gs-collapsed .gs-brand,
+html.gs-theme #wrapper.gs-collapsed .gs-pip { display: none; }
+html.gs-theme #wrapper.gs-collapsed #sidebar-items .list-group-item {
+  padding: 0.5rem 0;
+  text-align: center;
+  border-left-width: 0;
+  font-size: 0;                          /* hide the label text node… */
+}
+html.gs-theme #wrapper.gs-collapsed #sidebar-items .list-group-item::before {
+  content: attr(data-code);              /* …and show the waypoint code instead */
+  display: block;
+  font-family: var(--gs-font-mono);
+  font-size: 0.62rem; font-weight: 600; letter-spacing: 0.06em;
+  color: inherit; margin: 0;
+}
+html.gs-theme #wrapper.gs-collapsed #sidebar-items .list-group-item:hover {
+  padding-left: 0;
+  background-color: var(--gs-panel-3);
+}
+html.gs-theme #wrapper.gs-collapsed #sidebar-items .list-group-item.active {
+  border-left-width: 0;
+  box-shadow: inset 2px 0 0 var(--gs-amber);
+}
+
+/* ── 5 · Typography ─────────────────────────────────────────────────────── */
+html.gs-theme h1, html.gs-theme h2, html.gs-theme h3,
+html.gs-theme h4, html.gs-theme h5, html.gs-theme h6 {
+  font-family: var(--gs-font-display);
+  color: var(--gs-text);
+  letter-spacing: 0.01em;
+}
+
+/* Page title — the marquee at the top of every page (basePage <h1>) */
+html.gs-theme .container-fluid > div > h1,
+html.gs-theme .container-fluid > h1 {
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  margin: 0 0 1.4rem;
+  padding: 0 0 0.85rem 0.95rem;
+  position: relative;
+  border-bottom: 1px solid var(--gs-line);
+}
+html.gs-theme .container-fluid > div > h1::before,
+html.gs-theme .container-fluid > h1::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0.1em;
+  width: 4px; height: 1.05em;
+  background: var(--gs-amber);
+  box-shadow: var(--gs-glow-amber);
+  border-radius: 1px;
+}
+
+html.gs-theme a { text-decoration: none; transition: color .15s ease; }
+html.gs-theme a:hover { text-decoration: underline; text-underline-offset: 3px; }
+html.gs-theme .text-muted,
+html.gs-theme .text-secondary { color: var(--gs-text-dim) !important; }
+html.gs-theme hr { border-color: var(--gs-line); opacity: 1; }
+
+/* Mono for all technical readouts */
+html.gs-theme code, html.gs-theme kbd, html.gs-theme samp {
+  font-family: var(--gs-font-mono);
+  font-size: 0.86em;
+  color: var(--gs-amber-hi);
+  background: rgba(var(--gs-amber-rgb), 0.08);
+  padding: 0.1em 0.4em;
+  border-radius: 0.2rem;
+}
+html.gs-theme kbd {
+  color: var(--gs-text);
+  background: var(--gs-panel-2);
+  border: 1px solid var(--gs-line-strong);
+}
+/* Command / output blocks read like a telemetry console */
+html.gs-theme pre {
+  font-family: var(--gs-font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--gs-text);
+  background: var(--gs-bg-0);
+  border: 1px solid var(--gs-line);
+  border-left: 3px solid rgba(var(--gs-amber-rgb), 0.6);
+  border-radius: 0.3rem;
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+}
+html.gs-theme pre code { background: none; padding: 0; color: inherit; }
+
+/* ── 6 · Cards — instrument panels ──────────────────────────────────────── */
+html.gs-theme .card {
+  --bs-card-bg: var(--gs-panel);
+  --bs-card-border-color: var(--gs-line);
+  --bs-card-border-radius: 0.4rem;
+  --bs-card-cap-bg: transparent;
+  --bs-card-color: var(--gs-text);
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.015), transparent 40%);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 18px 40px -30px #000;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+html.gs-theme .card:hover {
+  border-color: var(--gs-line-strong);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 22px 46px -28px #000;
+}
+html.gs-theme .card-header {
+  border-bottom: 1px solid var(--gs-line);
+  padding: 0.7rem 1rem;
+  position: relative;
+}
+html.gs-theme .card-header h5,
+html.gs-theme .card-header h4 {
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin: 0;
+}
+html.gs-theme .card-header::before {
+  content: "";
+  position: absolute; left: 0; top: 0.55rem; bottom: 0.55rem;
+  width: 3px; border-radius: 1px;
+  background: rgba(var(--gs-amber-rgb), 0.55);
+}
+html.gs-theme .card-body { padding: 1rem; }
+
+/* ── 7 · Buttons — cockpit switches ─────────────────────────────────────── */
+html.gs-theme .btn {
+  --bs-btn-font-family: var(--gs-font-body);
+  font-weight: 600;
+  font-size: 0.84rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.42rem 1.05rem;
+  border-radius: 0.3rem;
+  transition: background-color .15s ease, box-shadow .15s ease, border-color .15s ease, transform .05s ease;
+}
+html.gs-theme .btn:active { transform: translateY(1px); }
+html.gs-theme .btn:focus-visible { box-shadow: var(--gs-glow-amber); outline: none; }
+
+html.gs-theme .btn-primary {
+  --bs-btn-bg: var(--gs-amber);
+  --bs-btn-border-color: var(--gs-amber);
+  --bs-btn-color: #160f02;
+  --bs-btn-hover-bg: var(--gs-amber-hi);
+  --bs-btn-hover-border-color: var(--gs-amber-hi);
+  --bs-btn-hover-color: #160f02;
+  --bs-btn-active-bg: var(--gs-amber-lo);
+  --bs-btn-active-border-color: var(--gs-amber-lo);
+  --bs-btn-active-color: #160f02;
+  --bs-btn-disabled-bg: var(--gs-amber-lo);
+  --bs-btn-disabled-border-color: var(--gs-amber-lo);
+  --bs-btn-disabled-color: rgba(22,15,2,0.55);
+}
+html.gs-theme .btn-primary:hover { box-shadow: var(--gs-glow-amber); }
+
+html.gs-theme .btn-success {
+  --bs-btn-bg: var(--gs-green);
+  --bs-btn-border-color: var(--gs-green);
+  --bs-btn-color: #042018;
+  --bs-btn-hover-bg: #54ecb6;
+  --bs-btn-hover-border-color: #54ecb6;
+  --bs-btn-hover-color: #042018;
+}
+html.gs-theme .btn-danger {
+  --bs-btn-bg: var(--gs-red);
+  --bs-btn-border-color: var(--gs-red);
+  --bs-btn-color: #2a0608;
+  --bs-btn-hover-bg: #ff7a7d;
+  --bs-btn-hover-border-color: #ff7a7d;
+}
+html.gs-theme .btn-secondary {
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: var(--gs-line-strong);
+  --bs-btn-color: var(--gs-text-dim);
+  --bs-btn-hover-bg: var(--gs-panel-3);
+  --bs-btn-hover-border-color: var(--gs-slate);
+  --bs-btn-hover-color: var(--gs-text);
+  --bs-btn-active-bg: var(--gs-panel-3);
+}
+html.gs-theme .btn-outline-primary,
+html.gs-theme .btn-outline-secondary {
+  --bs-btn-color: var(--gs-amber-hi);
+  --bs-btn-border-color: rgba(var(--gs-amber-rgb), 0.5);
+  --bs-btn-hover-bg: rgba(var(--gs-amber-rgb), 0.12);
+  --bs-btn-hover-color: var(--gs-amber-hi);
+  --bs-btn-hover-border-color: var(--gs-amber);
+  --bs-btn-active-bg: rgba(var(--gs-amber-rgb), 0.2);
+  --bs-btn-active-color: var(--gs-amber-hi);
+  --bs-btn-active-border-color: var(--gs-amber);
+}
+html.gs-theme .btn-link { color: var(--gs-cyan); text-transform: none; letter-spacing: 0; }
+
+/* ── 8 · Forms — labelled instruments ───────────────────────────────────── */
+html.gs-theme .form-label,
+html.gs-theme .col-form-label,
+html.gs-theme .form-check-label,
+html.gs-theme legend {
+  font-family: var(--gs-font-display);
+  font-weight: 500;
+  font-size: 0.82rem;
+  letter-spacing: 0.025em;
+  color: var(--gs-text);
+}
+html.gs-theme .form-control,
+html.gs-theme .form-select,
+html.gs-theme textarea.form-control {
+  background-color: var(--gs-panel-2);
+  border: 1px solid var(--gs-line-strong);
+  color: var(--gs-text);
+  border-radius: 0.3rem;
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+html.gs-theme .form-control::placeholder { color: var(--gs-text-faint); }
+html.gs-theme .form-control:focus,
+html.gs-theme .form-select:focus,
+html.gs-theme textarea.form-control:focus {
+  background-color: var(--gs-panel-2);
+  border-color: var(--gs-amber);
+  box-shadow: 0 0 0 0.18rem rgba(var(--gs-amber-rgb), 0.2);
+  color: var(--gs-text);
+}
+html.gs-theme .form-control:disabled,
+html.gs-theme .form-select:disabled {
+  background-color: var(--gs-bg-0);
+  color: var(--gs-text-faint);
+}
+/* Mono for fields that hold technical values — IPs, ports, keys, commands */
+html.gs-theme input[type="text"].form-control,
+html.gs-theme input[type="number"].form-control,
+html.gs-theme input[type="password"].form-control,
+html.gs-theme textarea.form-control,
+html.gs-theme .input-group-text {
+  font-family: var(--gs-font-mono);
+  font-size: 0.86rem;
+}
+html.gs-theme .input-group-text {
+  background-color: var(--gs-panel-3);
+  border-color: var(--gs-line-strong);
+  color: var(--gs-text-dim);
+}
+html.gs-theme .form-check-input {
+  background-color: var(--gs-panel-2);
+  border-color: var(--gs-line-strong);
+}
+html.gs-theme .form-check-input:checked {
+  background-color: var(--gs-amber);
+  border-color: var(--gs-amber);
+}
+html.gs-theme .form-check-input:focus {
+  border-color: var(--gs-amber);
+  box-shadow: 0 0 0 0.18rem rgba(var(--gs-amber-rgb), 0.2);
+}
+html.gs-theme .form-switch .form-check-input:checked { background-color: var(--gs-amber); }
+html.gs-theme .form-range::-webkit-slider-thumb { background: var(--gs-amber); }
+html.gs-theme .form-range::-moz-range-thumb { background: var(--gs-amber); }
+
+/* ── 9 · Badges — status lamps ──────────────────────────────────────────── */
+html.gs-theme .badge {
+  font-family: var(--gs-font-mono);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.36em 0.6em;
+  border-radius: 0.25rem;
+  border: 1px solid transparent;
+}
+/* Coloured "soft lamp" treatment for the status badges on the Home dashboard */
+html.gs-theme .badge.bg-success {
+  background-color: rgba(var(--gs-green-rgb), 0.14) !important;
+  color: var(--gs-green);
+  border-color: rgba(var(--gs-green-rgb), 0.45);
+  box-shadow: 0 0 14px -4px rgba(var(--gs-green-rgb), 0.8);
+}
+html.gs-theme .badge.bg-danger {
+  background-color: rgba(var(--gs-red-rgb), 0.14) !important;
+  color: var(--gs-red);
+  border-color: rgba(var(--gs-red-rgb), 0.45);
+}
+html.gs-theme .badge.bg-warning {
+  background-color: rgba(var(--gs-amber-rgb), 0.14) !important;
+  color: var(--gs-amber-hi);
+  border-color: rgba(var(--gs-amber-rgb), 0.45);
+}
+html.gs-theme .badge.bg-secondary {
+  background-color: rgba(var(--gs-slate-rgb), 0.16) !important;
+  color: var(--gs-text-dim);
+  border-color: rgba(var(--gs-slate-rgb), 0.4);
+}
+
+/* ── 10 · Tables — data grids ───────────────────────────────────────────── */
+html.gs-theme .table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--gs-text);
+  --bs-table-border-color: var(--gs-line);
+  --bs-table-striped-bg: rgba(255, 255, 255, 0.022);
+  --bs-table-striped-color: var(--gs-text);
+  --bs-table-hover-bg: rgba(var(--gs-amber-rgb), 0.07);
+  --bs-table-hover-color: var(--gs-text);
+  font-size: 0.88rem;
+}
+html.gs-theme .table > thead th {
+  font-family: var(--gs-font-display);
+  font-weight: 600;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gs-text-dim);
+  border-bottom: 1px solid var(--gs-line-strong);
+}
+html.gs-theme .table td, html.gs-theme .table th { border-color: var(--gs-line); }
+
+/* ── 11 · Modals & overlays ─────────────────────────────────────────────── */
+html.gs-theme .modal-content {
+  background: var(--gs-panel);
+  border: 1px solid var(--gs-line-strong);
+  border-radius: 0.5rem;
+  box-shadow: 0 30px 80px -30px #000;
+}
+html.gs-theme .modal-header,
+html.gs-theme .modal-footer { border-color: var(--gs-line); }
+html.gs-theme .modal-title {
+  font-family: var(--gs-font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 1.05rem;
+}
+html.gs-theme .modal-backdrop.show { opacity: 0.72; background: var(--gs-bg-0); }
+html.gs-theme .tooltip-inner {
+  background: var(--gs-panel-3);
+  color: var(--gs-text);
+  border: 1px solid var(--gs-line-strong);
+  font-size: 0.78rem;
+  max-width: 280px;
+  text-align: left;
+  box-shadow: 0 10px 30px -12px #000;
+}
+html.gs-theme .dropdown-menu {
+  --bs-dropdown-bg: var(--gs-panel);
+  --bs-dropdown-border-color: var(--gs-line-strong);
+  --bs-dropdown-link-color: var(--gs-text-dim);
+  --bs-dropdown-link-hover-bg: var(--gs-panel-3);
+  --bs-dropdown-link-hover-color: var(--gs-text);
+}
+html.gs-theme .alert {
+  border-radius: 0.35rem;
+  border-width: 1px;
+  border-left-width: 3px;
+}
+
+/* ── 12 · Feedback — spinners, waiting scrim, footer ────────────────────── */
+html.gs-theme .spinner-border,
+html.gs-theme .spinner-grow { color: var(--gs-amber); }
+
+html.gs-theme .sweet-waiting {
+  background-color: rgba(8, 11, 17, 0.74) !important;
+  backdrop-filter: blur(2px);
+}
+html.gs-theme .sweet-waiting h2 {
+  font-family: var(--gs-font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gs-amber-hi);
+}
+
+html.gs-theme .page-content-footer {
+  margin-top: auto;
+  padding: 1rem 0 0.4rem;
+  font-family: var(--gs-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gs-text-faint);
+  border-top: 1px solid var(--gs-line);
+}
+
+/* ── 13 · Help affordances (paired with Help.jsx inline tokens) ─────────── */
+html.gs-theme .gs-helptip {
+  background-color: rgba(var(--gs-amber-rgb), 0.16);
+  color: var(--gs-amber-hi);
+  border: 1px solid rgba(var(--gs-amber-rgb), 0.5);
+}
+html.gs-theme .gs-helptip:hover,
+html.gs-theme .gs-helptip:focus-visible {
+  background-color: var(--gs-amber);
+  color: #160f02;
+  outline: none;
+}
+html.gs-theme .gs-helpsection-toggle {
+  font-family: var(--gs-font-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gs-cyan);
+}
+html.gs-theme .gs-helpsection-body {
+  color: var(--gs-text-dim);
+  border-left: 2px solid rgba(var(--gs-amber-rgb), 0.45) !important;
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+
+/* ── 14 · Motion ────────────────────────────────────────────────────────── */
+@keyframes gs-pulse {
+  0%, 100% { opacity: 1;   box-shadow: var(--gs-glow-green); }
+  50%      { opacity: 0.5; box-shadow: 0 0 4px -2px rgba(var(--gs-green-rgb), 0.4); }
+}
+@keyframes gs-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Page content rises in on load; cards stagger in behind it */
+html.gs-theme .pagedetails { animation: gs-rise .42s cubic-bezier(.2, .7, .25, 1) both; }
+html.gs-theme .pagedetails .card { animation: gs-rise .5s cubic-bezier(.2, .7, .25, 1) both; }
+html.gs-theme .pagedetails .row > [class*="col"]:nth-child(1) .card { animation-delay: .04s; }
+html.gs-theme .pagedetails .row > [class*="col"]:nth-child(2) .card { animation-delay: .10s; }
+html.gs-theme .pagedetails .row > [class*="col"]:nth-child(3) .card { animation-delay: .16s; }
+html.gs-theme .pagedetails .row > [class*="col"]:nth-child(4) .card { animation-delay: .22s; }
+html.gs-theme .pagedetails .row > [class*="col"]:nth-child(5) .card { animation-delay: .28s; }
+html.gs-theme .pagedetails .row > [class*="col"]:nth-child(n+6) .card { animation-delay: .34s; }
+
+/* ── 15 · Reduced-motion ────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html.gs-theme *,
+  html.gs-theme *::before,
+  html.gs-theme *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
