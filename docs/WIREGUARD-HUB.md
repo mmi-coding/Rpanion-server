@@ -30,7 +30,10 @@ VPS** — no private key is ever created on or sent from the drone.
    - **WireGuard UDP port** (default `51820`), **VPN subnet** (default
      `10.13.13.0/24`: hub `.1`, drone `.2`, laptop `.3`), **SSH port** (default
      `22`, kept open by the firewall so you can't be locked out).
-3. Click **Generate**, then **Copy** or **Download .sh**.
+3. Click **Generate**, then **Copy** or **Download .sh**. The page also shows a
+   **Deploy to your VPS** box with ready-to-run `scp`/`ssh` commands (your VPS IP
+   + SSH port pre-filled, plus a no-save `ssh … 'bash -s' < …` one-liner) — the Pi
+   can't push the script to the VPS, so you carry it across from your laptop.
 4. Run it once on a fresh VPS as root: `sudo bash setup-wireguard-hub.sh`. It is
    idempotent (safe to re-run; existing keys are reused).
 5. The script prints two configs:

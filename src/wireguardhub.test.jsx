@@ -76,6 +76,27 @@ describe('#WireguardHubPage()', function () {
     page.unmount()
   })
 
+  test('Deploy box shows scp/ssh commands with IP + port, and Copy commands works', async function () {
+    const writeText = vi.fn()
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    mockFetch({ 'POST /api/wireguardhubscript': { script: SCRIPT } })
+    const page = renderPage(<WireguardHubPage />)
+    await page.flush()
+    fillRequired(page)
+    page.setValue(page.container.querySelector('input[name="sshPort"]'), '2222')
+    await page.flush()
+    act(() => { page.container.querySelector('#generatewg').click() })
+    await page.flush()
+    const deploy = page.container.querySelector('#deployout').value
+    expect(deploy).toContain('scp -P 2222 setup-wireguard-hub.sh root@203.0.113.10:')
+    expect(deploy).toContain("ssh -p 2222 root@203.0.113.10 'sudo bash -s' < setup-wireguard-hub.sh")
+    act(() => { page.container.querySelector('#copydeploy').click() })
+    await page.flush()
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('scp -P 2222'))
+    expect(document.body.textContent).toContain('Deploy commands copied')
+    page.unmount()
+  })
+
   test('Download builds a blob and clicks an anchor', async function () {
     const createObjectURL = vi.fn(() => 'blob:fake')
     const revokeObjectURL = vi.fn()
