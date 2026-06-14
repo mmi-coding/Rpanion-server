@@ -131,4 +131,4 @@ function getsystemctllog(callback) {
   })
 }
 
-module.exports = { getSoftwareInfo, getHardwareInfo, getDiskInfo, shutdownCC, getsystemctllog }
+export = { getSoftwareInfo, getHardwareInfo, getDiskInfo, shutdownCC, getsystemctllog }

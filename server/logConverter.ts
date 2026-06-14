@@ -4,6 +4,12 @@ const appRoot = require('app-root-path')
 const logpaths = require('./paths')
 
 class logConverter {
+  intervalObj: any
+  settings: any
+  converterPid: any
+  pythonScript: any
+  pythonFolder: any
+  options: any
   constructor (settings) {
     this.options = {
       // the interval of sync, every 20 sec
@@ -88,4 +94,4 @@ class logConverter {
   }
 }
 
-module.exports = logConverter
+export = logConverter

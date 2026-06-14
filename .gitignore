@@ -56,3 +56,12 @@ __pycache__/
 /server/networkClients.js
 /server/networkPriority.js
 /server/serialDetection.js
+/server/dynamicDns.js
+/server/customPipelines.js
+/server/cameraSwitcher.js
+/server/cellularTuning.js
+/server/logConverter.js
+/server/flightLogger.js
+/server/aboutInfo.js
+/server/vpn.js
+/server/cloudUpload.js

@@ -7,6 +7,11 @@ const { execSync } = require('child_process')
 const logpaths = require('./paths')
 
 class cloudUpload {
+  intervalObj: any
+  settings: any
+  rsyncPid: any
+  topfolder: any
+  options: any
   constructor (settings) {
     this.options = {
       // the interval of sync, every 20 sec
@@ -134,4 +139,4 @@ class cloudUpload {
   }
 }
 
-module.exports = cloudUpload
+export = cloudUpload

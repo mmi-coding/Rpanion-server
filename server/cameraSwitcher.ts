@@ -17,6 +17,16 @@ const events = require('events')
 const RC_CHANNELS_MSG_ID = 65
 
 class cameraSwitcher {
+  activeSource: any
+  lastSwitchTime: any
+  lastRcValue: any
+  streamRequested: any
+  pendingSince: any
+  pendingSource: any
+  lastRcTime: any
+  options: any
+  eventEmitter: any
+  settings: any
   constructor (settings) {
     this.settings = settings
     this.eventEmitter = new events.EventEmitter()
@@ -218,4 +228,4 @@ class cameraSwitcher {
   }
 }
 
-module.exports = cameraSwitcher
+export = cameraSwitcher

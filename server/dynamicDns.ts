@@ -11,9 +11,16 @@ const DEFAULT_INTERVAL_MIN = 5
 const VALID_PROVIDERS = ['duckdns', 'noip']
 
 class DynamicDns {
-  constructor (settings, deps = {}) {
+  timer: any
+  lastUpdate: any
+  lastIp: any
+  lastStatus: any
+  options: any
+  fetchFn: any
+  settings: any
+  constructor (settings: any, deps: any = {}) {
     this.settings = settings
-    this.fetchFn = deps.fetchFn || ((...args) => fetch(...args))
+    this.fetchFn = deps.fetchFn || ((...args: any[]) => (fetch as any)(...args))
 
     this.options = {
       enabled: this.settings.value('ddns.enabled', false),
@@ -159,5 +166,5 @@ class DynamicDns {
   }
 }
 
-module.exports = DynamicDns
+export = DynamicDns
 module.exports.VALID_PROVIDERS = VALID_PROVIDERS

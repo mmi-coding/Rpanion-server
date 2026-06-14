@@ -17,6 +17,8 @@ const { execFile } = require('child_process')
 const logpaths = require('./paths')
 
 class customPipelines {
+  pipelines: any
+  settings: any
   constructor (settings) {
     this.settings = settings
 
@@ -121,4 +123,4 @@ class customPipelines {
   }
 }
 
-module.exports = customPipelines
+export = customPipelines

@@ -52,6 +52,9 @@ function removeEmptySubDirs (dir) {
 }
 
 class flightLogger {
+  mediafolder: any
+  kmzlogfolder: any
+  topfolder: any
   constructor () {
     this.topfolder = logpaths.flightsLogsDir
     // this.tlogfolder = path.join(this.topfolder, 'tlogs')
@@ -137,4 +140,4 @@ class flightLogger {
   };
 }
 
-module.exports = flightLogger
+export = flightLogger

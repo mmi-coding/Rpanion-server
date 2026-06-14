@@ -242,7 +242,7 @@ function disconnectTailscale (callback) {
   })
 }
 
-module.exports = {
+export = {
   getVPNStatusZerotier,
   getVPNStatusWireguard,
   getVPNStatusTailscale,

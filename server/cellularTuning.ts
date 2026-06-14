@@ -20,6 +20,15 @@ const HYSTERESIS_POLLS = 2
 const POLL_MS = 5000
 
 class CellularTuning {
+  pendingTier: any
+  targetBitrate: any
+  lastChange: any
+  pollTimer: any
+  appliedTier: any
+  pendingCount: any
+  options: any
+  deps: any
+  settings: any
   constructor (settings, deps) {
     this.settings = settings
     // injected: getSignal(), isStreaming(), getConfiguredBitrate(),
@@ -193,4 +202,4 @@ class CellularTuning {
   }
 }
 
-module.exports = CellularTuning
+export = CellularTuning
