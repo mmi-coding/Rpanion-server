@@ -118,6 +118,34 @@ describe('#AppRouter()', function () {
   })
 
   // -------------------------------------------------------------------------
+  // sidebar collapse toggle flips the gs-collapsed class + aria-expanded
+  // -------------------------------------------------------------------------
+  test('sidebar toggle collapses and re-expands the rail', async function () {
+    mockFetch(authOk)
+    const page = renderPage(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRouter />
+      </MemoryRouter>
+    )
+    await page.flush()
+    const wrapper = page.container.querySelector('#wrapper')
+    const toggle = page.container.querySelector('#sidebar-toggle')
+    expect(toggle).not.toBeNull()
+    // starts expanded
+    expect(wrapper.className).not.toContain('gs-collapsed')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    // collapse
+    page.click(toggle)
+    expect(wrapper.className).toContain('gs-collapsed')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    // expand again
+    page.click(toggle)
+    expect(wrapper.className).not.toContain('gs-collapsed')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
   // isAuthenticated=false at '/' → shows home (Login form via showLogin)
   // -------------------------------------------------------------------------
   test('unauthenticated at / renders Home with login form', async function () {

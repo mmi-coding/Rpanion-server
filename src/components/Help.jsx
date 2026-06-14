@@ -16,20 +16,20 @@ export function HelpTip({ text, placement = 'right' }) {
             <span
                 tabIndex={0}
                 aria-label="help"
+                className="gs-helptip"
                 style={{
                     display: 'inline-block',
                     marginLeft: '6px',
                     width: '16px',
                     height: '16px',
-                    lineHeight: '16px',
+                    lineHeight: '14px',
                     textAlign: 'center',
                     borderRadius: '50%',
-                    backgroundColor: '#6c757d',
-                    color: 'white',
                     fontSize: '11px',
                     fontWeight: 'bold',
                     cursor: 'help',
                     userSelect: 'none',
+                    transition: 'background-color .15s ease, color .15s ease',
                     verticalAlign: 'text-top'
                 }}>?</span>
         </OverlayTrigger>
@@ -46,14 +46,15 @@ export function HelpSection({ title = 'How this works', defaultOpen = false, chi
                 role="button"
                 tabIndex={0}
                 aria-expanded={open}
+                className="gs-helpsection-toggle"
                 onClick={() => setOpen(!open)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(!open); } }}
-                style={{ cursor: 'pointer', userSelect: 'none', fontSize: '0.9em', textDecoration: 'none' }}>
+                style={{ cursor: 'pointer', userSelect: 'none', fontSize: '0.85em', textDecoration: 'none' }}>
                 {open ? '▾' : '▸'} {title}
             </a>
             <Collapse in={open}>
                 <div>
-                    <div className="text-muted" style={{ fontSize: '0.9em', padding: '8px 12px', borderLeft: '3px solid #dee2e6', marginTop: '4px', maxWidth: '750px' }}>
+                    <div className="text-muted gs-helpsection-body" style={{ fontSize: '0.9em', padding: '8px 12px', marginTop: '4px', maxWidth: '750px' }}>
                         {children}
                     </div>
                 </div>
