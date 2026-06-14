@@ -1,12 +1,13 @@
 // Camera switcher routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher }) {
+export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher }: { authenticateToken: any; toBool: any; camSwitcher: any }) {
   const router = Router()
 
   // Serve the camera switcher config and status
-  router.get('/api/cameraswitcher', authenticateToken, (req, res) => {
+  router.get('/api/cameraswitcher', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify({ settings: camSwitcher.getSettings(), status: camSwitcher.getStatus() }))
   })
@@ -26,7 +27,7 @@ export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher
     check('secFps').optional().isInt({ min: -1, max: 120 }),
     check('commandA').optional({ checkFalsy: true }).isString(),
     check('commandB').optional({ checkFalsy: true }).isString()
-  ], function (req, res) {
+  ], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/cameraswitchermodify', { message: JSON.stringify(errors.array()) })
@@ -47,7 +48,7 @@ export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher
       secFps: parseInt(req.body.secFps, 10) || -1,
       commandA: req.body.commandA || '',
       commandB: req.body.commandB || ''
-    }, (err) => {
+    }, (err: any) => {
       res.setHeader('Content-Type', 'application/json')
       if (err) {
         res.status(422).send(JSON.stringify({ error: err.message, settings: camSwitcher.getSettings() }))
@@ -58,7 +59,7 @@ export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher
   })
 
   // manually switch the active camera source
-  router.post('/api/cameraswitcherswitch', authenticateToken, [check('source').isIn(['A', 'B'])], function (req, res) {
+  router.post('/api/cameraswitcherswitch', authenticateToken, [check('source').isIn(['A', 'B'])], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/cameraswitcherswitch', { message: JSON.stringify(errors.array()) })

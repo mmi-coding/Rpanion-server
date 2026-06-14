@@ -4,12 +4,14 @@ const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 const path = require('path')
 
-export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }) {
+import type { Request, Response } from 'express'
+
+export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }: { authenticateToken: any; toBool: any; vManager: any; fcManager: any; camSwitcher: any; MEDIA_ROOT: string }) {
   const router = Router()
 
   // Capture a single still photo when in photo mode
   // This code responds to the button on the web interface
-  router.post('/api/capturestillphoto', authenticateToken, function (req, res) {
+  router.post('/api/capturestillphoto', authenticateToken, function (req: Request, res: Response) {
     if (vManager.active && vManager.cameraMode === 'photo') {
       console.log("[API /api/capturestillphoto] Conditions met. Calling vManager.captureStillPhoto()");
       const currentPosition = fcManager.getSystemStatus().vehiclePosition;
@@ -25,7 +27,7 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
 
   // Toggle local video recording on/off
   // This code responds to the button on the web interface
-  router.post('/api/togglevideorecording', authenticateToken, function (req, res) {
+  router.post('/api/togglevideorecording', authenticateToken, function (req: Request, res: Response) {
     console.log(`[API /togglevideorecording] Received request. Server state: vManager.active=${vManager.active}, vManager.cameraMode=${vManager.cameraMode}`);
 
     // Check if active and in the correct mode
@@ -44,9 +46,9 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
     }
   })
 
-  router.get('/api/videodevices', authenticateToken, (req, res) => {
+  router.get('/api/videodevices', authenticateToken, (req: Request, res: Response) => {
 
-    vManager.getVideoDevices((err, responseData) => {
+    vManager.getVideoDevices((err: any, responseData: any) => {
       res.setHeader('Content-Type', 'application/json');
       if (err) {
         console.error('Error getting video devices /api/videodevices:', err);
@@ -65,8 +67,8 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
   });
 
   // GET Still Camera Device information
-  router.get('/api/camera/still_devices', authenticateToken, (req, res) => {
-    vManager.getStillDevices((err, stillData) => {
+  router.get('/api/camera/still_devices', authenticateToken, (req: Request, res: Response) => {
+    vManager.getStillDevices((err: any, stillData: any) => {
       res.setHeader('Content-Type', 'application/json');
       if (err) {
         console.error('Error getting still devices:', err);
@@ -105,7 +107,7 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
       .optional({ checkFalsy: true }) // Allow blank inputs (to save to MEDIA_ROOT without a subdir)
       .isString()
       .trim()
-      .customSanitizer(dest => {
+      .customSanitizer((dest: string) => {
         // For ease of use:
         // If the user pasted the full absolute media path, strip it down to just the folder name
         if (dest.startsWith(MEDIA_ROOT)) {
@@ -117,7 +119,7 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
         return dest.replace(/^[\/\\]+/, '');
       })
         // Check for path traversal attemptsa and null characters
-      .custom(dest => {
+      .custom((dest: string) => {
         if (dest.includes('\0')) {
           throw new Error('Media Destination contains invalid characters');
         }
@@ -131,7 +133,7 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
         }
         return true;
       })
-  ], (req, res) => {
+  ], (req: Request, res: Response) => {
     console.log("--- Received /api/camera/start request ---");
     const errors = validationResult(req);
 
@@ -210,7 +212,7 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
       camSwitcher.activeSource = 'A'
     }
 
-    vManager.startCamera((err, result) => {
+    vManager.startCamera((err: any, result: any) => {
       res.setHeader('Content-Type', 'application/json');
       if (err) {
         // Use %s for the mode variable so it is treated as data, not a format string
@@ -222,8 +224,8 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
   });
 
   // POST to STOP the currently active camera mode
-  router.post('/api/camera/stop', authenticateToken, (req, res) => {
-    vManager.stopCamera((err, active) => {
+  router.post('/api/camera/stop', authenticateToken, (req: Request, res: Response) => {
+    vManager.stopCamera((err: any, active: any) => {
       res.setHeader('Content-Type', 'application/json');
       if (err) {
         console.error('Error stopping camera:', err);

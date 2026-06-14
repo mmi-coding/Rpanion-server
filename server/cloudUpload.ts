@@ -12,7 +12,7 @@ class cloudUpload {
   rsyncPid: any
   topfolder: any
   options: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.options = {
       // the interval of sync, every 20 sec
       interval: 20
@@ -63,7 +63,7 @@ class cloudUpload {
           this.rsyncPid.kill()
         }
 
-        this.rsyncPid = rsync.execute(function (error, code, cmd) {
+        this.rsyncPid = rsync.execute(function (error: any, code: any, cmd: any) {
           // we're done
           // this.rsyncPid = null
           if (error) {
@@ -83,12 +83,12 @@ class cloudUpload {
     clearInterval(this.intervalObj)
   }
 
-  getSettings (callback) {
+  getSettings (callback: any) {
     // get current settings and pubkey(s)
     const pubkey: any[] = []
     if (fs.existsSync(os.homedir() + '/.ssh/')) {
       const files = fs.readdirSync(os.homedir() + '/.ssh/')
-      files.forEach(file => {
+      files.forEach((file: any) => {
         if (path.extname(file) === '.pub') {
           pubkey.push(fs.readFileSync(os.homedir() + '/.ssh/' + file, { encoding: 'utf8', flag: 'r' }))
         }
@@ -104,7 +104,7 @@ class cloudUpload {
       this.options.binUploadLink, this.options.syncDeletions, pubkey)
   }
 
-  setSettingsBin (doBinUpload, binUploadLink, syncDeletions) {
+  setSettingsBin (doBinUpload: any, binUploadLink: any, syncDeletions: any) {
     // save new settings
     this.options.doBinUpload = doBinUpload
     this.options.binUploadLink = binUploadLink

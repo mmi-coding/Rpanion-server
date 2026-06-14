@@ -23,7 +23,7 @@ class PPPConnection {
   pppProcess: any
   isConnected: any
   settings: any
-    constructor(settings) {
+    constructor(settings: any) {
         this.settings = settings
         this.isConnected = this.settings.value('ppp.enabled', false);
         this.pppProcess = null;
@@ -47,10 +47,10 @@ class PPPConnection {
 
         if (this.isConnected) {
             // populate serial devices list and start PPP connection
-            this.getDevices((err, devices) => {
+            this.getDevices((err: Error | null, devices: any[]) => {
                 this.devices = devices;
                 const attemptPPPStart = () => {
-                    this.startPPP(this.device, this.baudRate, this.localIP, this.remoteIP, (err, result) => {
+                    this.startPPP(this.device, this.baudRate, this.localIP, this.remoteIP, (err: Error | null, result: any) => {
                         if (err) {
                             if (err.message.includes('already connected')) {
                                 console.log('PPP connection is already established. Retrying in 1 second...');
@@ -98,7 +98,7 @@ class PPPConnection {
         }
     }
 
-    async getDevices (callback) {
+    async getDevices (callback: (err: Error | null, devices: any[]) => void) {
         // get all serial devices using hardwareDetection module
         try {
             this.serialDevices = await serialDetection.detectSerialDevices()
@@ -124,7 +124,7 @@ class PPPConnection {
         };
     }
 
-    startPPP(device, baudRate, localIP, remoteIP, callback) {
+    startPPP(device: string, baudRate: number, localIP: string, remoteIP: string, callback: (err: Error | null, result: any) => void) {
         this.badbaudRate = false;
         if (this.isConnected) {
             return callback(new Error('PPP is already connected'), this._stateSnapshot());
@@ -170,7 +170,7 @@ class PPPConnection {
         //detached: true,
         stdio: ['ignore', 'pipe', 'pipe'] // or 'ignore' for all three to fully detach
         });
-        this.pppProcess.stdout.on('data', (data) => {
+        this.pppProcess.stdout.on('data', (data: Buffer) => {
             console.log("PPP Output: ", data.toString().trim());
             // Check for non support baud rates "speed <baud> not supported"
             if (data.toString().includes('speed') && data.toString().includes('not supported')) {
@@ -180,10 +180,10 @@ class PPPConnection {
                 this.badbaudRate = true;
             }
         });
-        this.pppProcess.stderr.on('data', (data) => {
+        this.pppProcess.stderr.on('data', (data: Buffer) => {
             console.log("PPP Error: ", data.toString().trim());
         });
-        this.pppProcess.on('close', (code, signal) => {
+        this.pppProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
             console.log(`PPP process exited with code: ${code}, signal: ${signal} (isQuitting: ${this.isQuitting}, isManualStop: ${this.isManualStop})`);
             // Don't treat signal-based terminations as unexpected (code 5 is typical for SIGTERM/SIGINT)
             // These usually happen during application shutdown when Ctrl+C is pressed
@@ -200,7 +200,7 @@ class PPPConnection {
         return callback(null, this._stateSnapshot());
     }
 
-    stopPPP(callback) {
+    stopPPP(callback: (err: Error | null, result: any) => void) {
         if (!this.isConnected) {
             return callback(new Error('PPP is not connected'), this._stateSnapshot());
         }
@@ -217,8 +217,8 @@ class PPPConnection {
         return callback(null, this._stateSnapshot());
     }
 
-    getPPPSettings(callback) {
-        this.getDevices((err, devices) => {
+    getPPPSettings(callback: (err: Error | null, result: any) => void) {
+        this.getDevices((err: Error | null, devices: any[]) => {
             if (err) {
                 console.error('Error fetching serial devices:', err);
                 return callback(err, this._stateSnapshot({ selDevice: null, serialDevices: [] }));
@@ -234,7 +234,7 @@ class PPPConnection {
             // if this.device is not in the list, set it to first available device
             // (guard the empty-list case: a stale device with no ports detected
             //  must not index into serialDevices[0])
-            if (this.device && this.serialDevices.length > 0 && !this.serialDevices.some(d => d.value === this.device)) {
+            if (this.device && this.serialDevices.length > 0 && !this.serialDevices.some((d: any) => d.value === this.device)) {
                 this.device = this.serialDevices[0].value;
             }
             

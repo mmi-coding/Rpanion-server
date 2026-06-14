@@ -1,12 +1,13 @@
 // Dynamic DNS routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function dynamicDnsRoutes ({ authenticateToken, toBool, ddns }) {
+export = function dynamicDnsRoutes ({ authenticateToken, toBool, ddns }: { authenticateToken: any; toBool: any; ddns: any }) {
   const router = Router()
 
   // Serve the dynamic DNS settings + status
-  router.get('/api/ddns', authenticateToken, (req, res) => {
+  router.get('/api/ddns', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify({ settings: ddns.getSettings(), status: ddns.getStatus() }))
   })
@@ -17,7 +18,7 @@ export = function dynamicDnsRoutes ({ authenticateToken, toBool, ddns }) {
     check('provider').isIn(['duckdns', 'noip']),
     check('hostname').isLength({ min: 1 }).not().contains(';').trim(),
     check('intervalMin').isInt({ min: 1, max: 1440 })
-  ], (req, res) => {
+  ], (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/ddnsmodify', { message: JSON.stringify(errors.array()) })
@@ -32,15 +33,15 @@ export = function dynamicDnsRoutes ({ authenticateToken, toBool, ddns }) {
       username: req.body.username || '',
       password: req.body.password,
       intervalMin: parseInt(req.body.intervalMin, 10)
-    }, (err) => {
+    }, (err: any) => {
       res.setHeader('Content-Type', 'application/json')
       res.send(JSON.stringify({ error: err, settings: ddns.getSettings(), status: ddns.getStatus() }))
     })
   })
 
   // Trigger an immediate dynamic DNS update
-  router.post('/api/ddnsupdate', authenticateToken, (req, res) => {
-    ddns.updateNow().then((status) => {
+  router.post('/api/ddnsupdate', authenticateToken, (req: Request, res: Response) => {
+    ddns.updateNow().then((status: any) => {
       res.setHeader('Content-Type', 'application/json')
       res.send(JSON.stringify({ status }))
     })

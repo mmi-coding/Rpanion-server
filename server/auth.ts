@@ -5,6 +5,7 @@
  * exposes both the authenticateToken middleware (injected into every other route
  * module) and the auth/user routes.
  */
+import type { Request, Response, NextFunction } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 const jwt = require('jsonwebtoken')
@@ -15,7 +16,7 @@ function generateSecretKey () {
   return crypto.randomBytes(64).toString('hex')
 }
 
-export = function authModule ({ userMgmt }) {
+export = function authModule ({ userMgmt }: { userMgmt: any }) {
   const RPANION_SECRET_KEY = process.env.RPANION_SECRET_KEY || generateSecretKey()
   const tokenBlacklist = new Set()
   // RBAC: read-only users may not perform mutating (POST) requests. These POST
@@ -23,7 +24,7 @@ export = function authModule ({ userMgmt }) {
   const WRITE_ALLOWLIST = new Set(['/api/auth', '/api/logout'])
 
   // Middleware to check if the request has a valid token
-  function authenticateToken (req, res, next) {
+  function authenticateToken (req: Request, res: Response, next: NextFunction) {
     // Skip authentication in development mode
     if (process.env.NODE_ENV === 'development' || process.env.DISABLE_AUTH === '1') {
       return next();
@@ -33,7 +34,7 @@ export = function authModule ({ userMgmt }) {
     const isSocketIO = typeof res.status !== 'function'
 
     // Helper function to send error responses
-    const sendError = (statusCode, message) => {
+    const sendError = (statusCode: number, message: string) => {
       if (isSocketIO) {
         return next(new Error(message))
       }
@@ -59,7 +60,7 @@ export = function authModule ({ userMgmt }) {
     }
 
     // Verify token
-    jwt.verify(token, RPANION_SECRET_KEY, (err, user) => {
+    jwt.verify(token, RPANION_SECRET_KEY, (err: any, user: any) => {
       if (err) {
         return sendError(403, 'Invalid token')
       }
@@ -76,7 +77,7 @@ export = function authModule ({ userMgmt }) {
   const router = Router()
 
   // User login
-  router.post('/api/login', [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req, res) => {
+  router.post('/api/login', [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/login', { message: JSON.stringify(errors.array()) })
@@ -86,7 +87,7 @@ export = function authModule ({ userMgmt }) {
     const username = req.body.username
     const password = req.body.password
 
-    userMgmt.checkLoginDetails(username, password).then(async (match) => {
+    userMgmt.checkLoginDetails(username, password).then(async (match: any) => {
       if (match) {
         // Generate a token with user information, including the RBAC role
         const role = await userMgmt.getUserRole(username)
@@ -103,14 +104,14 @@ export = function authModule ({ userMgmt }) {
   })
 
   // List all users
-  router.get('/api/users', authenticateToken, (req, res) => {
-    userMgmt.getAllUsers().then((users) => {
+  router.get('/api/users', authenticateToken, (req: Request, res: Response) => {
+    userMgmt.getAllUsers().then((users: any) => {
       res.send(JSON.stringify({users: users}))
     })
   })
 
   // Update existing user password
-  router.post('/api/updateUserPassword', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req, res) => {
+  router.post('/api/updateUserPassword', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 })], async (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/updateUserPassword', { message: JSON.stringify(errors.array()) })
@@ -126,7 +127,7 @@ export = function authModule ({ userMgmt }) {
       res.status(400).send(JSON.stringify({error: 'Username and password are required'}))
     }
 
-    userMgmt.changePassword(username, password).then((success) => {
+    userMgmt.changePassword(username, password).then((success: any) => {
       if (success) {
         res.send(JSON.stringify({infoMessage: 'User password updated successfully'}))
       } else {
@@ -136,7 +137,7 @@ export = function authModule ({ userMgmt }) {
   })
 
   // Create new user
-  router.post('/api/createUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 }), check('role').optional().isIn(['admin', 'readonly'])], async (req, res) => {
+  router.post('/api/createUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('password').escape().isLength({ min: 2, max:20 }), check('role').optional().isIn(['admin', 'readonly'])], async (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/createUser', { message: JSON.stringify(errors.array()) })
@@ -149,7 +150,7 @@ export = function authModule ({ userMgmt }) {
       return res.status(400).send(JSON.stringify({error: 'Username and password are required'}))
     }
 
-    userMgmt.addUser(username, password, role).then((success) => {
+    userMgmt.addUser(username, password, role).then((success: any) => {
       if (success) {
         res.send(JSON.stringify({infoMessage: 'User created successfully'}))
       } else {
@@ -159,7 +160,7 @@ export = function authModule ({ userMgmt }) {
   })
 
   // Update an existing user's role (admin only, enforced by authenticateToken)
-  router.post('/api/updateUserRole', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('role').isIn(['admin', 'readonly'])], (req, res) => {
+  router.post('/api/updateUserRole', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 }), check('role').isIn(['admin', 'readonly'])], (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/updateUserRole', { message: JSON.stringify(errors.array()) })
@@ -167,7 +168,7 @@ export = function authModule ({ userMgmt }) {
     }
     const { username, role } = req.body
 
-    userMgmt.updateRole(username, role).then((success) => {
+    userMgmt.updateRole(username, role).then((success: any) => {
       if (success) {
         res.send(JSON.stringify({infoMessage: 'User role updated successfully'}))
       } else {
@@ -177,7 +178,7 @@ export = function authModule ({ userMgmt }) {
   })
 
   // Delete a user
-  router.post('/api/deleteUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 })], (req, res) => {
+  router.post('/api/deleteUser', authenticateToken, [check('username').escape().isLength({ min: 2, max:20 })], (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/deleteUser', { message: JSON.stringify(errors.array()) })
@@ -190,7 +191,7 @@ export = function authModule ({ userMgmt }) {
       return res.status(400).send(JSON.stringify({error: 'Username is required'}))
     }
 
-    userMgmt.deleteUser(username).then((success) => {
+    userMgmt.deleteUser(username).then((success: any) => {
       if (success) {
         res.send(JSON.stringify({infoMessage: 'User deleted successfully'}))
       } else {
@@ -200,7 +201,7 @@ export = function authModule ({ userMgmt }) {
   })
 
   // User logout
-  router.post('/api/logout', authenticateToken, async (req, res) => {
+  router.post('/api/logout', authenticateToken, async (req: Request, res: Response) => {
     const authHeader = req.headers['authorization']
     const token = authHeader && authHeader.split(' ')[1]
 
@@ -213,7 +214,7 @@ export = function authModule ({ userMgmt }) {
   })
 
   // Simple token authentication call
-  router.post('/api/auth', authenticateToken, async (req, res) => {
+  router.post('/api/auth', authenticateToken, async (req: Request, res: Response) => {
     const authEnabled = !(process.env.NODE_ENV === 'development' || process.env.DISABLE_AUTH === '1')
 
     res.setHeader('Content-Type', 'application/json')

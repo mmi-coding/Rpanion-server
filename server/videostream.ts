@@ -26,7 +26,7 @@ class videoStream {
   deviceStream: any
   active: any
   settings: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.settings = settings
 
     // Properties used in all modes
@@ -77,13 +77,13 @@ class videoStream {
   //
   // e.g., 'subdir' stays as 'subdir'
   // and '/abs/path' is stored as a relative path under mediaDir
-  toRelativePath(dest) {
+  toRelativePath(dest: string) {
     return vsHelpers.toRelativePath(dest);
   }
 
   // Convert relative path to absolute before it is passed to Python.
   // Returns the media root directory if no destination is provided.
-  toAbsolutePath(dest) {
+  toAbsolutePath(dest: string) {
     dest = this.toRelativePath(dest);
     return dest ? path.join(logpaths.mediaDir, dest) : logpaths.mediaDir;
   }
@@ -92,7 +92,7 @@ class videoStream {
     try {
       // Discover Video Hardware and wait for data
       await new Promise((resolve, reject) => {
-        this.getVideoDevices((err, data) => {  // Get the data
+        this.getVideoDevices((err: any, data: any) => {  // Get the data
           if (err) {
             reject(err);
           } else {
@@ -106,14 +106,14 @@ class videoStream {
       // For now, we wrap it in a try/catch so it doesn't crash if the helper isn't there yet
       try {
         await new Promise((resolve, reject) => {
-          this.getStillDevices((err) => err ? reject(err) : resolve(undefined));
+          this.getStillDevices((err: any) => err ? reject(err) : resolve(undefined));
         });
       } catch (e) {
         console.log("Still hardware discovery skipped or failed.");
       }
 
       // 3. Start the camera in the last saved mode
-      this.startCamera((err) => {
+      this.startCamera((err: any) => {
         if (err) {
           console.error('Camera start error during init:', err);
           this.resetCamera();
@@ -130,7 +130,7 @@ class videoStream {
   getVideoDevicesPromise() {
     // Promise wrapper for getVideoDevices
     return new Promise((resolve, reject) => {
-      this.getVideoDevices((error) => {
+      this.getVideoDevices((error: any) => {
         if (error) {
           reject(error)
         } else {
@@ -142,7 +142,7 @@ class videoStream {
 
   startCameraPromise() {
     return new Promise((resolve, reject) => {
-      this.startCamera((err, result) => {
+      this.startCamera((err: any, result: any) => {
         if (err) {
           reject(err)
         } else {
@@ -154,7 +154,7 @@ class videoStream {
 
 
   // Format and store all the possible rtsp addresses
-  populateAddresses (factory) {
+  populateAddresses (factory: string) {
     // set up the avail addresses
     this.ifaces = this.scanInterfaces()
     this.deviceAddresses = []
@@ -175,11 +175,11 @@ class videoStream {
     }
   }
 
-  getCompressionSelect(val) {
+  getCompressionSelect(val: string) {
     return vsHelpers.getCompressionSelect(val);
   }
 
-  getTransportSelect(val) {
+  getTransportSelect(val: string) {
     return vsHelpers.getTransportSelect(val);
   }
 
@@ -188,7 +188,7 @@ class videoStream {
   }
 
   // video streaming
-  getVideoDevices (callback) {
+  getVideoDevices (callback: any) {
     // get all video device details
     //dont update if streaming is running, as some camera won't be detected if in use
     const networkInterfaces = this.scanInterfaces();
@@ -212,14 +212,14 @@ class videoStream {
 
       // 1. Find the device and capability currently being used
       if (this.videoSettings && this.devices) {
-        responseData.selectedDevice = this.devices.find(d => d.value === this.videoSettings.device);
+        responseData.selectedDevice = this.devices.find((d: any) => d.value === this.videoSettings.device);
         if (responseData.selectedDevice) {
           // Safeguard the format string against missing slashes for V4L2 raw modes
           const formatStr = this.videoSettings.format || "";
           const formatShort = formatStr.includes('/') ? formatStr.split('/')[1] : formatStr;
           const capVal = `${this.videoSettings.width}x${this.videoSettings.height}x${formatShort}`;
 
-          responseData.selectedCap = responseData.selectedDevice.caps.find(cap => cap.value === capVal);
+          responseData.selectedCap = responseData.selectedDevice.caps.find((cap: any) => cap.value === capVal);
           responseData.resolutionCaps = responseData.selectedDevice.caps;
           responseData.fpsMax = responseData.selectedCap?.fpsmax || 0;
           responseData.fpsOptions = responseData.selectedCap?.fps || [];
@@ -254,7 +254,7 @@ class videoStream {
 
     // If not streaming, proceed with hardware discovery
     const pythonPath = logpaths.getPythonPath();
-    exec(`${pythonPath} ./python/gstcaps.py`, (error, stdout, stderr) => {
+    exec(`${pythonPath} ./python/gstcaps.py`, (error: Error | null, stdout: string, stderr: string) => {
       const responseData = {
         devices: [],
         networkInterfaces: networkInterfaces,
@@ -311,7 +311,7 @@ class videoStream {
     });
   }
 
-  getStillDevices(callback) {
+  getStillDevices(callback: any) {
     const defaultResponse = {
       devices: [],
       capabilities: { cv2: false, picamera2: false },
@@ -321,7 +321,7 @@ class videoStream {
     };
 
     const pythonPath = logpaths.getPythonPath();
-    exec(`${pythonPath} ./python/get_camera_caps.py`, (error, stdout, stderr) => {
+    exec(`${pythonPath} ./python/get_camera_caps.py`, (error: Error | null, stdout: string, stderr: string) => {
       if (error) return callback(stderr || error.message, defaultResponse);
 
       try {
@@ -331,7 +331,7 @@ class videoStream {
         
         this.stillDevices = cameraDevices;
 
-        const defaultDevice = cameraDevices.find(dev => dev.caps && dev.caps.length > 0);
+        const defaultDevice = cameraDevices.find((dev: any) => dev.caps && dev.caps.length > 0);
         const defaultCap = defaultDevice?.caps[0];
         const stillMediaDestination = this.toRelativePath(this.stillSettings?.mediaDestination || '');
 
@@ -381,12 +381,12 @@ class videoStream {
     return vsHelpers.scanInterfaces()
   }
 
-  startCamera(callback) {
+  startCamera(callback: any) {
     console.log(`Attempting to start camera in mode: ${this.cameraMode}`);
     try {
       if (this.cameraMode === 'streaming') {
         // startVideoStreaming is async, so we must catch rejections
-        this.startVideoStreaming(callback).catch(err => {
+        this.startVideoStreaming(callback).catch((err: any) => {
           console.error("Async Start Error:", err);
           callback(err);
         });
@@ -476,7 +476,7 @@ class videoStream {
   // the BITRATE: ack from the video server updates this.currentBitrate
   // Send one JSON control line to the running video server over stdin.
   // Returns true only if the stream is live and stdin accepted the write.
-  _sendStdinCommand(payload) {
+  _sendStdinCommand(payload: { cmd: string; [k: string]: any }) {
     if (this.deviceStream === null || this.cameraMode !== 'streaming') {
       return false
     }
@@ -487,7 +487,7 @@ class videoStream {
     return false
   }
 
-  setBitrate(kbps) {
+  setBitrate(kbps: number) {
     if (!Number.isInteger(kbps) || kbps < 50 || kbps > 100000) {
       return false
     }
@@ -496,14 +496,14 @@ class videoStream {
 
   // Flip the active source on a running dual-source stream.
   // Returns true if the switch command was sent to the video server.
-  switchSource(source) {
+  switchSource(source: string) {
     if (source !== 'A' && source !== 'B') {
       return false
     }
     return this._sendStdinCommand({ cmd: 'switch', source })
   }
 
-  async startVideoStreaming(callback) {
+  async startVideoStreaming(callback: any) {
     if (!this.videoSettings) return callback(new Error('No video settings provided'));
 
     let device = this.videoSettings.device;
@@ -564,7 +564,7 @@ class videoStream {
 
   // Best-effort create the media destination directory and append the
   // --destination arg for photovideo.py.
-  _ensureAndPushDest(args, dest) {
+  _ensureAndPushDest(args: string[], dest: string) {
     /* istanbul ignore else -- toAbsolutePath() always returns a non-empty string */
     if (dest) {
       try {
@@ -577,7 +577,7 @@ class videoStream {
     }
   }
 
-  startPhotoMode(callback) {
+  startPhotoMode(callback: any) {
     if (!this.stillSettings) return callback(new Error('No still settings provided'));
 
     const dest = this.toAbsolutePath(this.stillSettings.mediaDestination);
@@ -603,7 +603,7 @@ class videoStream {
     }
   }
 
-  startVideoMode(callback) {
+  startVideoMode(callback: any) {
     if (!this.videoSettings) return callback(new Error('No video settings provided'));
 
     const dest = this.toAbsolutePath(this.videoSettings.mediaDestination);
@@ -637,7 +637,7 @@ class videoStream {
     }
   }
 
-  setupStreamEvents(modeName, callback) {
+  setupStreamEvents(modeName: string, callback: any) {
     let callbackCalled = false;
     let stdoutBuffer = ''; // Buffer for accumulating data chunks
 
@@ -654,7 +654,7 @@ class videoStream {
       }
     }, 90000);
 
-    this.deviceStream.on('error', (err) => {
+    this.deviceStream.on('error', (err: Error) => {
       clearTimeout(timeout);
       console.error(`Failed to spawn ${modeName}:`, err);
       if (!callbackCalled) {
@@ -665,7 +665,7 @@ class videoStream {
 
     // Listen continuously until we hear "Camera is ready"
     // or in streaming mode
-    this.deviceStream.stdout.on('data', (data) => {
+    this.deviceStream.stdout.on('data', (data: Buffer) => {
 
       const chunk = data.toString();
       stdoutBuffer += chunk;
@@ -748,12 +748,12 @@ class videoStream {
       }
     });
 
-    this.deviceStream.stderr.on('data', (data) => {
+    this.deviceStream.stderr.on('data', (data: Buffer) => {
       const msg = data.toString().trim();
       if (msg) console.error(`${modeName} error: ${msg}`);
     });
 
-    this.deviceStream.on('close', (code) => {
+    this.deviceStream.on('close', (code: number | null) => {
       clearTimeout(timeout);
       console.log(`${modeName} exited with code ${code}`);
       this.active = false;
@@ -768,7 +768,7 @@ class videoStream {
     });
   }
 
-  stopCamera(callback) {
+  stopCamera(callback: any) {
     if (this.intervalObj) {
       clearInterval(this.intervalObj);
       this.intervalObj = null;
@@ -831,7 +831,7 @@ class videoStream {
     }, 1000)
   }
 
-  captureStillPhoto(senderSysId, senderCompId, targetComponent, positionData = null) {
+  captureStillPhoto(senderSysId: number, senderCompId: number, targetComponent: number, positionData: any = null) {
     console.log('Capturing still photo. Internal state: active=', this.active, 'mode=', this.cameraMode, 'deviceStream exists=', !!this.deviceStream);
 
     if (!this.active || !this.deviceStream) {
@@ -882,7 +882,7 @@ class videoStream {
 
   // Helper to set the isRecording flag by replacing the object
   // instead of mutating the property
-  setRecordingFlag(val) {
+  setRecordingFlag(val: boolean) {
     if (this.videoSettings) {
       this.videoSettings = { ...this.videoSettings, isRecording: val };
     }
@@ -891,11 +891,11 @@ class videoStream {
   }
 
   // Helper to convert JS strings to the Array<string> format node-mavlink expects for char[]
-  toMavChars(str, length) {
+  toMavChars(str: string, length: number) {
     return vsHelpers.toMavChars(str, length);
   }
 
-  sendCameraInformation(senderSysId, senderCompId, targetComponent) {
+  sendCameraInformation(senderSysId: number | null, senderCompId: number, targetComponent: number | null) {
     console.log('Sending MAVLink CameraInformation packet')
 
     const msg = new common.CameraInformation();
@@ -954,7 +954,7 @@ class videoStream {
     this.eventEmitter.emit('camerainfo', msg, senderSysId, senderCompId, targetComponent);
   }
 
-  sendCameraSettings(senderSysId, senderCompId, targetComponent) {
+  sendCameraSettings(senderSysId: number, senderCompId: number, targetComponent: number) {
     console.log('Sending MAVLink CameraSettings packet')
 
     // build a CAMERA_SETTINGS packet
@@ -975,7 +975,7 @@ class videoStream {
     this.eventEmitter.emit('camerasettings', msg, senderSysId, senderCompId, targetComponent)
   }
 
-  sendVideoStreamInformation(senderSysId, senderCompId, targetComponent) {
+  sendVideoStreamInformation(senderSysId: number | null, senderCompId: number, targetComponent: number | null) {
     console.log('Responding to MAVLink request for VideoStreamInformation')
 
     // build a VIDEO_STREAM_INFORMATION packet
@@ -998,7 +998,7 @@ class videoStream {
 
       // Find the address in the list that matches the selected MAVLink interface IP
       // This uses the array populated in populateAddresses() to ensure 1:1 consistency with Web UI
-      const matchedAddress = this.deviceAddresses.find(addr =>
+      const matchedAddress = this.deviceAddresses.find((addr: string) =>
         addr.includes(this.videoSettings.mavStreamSelected)
       );
 
@@ -1021,7 +1021,7 @@ class videoStream {
     this.eventEmitter.emit('videostreaminfo', msg, senderSysId, senderCompId, targetComponent)
   }
 
-  onMavPacket(packet, data) {
+  onMavPacket(packet: any, data: any) {
     if (packet.header.msgid === common.CommandLong.MSG_ID &&
       data.targetComponent === minimal.MavComponent.CAMERA) {
       if (data._param1 === common.CameraInformation.MSG_ID) {

@@ -7,11 +7,11 @@ const fs = require('fs')
 const logpaths = require('./paths')
 
 // Recursively delete a file or directory tree.
-function deleteRecursively (targetPath) {
+function deleteRecursively (targetPath: string) {
   const targetStat = fs.lstatSync(targetPath)
   if (targetStat.isDirectory()) {
     const entries = fs.readdirSync(targetPath)
-    entries.forEach((entry) => {
+    entries.forEach((entry: string) => {
       deleteRecursively(path.join(targetPath, entry))
     })
     fs.rmdirSync(targetPath)
@@ -21,9 +21,9 @@ function deleteRecursively (targetPath) {
 }
 
 // Recursively delete files matching a predicate.
-function deleteMatchingFiles (dir, matcher) {
+function deleteMatchingFiles (dir: string, matcher: (p: string) => boolean) {
   const entries = fs.readdirSync(dir)
-  entries.forEach((entry) => {
+  entries.forEach((entry: string) => {
     const entryPath = path.join(dir, entry)
     const entryStat = fs.lstatSync(entryPath)
     if (entryStat.isDirectory()) {
@@ -35,9 +35,9 @@ function deleteMatchingFiles (dir, matcher) {
 }
 
 // Recursively remove now-empty subdirectories.
-function removeEmptySubDirs (dir) {
+function removeEmptySubDirs (dir: string) {
   const entries = fs.readdirSync(dir)
-  entries.forEach((entry) => {
+  entries.forEach((entry: string) => {
     const entryPath = path.join(dir, entry)
     const stat = fs.lstatSync(entryPath)
     if (stat.isDirectory()) {
@@ -76,23 +76,23 @@ class flightLogger {
   }
 
   // Delete all logs - tlog or binlog or kmz files
-  clearlogs (logtype, curBinLog) {
+  clearlogs (logtype: string, curBinLog: string) {
     if (logtype === 'tlog') {
-      deleteMatchingFiles(this.topfolder, (filePath) => filePath.endsWith('.tlog'))
+      deleteMatchingFiles(this.topfolder, (filePath: string) => filePath.endsWith('.tlog'))
       removeEmptySubDirs(this.topfolder)
       console.log('Deleted tlogs')
     } else if (logtype === 'binlog') {
       // Don't delete the actively logging file
-      deleteMatchingFiles(this.topfolder, (filePath) => filePath.endsWith('.bin') && filePath !== curBinLog)
+      deleteMatchingFiles(this.topfolder, (filePath: string) => filePath.endsWith('.bin') && filePath !== curBinLog)
       removeEmptySubDirs(this.topfolder)
       console.log('Deleted binlogs')
     } else if (logtype === 'kmzlog') {
-      fs.readdirSync(this.kmzlogfolder).forEach((entry) => {
+      fs.readdirSync(this.kmzlogfolder).forEach((entry: string) => {
         deleteRecursively(path.join(this.kmzlogfolder, entry))
       })
       console.log('Deleted kmzlogs')
     } else if (logtype === 'media') {
-      fs.readdirSync(this.mediafolder).forEach((entry) => {
+      fs.readdirSync(this.mediafolder).forEach((entry: string) => {
         deleteRecursively(path.join(this.mediafolder, entry))
       })
       console.log('Deleted all media files and subfolders')
@@ -100,15 +100,15 @@ class flightLogger {
   }
 
   // find all files in dir (recursively)
-  findInDir (dir, extfilter) {
+  findInDir (dir: string, extfilter: string | string[]) {
     const fileList: any[] = []
     const extensions = Array.isArray(extfilter) ? extfilter : [extfilter]
     const topFolder = this.topfolder
 
-    function scanDirectory(currentDir) {
+    function scanDirectory(currentDir: string) {
       const files = fs.readdirSync(currentDir)
 
-      files.forEach((file) => {
+      files.forEach((file: string) => {
         const filePath = path.join(currentDir, file)
         const fileStat = fs.lstatSync(filePath)
         const filemTime = new Date(fileStat.mtimeMs)
@@ -130,7 +130,7 @@ class flightLogger {
 
   // get list of logfiles for website
   // return format is (err, tlogs)
-  getLogs (callback) {
+  getLogs (callback: (...args: any[]) => void) {
     const newfilestlog = this.findInDir(this.topfolder, '.tlog')
     const newfilesbinlog = this.findInDir(this.topfolder, '.bin')
     const newfileskmzlog = this.findInDir(this.kmzlogfolder, '.kmz')

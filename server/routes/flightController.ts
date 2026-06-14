@@ -1,20 +1,21 @@
 // Flight controller (MAVLink telemetry) routes. Extracted from index.js.
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
+import type { Request, Response } from 'express'
 
-export = function flightControllerRoutes ({ authenticateToken, fcManager }) {
+export = function flightControllerRoutes ({ authenticateToken, fcManager }: { authenticateToken: any; fcManager: any }) {
   const router = Router()
 
-  router.get('/api/FCOutputs', authenticateToken, (req, res) => {
+  router.get('/api/FCOutputs', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify({ UDPoutputs: fcManager.getUDPOutputs() }))
   })
 
-  router.get('/api/FCDetails', authenticateToken, (req, res) => {
+  router.get('/api/FCDetails', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
-    fcManager.getDeviceSettings((err, devices, bauds, seldevice, selbaud, mavers, selmav,
-      active, enableHeartbeat, enableTCP, enableUDPB, UDPBPort, enableDSRequest, doLogging,
-      udpInputPort, selInputType, inputTypes) => {
+    fcManager.getDeviceSettings((err: any, devices: any, bauds: any, seldevice: any, selbaud: any, mavers: any, selmav: any,
+      active: any, enableHeartbeat: any, enableTCP: any, enableUDPB: any, UDPBPort: any, enableDSRequest: any, doLogging: any,
+      udpInputPort: any, selInputType: any, inputTypes: any) => {
       // hacky way to pass through the
       if (!err) {
         console.log('Sending')
@@ -63,7 +64,7 @@ export = function flightControllerRoutes ({ authenticateToken, fcManager }) {
     })
   })
 
-  router.post('/api/FCModify', authenticateToken, [check('device'), check('baud').isInt(), check('mavversion').isInt(), check('enableHeartbeat').isBoolean(), check('enableTCP').isBoolean(), check('enableUDPB').isBoolean(), check('UDPBPort').isPort(), check('enableDSRequest').isBoolean(), check('doLogging').isBoolean()], function (req, res) {
+  router.post('/api/FCModify', authenticateToken, [check('device'), check('baud').isInt(), check('mavversion').isInt(), check('enableHeartbeat').isBoolean(), check('enableTCP').isBoolean(), check('enableUDPB').isBoolean(), check('UDPBPort').isPort(), check('enableDSRequest').isBoolean(), check('doLogging').isBoolean()], function (req: Request, res: Response) {
     // User wants to start/stop FC telemetry
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -73,7 +74,7 @@ export = function flightControllerRoutes ({ authenticateToken, fcManager }) {
 
     fcManager.startStopTelemetry(req.body.device, req.body.baud, req.body.mavversion, req.body.enableHeartbeat,
                                  req.body.enableTCP, req.body.enableUDPB, req.body.UDPBPort, req.body.enableDSRequest,
-                                 req.body.doLogging, req.body.inputType, req.body.udpInputPort, (err, isSuccess) => {
+                                 req.body.doLogging, req.body.inputType, req.body.udpInputPort, (err: any, isSuccess: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         // console.log(isSuccess);
@@ -90,7 +91,7 @@ export = function flightControllerRoutes ({ authenticateToken, fcManager }) {
     fcManager.rebootFC()
   })
 
-  router.post('/api/addudpoutput', authenticateToken, [check('newoutputIP').isIP(), check('newoutputPort').isInt({ min: 1 })], function (req, res) {
+  router.post('/api/addudpoutput', authenticateToken, [check('newoutputIP').isIP(), check('newoutputPort').isInt({ min: 1 })], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/addudpoutput ', { message: JSON.stringify(errors.array()) })
@@ -103,7 +104,7 @@ export = function flightControllerRoutes ({ authenticateToken, fcManager }) {
     res.send(JSON.stringify({ UDPoutputs: newOutput }))
   })
 
-  router.post('/api/removeudpoutput', authenticateToken, [check('removeoutputIP').isIP(), check('removeoutputPort').isInt({ min: 1 })], function (req, res) {
+  router.post('/api/removeudpoutput', authenticateToken, [check('removeoutputIP').isIP(), check('removeoutputPort').isInt({ min: 1 })], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/removeudpoutput ', { message: JSON.stringify(errors.array()) })

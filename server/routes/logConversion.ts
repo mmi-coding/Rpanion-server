@@ -1,13 +1,14 @@
 // Log conversion (tlog -> kmz) routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function logConversionRoutes ({ authenticateToken, logConversion }) {
+export = function logConversionRoutes ({ authenticateToken, logConversion }: { authenticateToken: any; logConversion: any }) {
   const router = Router()
 
   // Serve the logconversion info
-  router.get('/api/logconversioninfo', authenticateToken, (req, res) => {
-    logConversion.getSettings((doLogConversion) => {
+  router.get('/api/logconversioninfo', authenticateToken, (req: Request, res: Response) => {
+    logConversion.getSettings((doLogConversion: any) => {
       res.setHeader('Content-Type', 'application/json')
       res.send(JSON.stringify({ doLogConversion }))
     })
@@ -15,7 +16,7 @@ export = function logConversionRoutes ({ authenticateToken, logConversion }) {
 
   // activate or deactivate logconversion
   router.post('/api/logconversion', authenticateToken, [check('doLogConversion').isBoolean()
-  ], function (req, res) {
+  ], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log(req.body)
@@ -24,7 +25,7 @@ export = function logConversionRoutes ({ authenticateToken, logConversion }) {
     } else {
       logConversion.setSettingsLog(req.body.doLogConversion)
       // send back refreshed settings
-      logConversion.getSettings((doLogConversion) => {
+      logConversion.getSettings((doLogConversion: any) => {
         res.setHeader('Content-Type', 'application/json')
         res.send(JSON.stringify({ doLogConversion }))
       })

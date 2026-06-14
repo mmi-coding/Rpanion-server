@@ -1,16 +1,17 @@
 // System / about / logs / settings routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 const fs = require('fs')
 const appRoot = require('app-root-path')
 const logpaths = require('../paths')
 
-export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, logManager, fcManager }) {
+export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, logManager, fcManager }: { authenticateToken: any; aboutPage: any; networkClients: any; logManager: any; fcManager: any }) {
   const router = Router()
 
   // Serve the logfile
-  router.get('/api/logfile', authenticateToken, (req, res) => {
-    aboutPage.getsystemctllog((logStr) => {
+  router.get('/api/logfile', authenticateToken, (req: Request, res: Response) => {
+    aboutPage.getsystemctllog((logStr: any) => {
       console.log(logStr)
       res.setHeader('Content-Disposition', 'attachment; filename="rpanion.log"')
       res.setHeader('Content-Type', 'text/plain')
@@ -19,21 +20,21 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
   })
 
   // Serve the AP clients info
-  router.get('/api/networkclients', authenticateToken, (req, res) => {
-    networkClients.getClients((err, apnamev, apclientsv) => {
+  router.get('/api/networkclients', authenticateToken, (req: Request, res: Response) => {
+    networkClients.getClients((err: any, apnamev: any, apclientsv: any) => {
       res.setHeader('Content-Type', 'application/json')
       res.send(JSON.stringify({ error: err, apname: apnamev, apclients: apclientsv }))
     })
   })
 
-  router.get('/api/logfiles', authenticateToken, (req, res) => {
-    logManager.getLogs((err, tlogs, binlogs, kmzlogs, media) => {
+  router.get('/api/logfiles', authenticateToken, (req: Request, res: Response) => {
+    logManager.getLogs((err: any, tlogs: any, binlogs: any, kmzlogs: any, media: any) => {
       res.setHeader('Content-Type', 'application/json')
       res.send(JSON.stringify({ TlogFiles: tlogs, BinlogFiles: binlogs, KMZlogFiles: kmzlogs, MediaFiles: media, url: req.protocol + '://' + req.headers.host }))
     })
   })
 
-  router.post('/api/deletelogfiles', authenticateToken, [check('logtype').isIn(['tlog', 'binlog', 'kmzlog', 'media'])], (req, res) => {
+  router.post('/api/deletelogfiles', authenticateToken, [check('logtype').isIn(['tlog', 'binlog', 'kmzlog', 'media'])], (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/deletelogfiles', { message: JSON.stringify(errors.array()) })
@@ -45,13 +46,13 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     res.send(JSON.stringify({}))
   })
 
-  router.get('/api/approot', authenticateToken, (req, res) => {
+  router.get('/api/approot', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify({ appRoot: appRoot.toString() }))
   })
 
-  router.get('/api/softwareinfo', authenticateToken, (req, res) => {
-    aboutPage.getSoftwareInfo((OSV, NodeV, RpanionV, hostname, err) => {
+  router.get('/api/softwareinfo', authenticateToken, (req: Request, res: Response) => {
+    aboutPage.getSoftwareInfo((OSV: any, NodeV: any, RpanionV: any, hostname: any, err: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         res.send(JSON.stringify({ OSVersion: OSV, Nodejsversion: NodeV, rpanionversion: RpanionV, hostname }))
@@ -64,8 +65,8 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     })
   })
 
-  router.get('/api/hardwareinfo', authenticateToken, (req, res) => {
-    aboutPage.getHardwareInfo((RAM, CPU, hatData, sysData, err) => {
+  router.get('/api/hardwareinfo', authenticateToken, (req: Request, res: Response) => {
+    aboutPage.getHardwareInfo((RAM: any, CPU: any, hatData: any, sysData: any, err: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         res.send(JSON.stringify({ CPUName: CPU, RAMName: RAM, HATName: hatData, SYSName: sysData }))
@@ -77,8 +78,8 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     })
   })
 
-  router.get('/api/diskinfo', authenticateToken, (req, res) => {
-    aboutPage.getDiskInfo((total, used, percent, err) => {
+  router.get('/api/diskinfo', authenticateToken, (req: Request, res: Response) => {
+    aboutPage.getDiskInfo((total: any, used: any, percent: any, err: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         res.send(JSON.stringify({ diskSpaceStatus: 'Used ' + used + '/' + total + ' Gb (' + percent + '%)' }))
@@ -95,7 +96,7 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     aboutPage.shutdownCC()
   })
 
-  router.post('/api/resetsettings', authenticateToken, function (req, res) {
+  router.post('/api/resetsettings', authenticateToken, function (req: Request, res: Response) {
     // User wants to reset all settings to defaults
     try {
       const settingsPath = logpaths.settingsFile
@@ -118,7 +119,7 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     }
   })
 
-  router.get('/api/settingsbackup', authenticateToken, function (req, res) {
+  router.get('/api/settingsbackup', authenticateToken, function (req: Request, res: Response) {
     // User wants to download the current settings as a JSON file
     try {
       const settingsPath = logpaths.settingsFile
@@ -132,7 +133,7 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     }
   })
 
-  router.post('/api/settingsrestore', authenticateToken, function (req, res) {
+  router.post('/api/settingsrestore', authenticateToken, function (req: Request, res: Response) {
     // User wants to restore settings from an uploaded settings object
     try {
       const settings = req.body

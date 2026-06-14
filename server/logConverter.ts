@@ -10,7 +10,7 @@ class logConverter {
   pythonScript: any
   pythonFolder: any
   options: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.options = {
       // the interval of sync, every 20 sec
       interval: 20
@@ -33,13 +33,13 @@ class logConverter {
           console.log('Doing log conversion...')
           const pythonPath = logpaths.getPythonPath()
           this.converterPid = spawn(pythonPath, [this.pythonScript, logpaths.flightsLogsDir])
-          this.converterPid.stdout.on('data', (data) => {
+          this.converterPid.stdout.on('data', (data: any) => {
             console.log(`stdout from log converter: ${data}`)
           })
-          this.converterPid.stderr.on('data', (data) => {
+          this.converterPid.stderr.on('data', (data: any) => {
             console.log(`stderr from log converter: ${data}`)
           })
-          this.converterPid.on('close', (code) => {
+          this.converterPid.on('close', (code: any) => {
             console.log(`Log converter exited with code ${code}`)
           })
         } catch (error) {
@@ -56,12 +56,12 @@ class logConverter {
     clearInterval(this.intervalObj)
   }
 
-  getSettings (callback) {
+  getSettings (callback: any) {
     // get current settings
     return callback(this.options.doLogConversion)
   }
 
-  setSettingsLog (doLogConversion) {
+  setSettingsLog (doLogConversion: any) {
     // save new settings
     this.options.doLogConversion = doLogConversion
     // and save to file

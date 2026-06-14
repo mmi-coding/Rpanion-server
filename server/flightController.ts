@@ -32,7 +32,7 @@ class FCDetails {
   baudRates: any
   serialDevices: any
   previousConnection: any
-  constructor (settings) {
+  constructor (settings: any) {
     // if the device was successfully opend and got packets
     this.previousConnection = false
 
@@ -124,13 +124,13 @@ class FCDetails {
 
     if (this.active) {
       // restart link if saved serial device is found
-      this.getDeviceSettings((err, devices) => {
+      this.getDeviceSettings((err: Error | null, devices: any[]) => {
         if (this.activeDevice.inputType === 'UART') {
           let found = false
           for (let i = 0, len = devices.length; i < len; i++) {
             if (this.activeDevice.serial === devices[i].value) {
               found = true
-              this.startLink((err) => {
+              this.startLink((err: string | null) => {
                 if (err) {
                   console.log("Can't open found FC " + this.activeDevice.serial + ', resetting link')
                   this.activeDevice = null
@@ -147,7 +147,7 @@ class FCDetails {
             this.active = false
           }
         } else if (this.activeDevice.inputType === 'UDP') {
-          this.startLink((err) => {
+          this.startLink((err: string | null) => {
             if (err) {
               console.log("Can't open UDP port " + this.activeDevice.udpInputPort + ', resetting link')
               this.activeDevice = null
@@ -193,7 +193,7 @@ class FCDetails {
     return ret
   }
 
-  addUDPOutput (newIP, newPort) {
+  addUDPOutput (newIP: string, newPort: number) {
     // add a new udp output, if not already in
     // check if this ip:port is already in the list
     for (let i = 0, len = this.UDPoutputs.length; i < len; i++) {
@@ -214,7 +214,7 @@ class FCDetails {
     // restart mavlink-router, if link active
     if (this.m) {
       this.closeLink(() => {
-        this.startLink((err) => {
+        this.startLink((err: string | null) => {
           if (err) {
             console.log(err)
           }
@@ -232,7 +232,7 @@ class FCDetails {
     return this.getUDPOutputs()
   }
 
-  removeUDPOutput (remIP, remPort) {
+  removeUDPOutput (remIP: string, remPort: number) {
     // remove new udp output
 
     // check that it's not the internal 127.0.0.1:14540
@@ -250,7 +250,7 @@ class FCDetails {
         // restart mavlink-router, if link active
         if (this.m) {
           this.closeLink(() => {
-            this.startLink((err) => {
+            this.startLink((err: string | null) => {
               if (err) {
                 console.log(err)
               }
@@ -342,15 +342,15 @@ class FCDetails {
       '--rotate-on-disarm'
     ])
 
-    this.dflogger.stdout.on('data', (data) => {
+    this.dflogger.stdout.on('data', (data: Buffer) => {
       console.log(`DFLogger: ${data}`)
     })
 
-    this.dflogger.stderr.on('data', (data) => {
+    this.dflogger.stderr.on('data', (data: Buffer) => {
       console.error(`DFLogger stderr: ${data}`)
     })
 
-    this.dflogger.on('close', (code) => {
+    this.dflogger.on('close', (code: number | null) => {
       console.log(`DFLogger exited with code ${code}`)
       this.dflogger = null
     })
@@ -375,7 +375,7 @@ class FCDetails {
     }
   }
 
-  startLink (callback) {
+  startLink (callback: (err: string | null, success: boolean) => void) {
     // start the serial link
     if (this.activeDevice.inputType === 'UDP') {
       console.log('Opening UDP Link ' + '0.0.0.0:' + this.activeDevice.udpInputPort + ', MAV v' + this.activeDevice.mavversion)
@@ -420,11 +420,11 @@ class FCDetails {
 
     // start mavlink-router
     this.router = spawn(this.mavlinkRouterPath, cmd)
-    this.router.stdout.on('data', (data) => {
+    this.router.stdout.on('data', (data: Buffer) => {
       console.log(`stdout: ${data}`)
     })
 
-    this.router.stderr.on('data', (data) => {
+    this.router.stderr.on('data', (data: Buffer) => {
       console.error(`stderr: ${data}`)
       if (data.toString().includes('Logging target') && data.toString().includes('.bin')) {
         // remove old log, if it exists and is >60kB
@@ -445,7 +445,7 @@ class FCDetails {
       }
     })
 
-    this.router.on('close', (code) => {
+    this.router.on('close', (code: number | null) => {
       console.log(`child process exited with code ${code}`)
       console.log('Closed Router')
       this.eventEmitter.emit('stopLink')
@@ -457,7 +457,7 @@ class FCDetails {
     // not a reconnect attempt
     if (this.m === null) {
       this.m = new mavManager(this.activeDevice.mavversion, '127.0.0.1', 14540, this.enableDSRequest)
-      this.m.eventEmitter.on('gotMessage', (packet, data) => {
+      this.m.eventEmitter.on('gotMessage', (packet: any, data: any) => {
         // got valid message - send on to attached classes
         this.previousConnection = true
         if (packet.header.msgid === common.GlobalPositionInt.MSG_ID) {
@@ -495,7 +495,7 @@ class FCDetails {
     return callback(null, true)
   }
 
-  closeLink (callback) {
+  closeLink (callback: (err: null) => void) {
     // stop the serial link
     this.active = false
     
@@ -532,7 +532,7 @@ class FCDetails {
     return null
   }
 
-  async getDeviceSettings (callback) {
+  async getDeviceSettings (callback: (...args: any[]) => void) {
     // get all serial devices
     this.serialDevices = []
     let retError: Error | null = null
@@ -574,7 +574,7 @@ class FCDetails {
       if (this.m && this.m.conStatusInt() === -1) {
         console.log('Trying to reconnect FC...')
         this.closeLink(() => {
-          this.startLink((err) => {
+          this.startLink((err: string | null) => {
             if (err) {
               console.log(err)
             } else {
@@ -587,8 +587,8 @@ class FCDetails {
     }, 1000)
   }
 
-  startStopTelemetry (device, baud, mavversion, enableHeartbeat, enableTCP, enableUDPB, UDPBPort, enableDSRequest,
-                      doLogging, inputType, udpInputPort, callback) {
+  startStopTelemetry (device: string, baud: number, mavversion: number, enableHeartbeat: boolean, enableTCP: boolean, enableUDPB: boolean, UDPBPort: number, enableDSRequest: boolean,
+                      doLogging: boolean, inputType: string, udpInputPort: number, callback: (err: Error | string | null, isSuccessful: boolean) => void) {
     // user wants to start or stop telemetry
     // callback is (err, isSuccessful)
 
@@ -644,7 +644,7 @@ class FCDetails {
       }
 
       // this.activeDevice = {inputType, udpInputPort, serial: device, baud: baud};
-      this.startLink((err) => {
+      this.startLink((err: string | null) => {
         if (err) {
           console.log(err)
           this.activeDevice = null

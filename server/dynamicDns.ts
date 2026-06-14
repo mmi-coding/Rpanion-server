@@ -59,7 +59,7 @@ class DynamicDns {
     }
   }
 
-  setSettings (cfg, callback) {
+  setSettings (cfg: any, callback: any) {
     this.options.enabled = cfg.enabled
     this.options.provider = cfg.provider
     this.options.hostname = cfg.hostname
@@ -98,20 +98,20 @@ class DynamicDns {
     return data.ip
   }
 
-  buildRequest (ip) {
+  buildRequest (ip: any) {
     const o = this.options
     if (o.provider === 'noip') {
       return {
         url: `https://dynupdate.no-ip.com/nic/update?hostname=${encodeURIComponent(o.hostname)}&myip=${encodeURIComponent(ip)}`,
         init: { method: 'GET', headers: { Authorization: 'Basic ' + Buffer.from(`${o.username}:${o.password}`).toString('base64') } },
-        ok: (txt) => txt.startsWith('good') || txt.startsWith('nochg')
+        ok: (txt: any) => txt.startsWith('good') || txt.startsWith('nochg')
       }
     }
     // duckdns
     return {
       url: `https://www.duckdns.org/update?domains=${encodeURIComponent(o.hostname)}&token=${encodeURIComponent(o.token)}&ip=${encodeURIComponent(ip)}`,
       init: { method: 'GET' },
-      ok: (txt) => txt.trim() === 'OK'
+      ok: (txt: any) => txt.trim() === 'OK'
     }
   }
 
