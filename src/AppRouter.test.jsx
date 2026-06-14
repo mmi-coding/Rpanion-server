@@ -164,6 +164,34 @@ describe('#AppRouter()', function () {
   })
 
   // -------------------------------------------------------------------------
+  // nav category headers collapse and expand their items
+  // -------------------------------------------------------------------------
+  test('nav category headers collapse and expand', async function () {
+    mockFetch(authOk)
+    const page = renderPage(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRouter />
+      </MemoryRouter>
+    )
+    await page.flush()
+    const header = page.container.querySelector('.gs-navgroup-header')
+    expect(header).not.toBeNull()
+    const group = header.closest('.gs-navgroup')
+    // expanded by default
+    expect(header.getAttribute('aria-expanded')).toBe('true')
+    expect(group.className).not.toContain('gs-navgroup--closed')
+    // collapse
+    page.click(header)
+    expect(header.getAttribute('aria-expanded')).toBe('false')
+    expect(group.className).toContain('gs-navgroup--closed')
+    // expand again
+    page.click(header)
+    expect(header.getAttribute('aria-expanded')).toBe('true')
+    expect(group.className).not.toContain('gs-navgroup--closed')
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
   // light/dark theme toggle flips data-bs-theme + persists to localStorage
   // -------------------------------------------------------------------------
   test('theme toggle flips data-bs-theme and persists the choice', async function () {

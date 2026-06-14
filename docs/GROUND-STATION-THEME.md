@@ -81,8 +81,16 @@ toggle (☰)**. Collapsing sets `#wrapper.gs-collapsed`, shrinking the rail to a
 FC, LTE, WG…) in mono via CSS, with the full label on hover (`title`). Nav uses
 `NavLink`, so the active route gets an amber left-marker + chevron.
 
-The nav is data-driven from the `NAV` array in `src/AppRouter.jsx`; add a route by
-adding `{ to, code, label }` there (set `end: true` only for an exact-match route).
+The nav is **grouped into collapsible categories** (Flight · Logs & Media · Camera
+& Video · Network · VPN & DDNS · System), with Home as a standalone top item and
+Logout at the bottom. Each category has a header (uppercase label + chevron) that
+toggles its items (CSS `max-height` transition; groups are expanded by default,
+state in `AppRouter`'s `openGroups`). In the collapsed waypoint-code rail the
+category headers are hidden and every code is shown as a flat list.
+
+The nav is data-driven in `src/AppRouter.jsx`: `NAV_HOME` (standalone) + `NAV_GROUPS`
+(`{ id, label, items: [{ to, code, label }] }`). Add a page by dropping a
+`{ to, code, label }` into the right group (set `end: true` only for exact-match).
 
 ## Working within the theme
 
