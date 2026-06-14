@@ -101,7 +101,7 @@ class flightLogger {
 
   // find all files in dir (recursively)
   findInDir (dir, extfilter) {
-    const fileList = []
+    const fileList: any[] = []
     const extensions = Array.isArray(extfilter) ? extfilter : [extfilter]
     const topFolder = this.topfolder
 

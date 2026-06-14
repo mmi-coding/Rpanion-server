@@ -3,7 +3,7 @@ const { exec, execSync, execFile } = require('child_process')
 function getAdapters (callback) {
   // Get all network adapter name, type and states
   exec('sudo nmcli -t -f device,type,state dev', (error, stdout, stderr) => {
-    const netStatusList = []
+    const netStatusList: any[] = []
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
@@ -13,7 +13,7 @@ function getAdapters (callback) {
         if (device.length === 3 && device[1] !== 'loopback' && device[1] !== 'bridge' && device[1] !== 'wifi-p2p' && device[1] !== 'can0' && device[1] !== 'can1') {
           console.log('Adding Network device ' + device[0])
           // if wifi, check for avail channels
-          const freqList = []
+          const freqList: any[] = []
           freqList.push({ value: 0, freq: 0, label: 'auto', band: 0 })
           if (device[1] === 'wifi') {
             try {
@@ -146,8 +146,8 @@ function getWifiScan(callback) {
         return callback(new Error(stderr))
       }
 
-      const networks = [];
-      let current = null;
+      const networks: any[] = [];
+      let current: any = null;
 
       stdout.split("\n").forEach(line => {
         line = line.trim();
@@ -472,7 +472,7 @@ function deleteConnection (conName, callback) {
 
 function getConnections (callback) {
   let output = ''
-  const conStatusList = []
+  const conStatusList: any[] = []
   try {
     output = execSync('sudo nmcli -t -f NAME,UUID,TYPE,DEVICE connection show')
   } catch (e) {
@@ -558,7 +558,7 @@ function getConnectionDetails (conName, callback) {
 }
 
 function CIDR2netmask (bitCountstr) {
-  const mask = []
+  const mask: any[] = []
   let bitCount = parseInt(bitCountstr)
   // console.log(bitCountstr);
   for (let i = 0; i < 4; i++) {

@@ -205,7 +205,7 @@ function getVPNStatusTailscale (errpass, callback) {
         return callback('Unable to parse tailscale status', { installed: true, status: false, text: [] })
       }
       const isUp = parsed.BackendState === 'Running'
-      const text = []
+      const text: any[] = []
       const addNode = (node, isSelf) => {
         const ips = node.TailscaleIPs || []
         text.push({ host: node.HostName, ip: ips[0] || '', online: node.Online, self: isSelf })

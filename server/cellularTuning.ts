@@ -158,7 +158,7 @@ class CellularTuning {
   }
 
   setSettings (newSettings, callback) {
-    const errors = []
+    const errors: any[] = []
     const next = { ...this.options }
 
     if (typeof newSettings.lowLatency === 'boolean') {

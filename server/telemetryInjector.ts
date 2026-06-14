@@ -193,7 +193,7 @@ class TelemetryInjector {
   }
 
   setSettings (newSettings, callback) {
-    const errors = []
+    const errors: any[] = []
     const next = { ...this.options }
 
     for (const b of ['enabled', 'httpEnabled', 'udpEnabled', 'serialEnabled']) {

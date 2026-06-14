@@ -51,7 +51,7 @@ function isModemManagerInstalled () {
  * @returns {Promise<Array>} Array of serial device objects with value, label, and pnpId
  */
 async function detectSerialDevices () {
-  const serialDevices = []
+  const serialDevices: any[] = []
   
   const Binding = autoDetect()
   const ports = await Binding.list()

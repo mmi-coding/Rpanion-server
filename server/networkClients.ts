@@ -24,7 +24,7 @@ function getClients (callback) {
               // Stored in cat /var/lib/NetworkManager/dnsmasq-wlan0.leases
               // 1606808691 34:7d:f6:65:b1:1b 10.0.2.117 l5411 01:34:7d:f6:65:b1:1b
               // we have an active AP
-              const allclients = []
+              const allclients: any[] = []
               const out = execSync('sudo cat /var/lib/NetworkManager/dnsmasq-' + device + '.leases')
               const allleases = out.toString().split('\n')
               for (let j = 0, lenn = allleases.length; j < lenn; j++) {

@@ -85,7 +85,7 @@ class cloudUpload {
 
   getSettings (callback) {
     // get current settings and pubkey(s)
-    const pubkey = []
+    const pubkey: any[] = []
     if (fs.existsSync(os.homedir() + '/.ssh/')) {
       const files = fs.readdirSync(os.homedir() + '/.ssh/')
       files.forEach(file => {

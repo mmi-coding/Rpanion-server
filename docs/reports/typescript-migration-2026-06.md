@@ -81,9 +81,43 @@ Result: **`.deb` 34M → 11M (−68%)**, installed `node_modules` ~307M → 129M
 verified the slimmed package installs, the service runs on compiled JS, and all
 routes respond (no broken deps).
 
-## Follow-on (not done here)
+## Phase 2 — strictness ramp
 
-Strictness ramp — enable `strictNullChecks`, then `noImplicitAny`, per file,
-replacing the `any` boundaries with real types and switching `require()` of
-now-`.ts` deps to typed `import`. This is the second, separate campaign; Phase 1
-deliberately stops at "all `.ts`, compiling, 100% green."
+The second, separate campaign: tighten the strict block one flag at a time,
+replacing the `any` boundaries with real types. Phase 1 deliberately stopped at
+"all `.ts`, compiling, 100% green."
+
+### Stage 2a — `strictNullChecks` (done)
+
+Enabled `strictNullChecks: true` in `tsconfig`; 103 errors surfaced, all fixed:
+
+- **Empty arrays** (`const x = []`) infer `never[]` under strict null-checks, so
+  every later `.push` errored — gave each its real element type (`: string[]`
+  where the contents are known strings, `: any[]` at the dynamic/JSON boundaries
+  that stage 2b will type properly). ~17 declarations across 16 files; `ltemodem.ts`
+  alone had 9.
+- **8 genuine null-safety sites**, each a `let x = null` reassigned to a real
+  value, typed with a real union (or the function made uniform):
+  - `flightController.ts` `retError` → `Error | null`
+  - `index.ts` `FCStatusLoop` → `NodeJS.Timeout | null`
+  - `mavManager.ts` `protocol`, `adhocManager.ts` `netDeviceSelected`,
+    `networkManager.ts` `current` → `any` (constructors/parse results are
+    `require`/JSON `any`; precise types fought control-flow narrowing)
+  - `videostream.ts` `fpsOptions: [] as any[]` (the literal's `never[]` blocked
+    `[0]?.value`)
+  - `pppConnection.ts` `getPPPDataRate()` — the not-connected early return now
+    includes `percentusedRx/Tx: 0` so the return type is uniform
+  - `videostreamHelpers.ts` `scanInterfaces` — `os.networkInterfaces()` is a
+    `Dict` (`| undefined`); the `for…in` key always resolves, so a `!` assertion
+    (no runtime branch) keeps the 100% branch ratchet — a real `if (!list)` guard
+    added a dead, uncoverable branch (caught by covback dropping to 99.94%).
+
+Behaviour-preserving. `typecheck` + `build:server` (`noEmitOnError`) clean,
+both suites 100/100/100/100, e2e 68, lint clean.
+
+### Stage 2b — `noImplicitAny` (follow-on)
+
+~1080 errors — roughly 10× stage 2a. Replace the remaining `any` boundaries with
+real types and switch `require()` of now-`.ts` deps to typed `import`. Depth
+(full real types end-to-end vs real types for internal logic + `any` at the
+external I/O boundaries) is the open decision.
