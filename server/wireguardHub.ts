@@ -140,6 +140,21 @@ PersistentKeepalive = 25
 EOF
 chmod 600 "$WG_DIR/clients/"*.conf
 
+# Make the configs easy to pull off this VPS. The originals are root-owned 600;
+# if the script was run via sudo, drop copies the login user owns so they can
+# scp them without root SSH login. Otherwise point scp at the root-owned paths.
+SCP_USER=root
+PI_PATH="$WG_DIR/clients/pi.conf"
+LAPTOP_PATH="$WG_DIR/clients/laptop.conf"
+if [ -n "\${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+  USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  install -m 600 -o "$SUDO_USER" "$WG_DIR/clients/pi.conf" "$USER_HOME/pi.conf"
+  install -m 600 -o "$SUDO_USER" "$WG_DIR/clients/laptop.conf" "$USER_HOME/laptop.conf"
+  SCP_USER="$SUDO_USER"
+  PI_PATH="$USER_HOME/pi.conf"
+  LAPTOP_PATH="$USER_HOME/laptop.conf"
+fi
+
 echo ""
 echo "============================================================"
 echo " DONE. WireGuard hub is running on UDP $WG_PORT."
@@ -159,6 +174,12 @@ echo ""
 echo "----------------------- laptop.conf ------------------------"
 cat "$WG_DIR/clients/laptop.conf"
 echo "------------------------------------------------------------"
+echo ""
+echo " Prefer files over copy-paste? Run these on your LAPTOP (not"
+echo " here) to pull the configs off this VPS:"
+echo ""
+echo "   scp $SCP_USER@${cfg.vpsIp}:$PI_PATH ."
+echo "   scp $SCP_USER@${cfg.vpsIp}:$LAPTOP_PATH ."
 echo ""
 echo " Reminder: DNS A record  $ENDPOINT -> ${cfg.vpsIp}  must exist,"
 echo " and your VPS firewall must allow inbound UDP $WG_PORT."

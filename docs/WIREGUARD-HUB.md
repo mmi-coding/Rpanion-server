@@ -40,6 +40,20 @@ VPS** — no private key is ever created on or sent from the drone.
      activate it. Mission Planner then connects to the drone at its VPN IP
      (e.g. `10.13.13.2`).
 
+### Getting the configs off the VPS (no USB needed)
+
+A VPS is remote — the configs come back over your SSH session, three ways:
+
+- **Copy-paste:** the script prints both configs between `--- pi.conf ---` /
+  `--- laptop.conf ---` markers. Paste `laptop.conf` straight into the WireGuard
+  app (Add empty tunnel), and save `pi.conf` to a file to upload on the VPN page.
+- **`scp` (ready-to-run):** the script prints the exact `scp` commands to run on
+  your **laptop**, e.g. `scp root@<vps-ip>:/etc/wireguard/clients/pi.conf .`. If
+  you ran the script via `sudo` as a non-root login user, it also drops
+  user-owned copies in that user's home and prints `scp <user>@...` lines so scp
+  works without root SSH login.
+- **SFTP GUI:** WinSCP / FileZilla → `/etc/wireguard/clients/`.
+
 ## What the script does on the VPS
 
 - Installs `wireguard`/`wireguard-tools` + `ufw`.
@@ -51,6 +65,8 @@ VPS** — no private key is ever created on or sent from the drone.
   port.
 - Writes + prints `pi.conf` and `laptop.conf` (split-tunnel: `AllowedIPs` is the
   VPN subnet only, with `PersistentKeepalive = 25` to hold the CGNAT mapping).
+- Prints ready-to-run `scp` commands to fetch the configs to your laptop, and
+  (when run via `sudo`) drops login-user-owned copies so scp needs no root login.
 
 ## API
 

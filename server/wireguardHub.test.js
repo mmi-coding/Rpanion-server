@@ -57,4 +57,14 @@ describe('wireguardHub.generateScript()', function () {
     // VPS IP appears in the DNS reminder
     assert.ok(s.includes('203.0.113.10'))
   })
+
+  it('prints ready-to-run scp commands and drops sudo-user-owned copies', function () {
+    const s = wireguardHub.generateScript(cfg)
+    // sudo-user fallback so scp works without root SSH login (set -u safe default)
+    assert.ok(s.includes('if [ -n "${SUDO_USER:-}" ]'))
+    assert.ok(s.includes('install -m 600 -o "$SUDO_USER"'))
+    // ready-to-run scp lines: VPS IP baked in, user/path resolved at run time
+    assert.ok(s.includes('scp $SCP_USER@203.0.113.10:$PI_PATH .'))
+    assert.ok(s.includes('scp $SCP_USER@203.0.113.10:$LAPTOP_PATH .'))
+  })
 })
