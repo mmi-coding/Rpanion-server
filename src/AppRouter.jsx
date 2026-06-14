@@ -25,31 +25,44 @@ import LTEModemPage from './ltemodem.jsx'
 import CellularTuningPage from './cellulartuning.jsx'
 import TelemetryInjectorPage from './telemetryinjector.jsx'
 
-// Sidebar navigation. `code` is the short "waypoint" tag shown when the rail is
-// collapsed (via CSS data-code); `end` marks an exact-match route (Home only).
-const NAV = [
-  { to: '/', code: 'HOM', label: 'Home', end: true },
-  { to: '/flightlogs', code: 'LOG', label: 'Flight Logs and Media' },
-  { to: '/controller', code: 'FC', label: 'Flight Controller' },
-  { to: '/ppp', code: 'PPP', label: 'PPP Config' },
-  { to: '/ntrip', code: 'NTR', label: 'NTRIP Config' },
-  { to: '/network', code: 'NET', label: 'Network Config' },
-  { to: '/adhoc', code: 'ADH', label: 'Adhoc Wifi Config' },
-  { to: '/apclients', code: 'AP', label: 'Access Point Clients' },
-  { to: '/video', code: 'VID', label: 'Photo and Video' },
-  { to: '/cameraswitcher', code: 'CAM', label: 'Camera Switcher' },
-  { to: '/pipelineeditor', code: 'PIP', label: 'Video Pipeline Editor' },
-  { to: '/ltemodem', code: 'LTE', label: 'LTE Modem' },
-  { to: '/cellulartuning', code: 'CVT', label: 'Cellular Video Tuning' },
-  { to: '/telemetryinjector', code: 'TEL', label: 'Telemetry Injector' },
-  { to: '/cloud', code: 'CLD', label: 'Cloud Upload' },
-  { to: '/vpn', code: 'VPN', label: 'VPN Config' },
-  { to: '/wireguardhub', code: 'WG', label: 'WireGuard Hub' },
-  { to: '/tailscale', code: 'TS', label: 'Tailscale VPN' },
-  { to: '/ddns', code: 'DNS', label: 'Dynamic DNS' },
-  { to: '/networkpriority', code: 'NPR', label: 'Network Priority' },
-  { to: '/about', code: 'ABT', label: 'About' },
-  { to: '/users', code: 'USR', label: 'User Management' },
+// Sidebar navigation. Home is a standalone top item; the rest are grouped into
+// collapsible categories. `code` is the short "waypoint" tag shown when the rail
+// is collapsed (via CSS data-code); `end` marks an exact-match route (Home only).
+const NAV_HOME = { to: '/', code: 'HOM', label: 'Home', end: true }
+const NAV_GROUPS = [
+  { id: 'flight', label: 'Flight', items: [
+    { to: '/controller', code: 'FC', label: 'Flight Controller' },
+    { to: '/ntrip', code: 'NTR', label: 'NTRIP Config' },
+    { to: '/telemetryinjector', code: 'TEL', label: 'Telemetry Injector' },
+  ] },
+  { id: 'logs', label: 'Logs & Media', items: [
+    { to: '/flightlogs', code: 'LOG', label: 'Flight Logs and Media' },
+    { to: '/cloud', code: 'CLD', label: 'Cloud Upload' },
+  ] },
+  { id: 'camera', label: 'Camera & Video', items: [
+    { to: '/video', code: 'VID', label: 'Photo and Video' },
+    { to: '/cameraswitcher', code: 'CAM', label: 'Camera Switcher' },
+    { to: '/pipelineeditor', code: 'PIP', label: 'Video Pipeline Editor' },
+    { to: '/cellulartuning', code: 'CVT', label: 'Cellular Video Tuning' },
+  ] },
+  { id: 'network', label: 'Network', items: [
+    { to: '/network', code: 'NET', label: 'Network Config' },
+    { to: '/networkpriority', code: 'NPR', label: 'Network Priority' },
+    { to: '/adhoc', code: 'ADH', label: 'Adhoc Wifi Config' },
+    { to: '/apclients', code: 'AP', label: 'Access Point Clients' },
+    { to: '/ltemodem', code: 'LTE', label: 'LTE Modem' },
+    { to: '/ppp', code: 'PPP', label: 'PPP Config' },
+  ] },
+  { id: 'vpn', label: 'VPN & DDNS', items: [
+    { to: '/vpn', code: 'VPN', label: 'VPN Config' },
+    { to: '/wireguardhub', code: 'WG', label: 'WireGuard Hub' },
+    { to: '/tailscale', code: 'TS', label: 'Tailscale VPN' },
+    { to: '/ddns', code: 'DNS', label: 'Dynamic DNS' },
+  ] },
+  { id: 'system', label: 'System', items: [
+    { to: '/about', code: 'ABT', label: 'About' },
+    { to: '/users', code: 'USR', label: 'User Management' },
+  ] },
 ]
 
 function AppRouter () {
@@ -62,8 +75,16 @@ function AppRouter () {
   const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-bs-theme') || 'dark')
   const location = useLocation()
 
+  // Nav categories are expanded by default; the user can collapse any of them.
+  const [openGroups, setOpenGroups] = useState(() => new Set(NAV_GROUPS.map(g => g.id)))
+
   const toggleNav = () => setNavOpen(open => !open)
   const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'))
+  const toggleGroup = (id) => setOpenGroups(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) { next.delete(id) } else { next.add(id) }
+    return next
+  })
   // On phones the sidebar is an off-canvas drawer; tapping a nav link closes it.
   const closeNavOnMobile = () => { if (!window.matchMedia('(min-width: 768px)').matches) setNavOpen(false) }
 
@@ -131,17 +152,42 @@ function AppRouter () {
           >☰</button>
         </div>
         <div id="sidebar-items" className="list-group list-group-flush">
-          {NAV.map(item => (
-            <NavLink
-              key={item.to}
-              end={item.end}
-              to={item.to}
-              data-code={item.code}
-              title={item.label}
-              onClick={closeNavOnMobile}
-              className='list-group-item list-group-item-action'
-            >{item.label}</NavLink>
-          ))}
+          <NavLink
+            end={NAV_HOME.end}
+            to={NAV_HOME.to}
+            data-code={NAV_HOME.code}
+            title={NAV_HOME.label}
+            onClick={closeNavOnMobile}
+            className='list-group-item list-group-item-action'
+          >{NAV_HOME.label}</NavLink>
+          {NAV_GROUPS.map(group => {
+            const open = openGroups.has(group.id)
+            return (
+              <div className={`gs-navgroup${open ? '' : ' gs-navgroup--closed'}`} key={group.id}>
+                <button
+                  type="button"
+                  className="gs-navgroup-header"
+                  aria-expanded={open}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  <span className="gs-navgroup-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
+                  <span className="gs-navgroup-label">{group.label}</span>
+                </button>
+                <div className="gs-navgroup-items">
+                  {group.items.map(item => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      data-code={item.code}
+                      title={item.label}
+                      onClick={closeNavOnMobile}
+                      className='list-group-item list-group-item-action'
+                    >{item.label}</NavLink>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
           {isAuthEnabled && (
             <NavLink onClick={closeNavOnMobile} data-code="OUT" title="Logout" className='list-group-item list-group-item-action' to="/logoutconfirm">Logout</NavLink>
           )}

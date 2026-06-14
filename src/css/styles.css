@@ -294,6 +294,26 @@ html.gs-theme #sidebar-items .list-group-item.active::before {
 }
 html.gs-theme #readonly-badge { font-family: var(--gs-font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
 
+/* Collapsible nav categories */
+html.gs-theme .gs-navgroup-header {
+  width: 100%;
+  display: flex; align-items: center; gap: 0.4rem;
+  background: transparent; border: 0; cursor: pointer;
+  padding: 0.7rem 1.1rem 0.3rem;
+  color: var(--gs-text-faint);
+  font-family: var(--gs-font-display); font-weight: 600; font-size: 0.65rem;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  transition: color .15s ease;
+}
+html.gs-theme .gs-navgroup-header:hover,
+html.gs-theme .gs-navgroup-header:focus-visible { color: var(--gs-text-dim); outline: none; }
+html.gs-theme .gs-navgroup-chevron {
+  display: inline-block; width: 0.7rem; font-size: 0.6rem; color: var(--gs-text-faint);
+  transition: transform .18s ease;
+}
+html.gs-theme .gs-navgroup-items { overflow: hidden; max-height: 32rem; transition: max-height .25s ease; }
+html.gs-theme .gs-navgroup--closed .gs-navgroup-items { max-height: 0; }
+
 /* Sidebar footer — theme toggle */
 html.gs-theme #sidebar-footer { flex: 0 0 auto; border-top: 1px solid var(--gs-line); padding: 0.5rem 0.6rem; }
 html.gs-theme #gs-themetoggle {
@@ -330,6 +350,9 @@ html.gs-theme .gs-themeicon { font-size: 1rem; line-height: 1; flex: 0 0 auto; }
   }
   html.gs-theme #wrapper.gs-collapsed #sidebar-items .list-group-item:hover { padding-left: 0; background-color: var(--gs-panel-3); }
   html.gs-theme #wrapper.gs-collapsed #sidebar-items .list-group-item.active { border-left-width: 0; box-shadow: inset 2px 0 0 var(--gs-amber); }
+  /* The icon rail is a flat list of codes — hide category headers, show every item */
+  html.gs-theme #wrapper.gs-collapsed .gs-navgroup-header { display: none; }
+  html.gs-theme #wrapper.gs-collapsed .gs-navgroup-items { max-height: none; overflow: visible; }
 }
 
 /* ── 5 · Typography ─────────────────────────────────────────────────────── */
