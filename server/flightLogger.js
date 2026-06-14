@@ -4,7 +4,7 @@
 
 const path = require('path')
 const fs = require('fs')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 
 // Recursively delete a file or directory tree.
 function deleteRecursively (targetPath) {

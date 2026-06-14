@@ -6,7 +6,7 @@
     * Used for the PPP feature in ArduPilot
 */
 const { spawn, execSync } = require('child_process');
-const serialDetection = require('./serialDetection.js')
+const serialDetection = require('./serialDetection')
 
 class PPPConnection {
     constructor(settings) {

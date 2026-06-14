@@ -9,22 +9,22 @@ const networkManager = require('./networkManager')
 const aboutPage = require('./aboutInfo')
 const videoStream = require('./videostream')
 const fcManagerClass = require('./flightController')
-const flightLogger = require('./flightLogger.js')
-const networkClients = require('./networkClients.js')
-const ntrip = require('./ntrip.js')
-const Adhoc = require('./adhocManager.js')
-const cloudManager = require('./cloudUpload.js')
+const flightLogger = require('./flightLogger')
+const networkClients = require('./networkClients')
+const ntrip = require('./ntrip')
+const Adhoc = require('./adhocManager')
+const cloudManager = require('./cloudUpload')
 const VPNManager = require('./vpn')
-const logConversionManager = require('./logConverter.js')
-const userLogin = require('./userLogin.js')
-const logpaths = require('./paths.js')
-const CameraSwitcher = require('./cameraSwitcher.js')
-const CustomPipelines = require('./customPipelines.js')
-const LTEModem = require('./ltemodem.js')
-const CellularTuning = require('./cellularTuning.js')
-const DynamicDns = require('./dynamicDns.js')
-const NetworkPriority = require('./networkPriority.js')
-const TelemetryInjector = require('./telemetryInjector.js')
+const logConversionManager = require('./logConverter')
+const userLogin = require('./userLogin')
+const logpaths = require('./paths')
+const CameraSwitcher = require('./cameraSwitcher')
+const CustomPipelines = require('./customPipelines')
+const LTEModem = require('./ltemodem')
+const CellularTuning = require('./cellularTuning')
+const DynamicDns = require('./dynamicDns')
+const NetworkPriority = require('./networkPriority')
+const TelemetryInjector = require('./telemetryInjector')
 
 const settings = require('settings-store')
 
@@ -44,7 +44,7 @@ const toBool = (v) => v === true || v === 'true'
 
 // set up rate limiter: maximum of fifty requests per minute
 const RateLimit = require('express-rate-limit')
-const pppConnection = require('./pppConnection.js')
+const pppConnection = require('./pppConnection')
 const limiter = RateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 50,
@@ -102,7 +102,7 @@ const telemetryInjector = new TelemetryInjector(settings)
 
 // Authentication: the authenticateToken middleware (injected into every route
 // module) + the auth/user routes (mounted after the body parser, below).
-const { authenticateToken, router: authRouter } = require('./auth.js')({ userMgmt })
+const { authenticateToken, router: authRouter } = require('./auth')({ userMgmt })
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -378,50 +378,50 @@ app.use(express.static(path.join(__dirname, '..', '/build')))
 app.use(authRouter)
 
 // PPP connection routes (extracted to ./routes/ppp.js)
-app.use(require('./routes/ppp.js')({ authenticateToken, pppConnectionManager }))
+app.use(require('./routes/ppp')({ authenticateToken, pppConnectionManager }))
 
 // System / about / logs / settings routes (extracted to ./routes/system.js)
-app.use(require('./routes/system.js')({ authenticateToken, aboutPage, networkClients, logManager, fcManager }))
+app.use(require('./routes/system')({ authenticateToken, aboutPage, networkClients, logManager, fcManager }))
 
 // VPN routes — ZeroTier/WireGuard/Tailscale (extracted to ./routes/vpn.js)
-app.use(require('./routes/vpn.js')({ authenticateToken, VPNManager }))
+app.use(require('./routes/vpn')({ authenticateToken, VPNManager }))
 
 // NTRIP routes (extracted to ./routes/ntrip.js)
-app.use(require('./routes/ntrip.js')({ authenticateToken, ntripClient }))
+app.use(require('./routes/ntrip')({ authenticateToken, ntripClient }))
 
 // Cloud upload routes (extracted to ./routes/cloud.js)
-app.use(require('./routes/cloud.js')({ authenticateToken, cloud }))
+app.use(require('./routes/cloud')({ authenticateToken, cloud }))
 
 // Log conversion routes (extracted to ./routes/logConversion.js)
-app.use(require('./routes/logConversion.js')({ authenticateToken, logConversion }))
+app.use(require('./routes/logConversion')({ authenticateToken, logConversion }))
 
 // Adhoc WiFi routes (extracted to ./routes/adhoc.js)
-app.use(require('./routes/adhoc.js')({ authenticateToken, adhocManager }))
+app.use(require('./routes/adhoc')({ authenticateToken, adhocManager }))
 
 // Camera control routes (extracted to ./routes/camera.js) — must be after the
 // body-parser middleware so camera/start sees req.body
-app.use(require('./routes/camera.js')({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }))
+app.use(require('./routes/camera')({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }))
 
 // Camera switcher routes (extracted to ./routes/cameraSwitcher.js)
-app.use(require('./routes/cameraSwitcher.js')({ authenticateToken, toBool, camSwitcher }))
+app.use(require('./routes/cameraSwitcher')({ authenticateToken, toBool, camSwitcher }))
 
 // Custom video pipeline routes (extracted to ./routes/customPipelines.js)
-app.use(require('./routes/customPipelines.js')({ authenticateToken, toBool, customPipelines, vManager }))
+app.use(require('./routes/customPipelines')({ authenticateToken, toBool, customPipelines, vManager }))
 
 // LTE modem routes (extracted to ./routes/ltemodem.js)
-app.use(require('./routes/ltemodem.js')({ authenticateToken, toBool, lteModem }))
+app.use(require('./routes/ltemodem')({ authenticateToken, toBool, lteModem }))
 
 // Cellular video tuning routes (extracted to ./routes/cellularTuning.js)
-app.use(require('./routes/cellularTuning.js')({ authenticateToken, toBool, cellularTuning }))
+app.use(require('./routes/cellularTuning')({ authenticateToken, toBool, cellularTuning }))
 
 // Telemetry injector routes (extracted to ./routes/telemetryInjector.js)
-app.use(require('./routes/telemetryInjector.js')({ authenticateToken, toBool, telemetryInjector }))
+app.use(require('./routes/telemetryInjector')({ authenticateToken, toBool, telemetryInjector }))
 
 // Network priority / bandwidth routes (extracted to ./routes/networkPriority.js)
-app.use(require('./routes/networkPriority.js')({ authenticateToken, networkPriority }))
+app.use(require('./routes/networkPriority')({ authenticateToken, networkPriority }))
 
 // Dynamic DNS routes (extracted to ./routes/dynamicDns.js)
-app.use(require('./routes/dynamicDns.js')({ authenticateToken, toBool, ddns }))
+app.use(require('./routes/dynamicDns')({ authenticateToken, toBool, ddns }))
 
 // Serve the logfiles
 app.use('/logdownload', express.static(logpaths.flightsLogsDir))
@@ -429,7 +429,7 @@ app.use('/logdownload', express.static(logpaths.flightsLogsDir))
 app.use('/media', express.static(MEDIA_ROOT))
 
 // Flight controller routes (extracted to ./routes/flightController.js)
-app.use(require('./routes/flightController.js')({ authenticateToken, fcManager }))
+app.use(require('./routes/flightController')({ authenticateToken, fcManager }))
 
 io.engine.use((req, res, next) => {
   const isHandshake = req._query.sid === undefined
@@ -461,7 +461,7 @@ io.on('connection', function () {
 })
 
 // NetworkManager (wired/WiFi) routes (extracted to ./routes/network.js)
-app.use(require('./routes/network.js')({ authenticateToken, networkManager }))
+app.use(require('./routes/network')({ authenticateToken, networkManager }))
 
 // Pass GUI requests to the React app only in production mode
 /* istanbul ignore next -- guarded by NODE_ENV !== development; never registered in test harness; covered by Package C integration tests */

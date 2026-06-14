@@ -4,7 +4,7 @@ const os = require('os')
 const path = require('path')
 const sinon = require('sinon')
 const { FakeBin } = require('../test/fakeBin')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 const VPNManager = require('./vpn')
 
 describe('VPN Functions', function () {

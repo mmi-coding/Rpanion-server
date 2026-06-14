@@ -1,7 +1,7 @@
 const assert = require('assert')
 const path = require('path')
 const os = require('os')
-const userLogin = require('./userLogin.js')
+const userLogin = require('./userLogin')
 const fs = require('fs')
 
 const rbacTmpFile = path.join(os.tmpdir(), 'rpanion-rbac-users-test.json')

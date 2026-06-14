@@ -14,7 +14,7 @@ const os = require('os')
 const { spawn, execFile } = require('child_process')
 const { SerialPort, ReadlineParser } = require('serialport')
 // required as an object (not destructured) so tests can stub the detection seam
-const serialDetection = require('./serialDetection.js')
+const serialDetection = require('./serialDetection')
 
 // Baud rates accepted on the modem's AT / PPP serial ports
 const VALID_BAUDS = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000]

@@ -3,7 +3,7 @@ const path = require('path')
 const si = require('systeminformation')
 const events = require('events')
 const { minimal, common } = require('node-mavlink')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 const fs = require('fs')
 const vsHelpers = require('./videostreamHelpers')
 

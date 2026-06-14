@@ -14,7 +14,7 @@
  * stale custom pipeline can never brick the video stream.
  */
 const { execFile } = require('child_process')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 
 class customPipelines {
   constructor (settings) {

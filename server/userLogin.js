@@ -1,7 +1,7 @@
 const fs = require('fs').promises;
 const bcrypt = require('bcryptjs');
 
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 
 class userLogin {
   constructor () {

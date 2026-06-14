@@ -4,9 +4,9 @@ const path = require('path')
 const { spawn, spawnSync } = require('child_process')
 
 const { common } = require('node-mavlink')
-const mavManager = require('../mavlink/mavManager.js')
-const logpaths = require('./paths.js')
-const serialDetection = require('./serialDetection.js')
+const mavManager = require('../mavlink/mavManager')
+const logpaths = require('./paths')
+const serialDetection = require('./serialDetection')
 
 class FCDetails {
   constructor (settings) {

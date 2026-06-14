@@ -4,7 +4,7 @@ const assert = require('assert')
 const Path = require('path')
 const fs = require('fs')
 const os = require('os')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 
 const testRoot = fs.mkdtempSync(Path.join(os.tmpdir(), 'flightlogger-test-'))
 logpaths.flightsLogsDir = Path.join(testRoot, 'flightlogs')

@@ -2,7 +2,7 @@ const assert = require('assert');
 const sinon = require('sinon');
 const { describe, it, before, after, beforeEach, afterEach } = require('mocha');
 const { FakeBin } = require('../test/fakeBin');
-const serialDetection = require('./serialDetection.js');
+const serialDetection = require('./serialDetection');
 const PPPConnection = require('./pppConnection');
 
 // Fake serial device used across all tests

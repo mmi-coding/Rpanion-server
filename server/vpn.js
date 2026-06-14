@@ -3,7 +3,7 @@
 */
 const path = require('path')
 const { exec, execFile } = require('child_process')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 
 function getVPNStatusZerotier (errpass, callback) {
   execFile('which', ['zerotier-cli'], (errorzt, stdoutzt, stderrzt) => {

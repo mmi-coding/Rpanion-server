@@ -3,7 +3,7 @@ const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 const fs = require('fs')
 const appRoot = require('app-root-path')
-const logpaths = require('../paths.js')
+const logpaths = require('../paths')
 
 module.exports = function systemRoutes ({ authenticateToken, aboutPage, networkClients, logManager, fcManager }) {
   const router = Router()

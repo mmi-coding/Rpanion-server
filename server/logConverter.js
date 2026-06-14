@@ -1,7 +1,7 @@
 const spawn = require('child_process').spawn
 const path = require('path')
 const appRoot = require('app-root-path')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 
 class logConverter {
   constructor (settings) {

@@ -5,7 +5,7 @@ const os = require('os')
 const sinon = require('sinon')
 const settings = require('settings-store')
 const LTEModem = require('./ltemodem')
-const serialDetection = require('./serialDetection.js')
+const serialDetection = require('./serialDetection')
 const { FakeBin } = require('../test/fakeBin')
 const { startFakeModem, startSilentPty } = require('../test/fakeModemPty')
 
