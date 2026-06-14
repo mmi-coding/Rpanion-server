@@ -69,6 +69,18 @@ imported `.js`). `index.ts` dual-export rewritten to `(app as any).testHooks={}`
 `covback` 947 passing 100/100/100/100, `covfront` 814 passing 100/100/100/100,
 `npm run e2e` 68 passed.
 
+## .deb slimming (done)
+
+`build-deb.sh` now packages a **production-only** `node_modules`: it copies the
+full tree, `npm prune --omit=dev` on the copy, and runs `node-deb` from the
+intact backup (node-deb is itself a devDep), restoring the dev tree on exit.
+The build/test toolchain (vite, vitest, eslint, mocha, playwright, …) no longer
+ships. `typescript`/`ts-node` DO remain — they are genuine production transitive
+deps of `node-mavlink` (`node-mavlink → mavlink-mappings → ts-node/typescript`).
+Result: **`.deb` 34M → 11M (−68%)**, installed `node_modules` ~307M → 129M;
+verified the slimmed package installs, the service runs on compiled JS, and all
+routes respond (no broken deps).
+
 ## Follow-on (not done here)
 
 Strictness ramp — enable `strictNullChecks`, then `noImplicitAny`, per file,
