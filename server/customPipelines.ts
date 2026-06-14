@@ -19,7 +19,7 @@ const logpaths = require('./paths')
 class customPipelines {
   pipelines: any
   settings: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.settings = settings
 
     // map of device name -> { enabled: bool, pipeline: string }
@@ -39,7 +39,7 @@ class customPipelines {
   }
 
   // The pipeline entry for one device: { enabled, pipeline } or null
-  getPipeline (device) {
+  getPipeline (device: string) {
     if (Object.prototype.hasOwnProperty.call(this.pipelines, device)) {
       return { ...this.pipelines[device] }
     }
@@ -47,7 +47,7 @@ class customPipelines {
   }
 
   // The pipeline string to use for a device, or null if none enabled
-  getActivePipeline (device) {
+  getActivePipeline (device: string) {
     const entry = this.getPipeline(device)
     if (entry && entry.enabled && entry.pipeline !== '') {
       return entry.pipeline
@@ -55,7 +55,7 @@ class customPipelines {
     return null
   }
 
-  setPipeline (device, enabled, pipeline, callback) {
+  setPipeline (device: string, enabled: boolean, pipeline: string, callback: (err: Error | null) => void) {
     if (typeof device !== 'string' || device === '') {
       return callback(new Error('A device name is required'))
     }
@@ -82,7 +82,7 @@ class customPipelines {
     // validate before enabling. valid=null (no validator available, e.g.
     // dev box without gst python bindings) is allowed through - the video
     // server still falls back at runtime if the pipeline is bad
-    this.validatePipeline(pipeline, (err, valid, reason) => {
+    this.validatePipeline(pipeline, (err: Error | null, valid: boolean | null, reason: string) => {
       if (err) {
         return callback(err)
       }
@@ -100,14 +100,14 @@ class customPipelines {
 
   // Dry-run validation via python/validate-pipeline.py.
   // callback(err, valid, reason) - valid is true/false/null (= can't validate)
-  validatePipeline (pipeline, callback) {
+  validatePipeline (pipeline: string, callback: (err: Error | null, valid: boolean | null, reason: string) => void) {
     if (typeof pipeline !== 'string' || pipeline.trim() === '') {
       return callback(null, false, 'No pipeline supplied')
     }
 
     // execFile (no shell) - the pipeline string is passed as a single argv
     execFile(logpaths.getPythonPath(), ['./python/validate-pipeline.py', pipeline],
-      { timeout: 20000 }, (error, stdout, stderr) => {
+      { timeout: 20000 }, (error: Error | null, stdout: string, stderr: string) => {
         if (error && stdout === '') {
           console.error('Pipeline validator failed:', stderr || error)
           return callback(null, null, 'Validator unavailable: ' + (stderr || error.message))

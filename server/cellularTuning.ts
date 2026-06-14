@@ -29,7 +29,7 @@ class CellularTuning {
   options: any
   deps: any
   settings: any
-  constructor (settings, deps) {
+  constructor (settings: any, deps: any) {
     this.settings = settings
     // injected: getSignal(), isStreaming(), getConfiguredBitrate(),
     // setBitrate(kbps), getAckBitrate()
@@ -63,7 +63,7 @@ class CellularTuning {
   // Map LTE signal quality onto a tier. Prefers RSRP (the LTE reference
   // signal power measure, available via AT+CPSI?); falls back to RSSI.
   // Unknown/missing signal -> null (hold the current bitrate)
-  static tierForSignal (signal) {
+  static tierForSignal (signal: any) {
     if (!signal) {
       return null
     }
@@ -157,7 +157,7 @@ class CellularTuning {
     }
   }
 
-  setSettings (newSettings, callback) {
+  setSettings (newSettings: any, callback: any) {
     const errors: any[] = []
     const next = { ...this.options }
 

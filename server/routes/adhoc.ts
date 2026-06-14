@@ -1,13 +1,14 @@
 // Adhoc WiFi routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function adhocRoutes ({ authenticateToken, adhocManager }) {
+export = function adhocRoutes ({ authenticateToken, adhocManager }: { authenticateToken: any; adhocManager: any }) {
   const router = Router()
 
   // Serve the adhocwifi info
-  router.get('/api/adhocadapters', authenticateToken, (req, res) => {
-    adhocManager.getAdapters((err, netDeviceList, netDeviceSelected, settings) => {
+  router.get('/api/adhocadapters', authenticateToken, (req: Request, res: Response) => {
+    adhocManager.getAdapters((err: any, netDeviceList: any, netDeviceSelected: any, settings: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         const ret = { netDevice: netDeviceList, netDeviceSelected, curSettings: settings }
@@ -31,14 +32,14 @@ export = function adhocRoutes ({ authenticateToken, adhocManager }) {
     check('settings.ssid').if(check('toState').isIn([true])).isAlphanumeric(),
     check('settings.band').isIn(['a', 'bg']),
     check('settings.channel').if(check('toState').isIn([true])).isInt(),
-    check('settings.gateway').optional({ checkFalsy: true }).if(check('toState').isIn([true])).isIP()], function (req, res) {
+    check('settings.gateway').optional({ checkFalsy: true }).if(check('toState').isIn([true])).isIP()], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log(req.body)
       console.log('Bad POST vars in /api/adhocadaptermodify', { message: JSON.stringify(errors.array()) })
       return res.status(422).json({ error: JSON.stringify(errors.array()) })
     } else {
-      adhocManager.setAdapter(req.body.toState, req.body.netDeviceSelected, req.body.settings, (err, netDeviceList, netDeviceSelected, settings) => {
+      adhocManager.setAdapter(req.body.toState, req.body.netDeviceSelected, req.body.settings, (err: any, netDeviceList: any, netDeviceSelected: any, settings: any) => {
         if (!err) {
           res.setHeader('Content-Type', 'application/json')
           const ret = { netDevice: netDeviceList, netDeviceSelected, curSettings: settings }

@@ -14,7 +14,7 @@ class ntrip {
   errorDescription: any
   status: any
   options: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.options = {
       host: '',
       port: 2101,
@@ -61,7 +61,7 @@ class ntrip {
     this.startStopNTRIP()
   }
 
-  getSettings (callback) {
+  getSettings (callback: (...args: any[]) => void) {
     // get current settings
     return callback(this.options.host,
       this.options.port,
@@ -80,7 +80,7 @@ class ntrip {
       this.client.userAgent = 'NTRIP Rpanion-server'
       this.seq = 0
 
-      this.client.on('data', (data) => {
+      this.client.on('data', (data: any) => {
         this.errorDescription = "Online"
         if (this.options.active) {
           // console.log('Received NTRIP data:' + data.toString('hex'))
@@ -95,7 +95,7 @@ class ntrip {
         console.log('NTRIP client closed')
       })
 
-      this.client.on('error', (err) => {
+      this.client.on('error', (err: any) => {
         this.errorDescription = "Network Error: " + this.formatError(err)
         console.log('[NTRIP] ' + this.errorDescription)
         if (this.options.active) {
@@ -119,7 +119,7 @@ class ntrip {
     }
   }
 
-  setSettings (host, port, mount, username, password, active, useTls) {
+  setSettings (host: string, port: number, mount: string, username: string, password: string, active: boolean, useTls: boolean) {
     // save new settings
     this.options.host = host
     this.options.port = port
@@ -146,7 +146,7 @@ class ntrip {
     this.startStopNTRIP()
   }
 
-  onMavPacket (packet, data) {
+  onMavPacket (packet: any, data: any) {
     // FC is active
     if (!this.options.active) {
       return
@@ -169,7 +169,7 @@ class ntrip {
     }
   }
 
-  formatError(err) {
+  formatError(err: any) {
     if (err instanceof Error) {
       return `[${err.name}] ${err.message}`;
     }

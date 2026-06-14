@@ -35,7 +35,7 @@ class mavManager {
   version: any
   mavmsg: any
   mav: any
-  constructor (version, inudpIP, inudpPort, enableDSRequest) {
+  constructor (version: number, inudpIP: string, inudpPort: number, enableDSRequest: boolean) {
     this.mav = null
     this.mavmsg = null
     this.version = version
@@ -70,7 +70,7 @@ class mavManager {
     this.RinudpIP = null
     this.inStream = new PassThrough()
 
-    this.udpStream.on('message', (msg, rinfo) => {
+    this.udpStream.on('message', (msg: Buffer, rinfo: { port: number, address: string }) => {
       // calculate bytes/sec rate (once per 2 sec) and do DS requests
       if ((this.statusBytesPerSec.lastTime + 2000) < Date.now().valueOf()) {
         this.statusBytesPerSec.avgBytesSec = Math.round(1000 * this.statusBytesPerSec.bytes / (Date.now().valueOf() - this.statusBytesPerSec.lastTime))
@@ -100,7 +100,7 @@ class mavManager {
     this.mav = this.inStream.pipe(new MavLinkPacketSplitter()).pipe(new MavLinkPacketParser())
 
     // what to do when we get a message
-    this.mav.on('data', packet => {
+    this.mav.on('data', (packet: any) => {
       const clazz = REGISTRY[packet.header.msgid]
       if (!clazz) {
         // bad message - can't process here any further
@@ -171,7 +171,7 @@ class mavManager {
     })
   }
 
-  decodeFlightSwVersion (flightSwVersion) {
+  decodeFlightSwVersion (flightSwVersion: number) {
     // decode 32 bit flight_sw_version mavlink parameter - corresponds to encoding in ardupilot GCS_MAVLINK::send_autopilot_version
     const fwTypeId = (flightSwVersion >> 0) % 256
     const patch = (flightSwVersion >> 8) % 256
@@ -220,7 +220,7 @@ class mavManager {
     this.udpStream = udp.createSocket('udp4')
     this.statusBytesPerSec = { avgBytesSec: 0, bytes: 0, lastTime: Date.now().valueOf() }
 
-    this.udpStream.on('message', (msg, rinfo) => {
+    this.udpStream.on('message', (msg: Buffer, rinfo: { port: number, address: string }) => {
       // lock onto server port
       if (this.RinudpPort === null || this.RinudpIP === null) {
         this.RinudpPort = rinfo.port
@@ -245,7 +245,7 @@ class mavManager {
     this.udpStream.bind(this.inudpPort, this.inudpIP)
   }
 
-  sendData (msg, component?: any) {
+  sendData (msg: any, component?: any) {
     // Set the default target component if it wasn't specified
     if (component === null || component === undefined) {
       component = minimal.MavComponent.ONBOARD_COMPUTER
@@ -266,7 +266,7 @@ class mavManager {
     const buffer = protocol.serialize(msg, this.seq++)
     this.seq &= 255
 
-    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, function (error) {
+    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, function (error: Error | null) {
       /* istanbul ignore next - error callback loses 'this' (non-arrow fn); UDP send-error path would throw, upstream bug */
       if (error) {
         this.udpStream.close()
@@ -278,7 +278,7 @@ class mavManager {
     })
   }
 
-  sendHeartbeat (mavType, autopilot, component) {
+  sendHeartbeat (mavType: number, autopilot: number, component: number) {
 
     // Set defaults if parameters are not provided
     if (mavType === null || mavType === undefined) {
@@ -307,7 +307,7 @@ class mavManager {
     this.sendData(heartbeatMessage, component)
   }
 
-  sendCommandAck (commandReceived, commandResult, senderSysId, senderCompId, targetComponent) {
+  sendCommandAck (commandReceived: number, commandResult: number, senderSysId: number, senderCompId: number, targetComponent: number) {
     // Set defaults if parameters are not provided
     if (commandResult === null || commandResult === undefined) {
       commandResult = 0
@@ -362,7 +362,7 @@ class mavManager {
     this.sendData(command)
   }
 
-  sendSetMessageInterval (msgId, intervalUsec) {
+  sendSetMessageInterval (msgId: number, intervalUsec: number) {
     // ask the FC to stream a specific message at a fixed interval
     // (MAV_CMD_SET_MESSAGE_INTERVAL). intervalUsec = -1 disables, 0 = default rate
     const command = new common.SetMessageIntervalCommand(this.targetSystem, this.targetComponent)
@@ -372,7 +372,7 @@ class mavManager {
     this.sendData(command)
   }
 
-  sendRTCMMessage (gpmessage, seq) {
+  sendRTCMMessage (gpmessage: Buffer, seq: number) {
     // create a rtcm message for the flight controller
     let flags = 0
     if (gpmessage.length > 180) {

@@ -1,14 +1,18 @@
 const { exec, execSync, execFile } = require('child_process')
 
-function getAdapters (callback) {
+// Internal node-callback shape used throughout this module: either called with an
+// error (string/Error) or with (null, result) where result varies per function.
+type Callback = (error: any, result?: any) => void
+
+function getAdapters (callback: Callback) {
   // Get all network adapter name, type and states
-  exec('sudo nmcli -t -f device,type,state dev', (error, stdout, stderr) => {
+  exec('sudo nmcli -t -f device,type,state dev', (error: Error | null, stdout: string, stderr: string) => {
     const netStatusList: any[] = []
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
     } else {
-      stdout.split('\n').forEach(function (item) {
+      stdout.split('\n').forEach(function (item: string) {
         const device = item.split(':')
         if (device.length === 3 && device[1] !== 'loopback' && device[1] !== 'bridge' && device[1] !== 'wifi-p2p' && device[1] !== 'can0' && device[1] !== 'can1') {
           console.log('Adding Network device ' + device[0])
@@ -21,7 +25,7 @@ function getAdapters (callback) {
               const allFreqs = output.toString().split('\n')
               for (let i = 0, len = allFreqs.length; i < len; i++) {
                 if (allFreqs[i].includes('Channel ') && !allFreqs[i].includes('Current')) {
-                  const ln = allFreqs[i].split(' ').filter(i => i)
+                  const ln = allFreqs[i].split(' ').filter((i: string) => i)
                   if (ln.length > 4) {
                     freqList.push({ value: parseInt(ln[1]), freq: ln[3], label: '' + ln[1] + ' (' + ln[3] + ' GHz)', band: ((parseFloat(ln[3]) < 3) ? 'bg' : 'a') })
                   }
@@ -40,9 +44,9 @@ function getAdapters (callback) {
   })
 }
 
-function getWirelessStatus (callback) {
+function getWirelessStatus (callback: Callback) {
   // get the "flight mode" status of the wireless (wifi) adapters
-  exec('sudo nmcli -t radio wifi', (error, stdout, stderr) => {
+  exec('sudo nmcli -t radio wifi', (error: Error | null, stdout: string, stderr: string) => {
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
@@ -57,8 +61,8 @@ function getWirelessStatus (callback) {
   })
 }
 
-function setWirelessStatus (status, callback) {
-  exec('sudo nmcli radio wifi ' + ((status === true) ? 'on' : 'off') + ' && sudo nmcli -t radio wifi', (error, stdout, stderr) => {
+function setWirelessStatus (status: boolean, callback: Callback) {
+  exec('sudo nmcli radio wifi ' + ((status === true) ? 'on' : 'off') + ' && sudo nmcli -t radio wifi', (error: Error | null, stdout: string, stderr: string) => {
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
@@ -72,15 +76,15 @@ function setWirelessStatus (status, callback) {
   })
 }
 
-function activateConnection (conName, callback) {
+function activateConnection (conName: string, callback: Callback) {
   // activate the connection (by id)
   // assumed that conName is a valid UUID
-  execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'connection.autoconnect', 'yes'], (error, stdout, stderr) => {
+  execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'connection.autoconnect', 'yes'], (error: Error | null, stdout: string, stderr: string) => {
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
     } else {
-      execFile('sudo', ['nmcli', 'connection', 'up', conName], (error, stdout, stderr) => {
+      execFile('sudo', ['nmcli', 'connection', 'up', conName], (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
@@ -93,16 +97,16 @@ function activateConnection (conName, callback) {
   })
 }
 
-function deactivateConnection (conName, callback) {
+function deactivateConnection (conName: string, callback: Callback) {
   // deactivate the connection (by id)
   // assumed that conName is a valid UUID
   // need to disable auto-connect too
-  execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'connection.autoconnect', 'no'], (error, stdout, stderr) => {
+  execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'connection.autoconnect', 'no'], (error: Error | null, stdout: string, stderr: string) => {
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
     } else {
-      execFile('sudo', ['nmcli', 'connection', 'down', conName], (error, stdout, stderr) => {
+      execFile('sudo', ['nmcli', 'connection', 'down', conName], (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
@@ -115,8 +119,8 @@ function deactivateConnection (conName, callback) {
   })
 }
 
-function getPrimaryWifiDevice(callback) {
-  exec('iw dev | grep Interface | awk \'{print $2}\'', (error, stdout, stderr) => {
+function getPrimaryWifiDevice(callback: Callback) {
+  exec('iw dev | grep Interface | awk \'{print $2}\'', (error: Error | null, stdout: string, stderr: string) => {
       if (error) {
           console.error(`exec error: ${error}`)
           return callback(error)
@@ -130,13 +134,13 @@ function getPrimaryWifiDevice(callback) {
   });
 }
 
-function getWifiScan(callback) {
-  getPrimaryWifiDevice((error, device) => {
+function getWifiScan(callback: Callback) {
+  getPrimaryWifiDevice((error: any, device: string) => {
     if (error) {
       return callback(error)
     }
 
-    exec(`sudo iw dev ${device} scan ap-force`, (error, stdout, stderr) => {
+    exec(`sudo iw dev ${device} scan ap-force`, (error: Error | null, stdout: string, stderr: string) => {
       if (error) {
         console.error(`exec error: ${error}`)
         return callback(error)
@@ -149,7 +153,7 @@ function getWifiScan(callback) {
       const networks: any[] = [];
       let current: any = null;
 
-      stdout.split("\n").forEach(line => {
+      stdout.split("\n").forEach((line: string) => {
         line = line.trim();
 
         if (line.startsWith("BSS ")) {
@@ -190,7 +194,7 @@ function getWifiScan(callback) {
   })
 }
 
-function addConnection (conNameStr, conType, conAdapter, conSettings, callback) {
+function addConnection (conNameStr: string, conType: string, conAdapter: string, conSettings: any, callback: Callback) {
   // add a new connection with name conNameStr and settings
   // conSettings
   // nmcli connection add type wifi ifname $IFNAME con-name $APNAME ssid $SSID
@@ -212,22 +216,22 @@ function addConnection (conNameStr, conType, conAdapter, conSettings, callback) 
     nmcliArgs.push('ipv4.method', conSettings.ipaddresstype, 'connection.autoconnect', 'no');
 
     // run nmcli connection add safely
-    execFile('sudo', ['nmcli', ...nmcliArgs], (error, stdout, stderr) => {
+    execFile('sudo', ['nmcli', ...nmcliArgs], (error: Error | null, stdout: string, stderr: string) => {
       if (error || stderr) {
         console.error(`execFile error: ${error || stderr}`);
         return callback(error || stderr);
       } else {
         // After connection added, get the connection UUID.
-        execFile('sudo', ['nmcli', '-g', 'connection.uuid', 'con', 'show', conNameStr], (error2, stdout2, stderr2) => {
+        execFile('sudo', ['nmcli', '-g', 'connection.uuid', 'con', 'show', conNameStr], (error2: Error | null, stdout2: string, stderr2: string) => {
           if (error2 || stderr2) {
             console.error(`execFile error (uuid): ${error2 || stderr2}`);
             return callback(error2 || stderr2);
           } else {
             const conUUID = stdout2.split('\n')[stdout2.split('\n').length - 2];
             console.log('Added network Wifi: ' + conNameStr + ' - ' + conAdapter + ' - ' + conUUID);
-            this.editConnection(conUUID, conSettings, (err) => {
+            this.editConnection(conUUID, conSettings, (err: any) => {
               // set autoconnect back to "yes"
-              execFile('sudo', ['nmcli', 'connection', 'mod', conUUID, 'connection.autoconnect', 'yes'], (error3, stdout3, stderr3) => {
+              execFile('sudo', ['nmcli', 'connection', 'mod', conUUID, 'connection.autoconnect', 'yes'], (error3: Error | null, stdout3: string, stderr3: string) => {
                 if (!err && !error3 && !stderr3) {
                   console.log('addConnection() wifi OK');
                   return callback(null, 'AddOK');
@@ -245,7 +249,7 @@ function addConnection (conNameStr, conType, conAdapter, conSettings, callback) 
   } else {
     exec('sudo nmcli connection add type ' + conType + ' ifname ' + conAdapter +
              ' con-name ' + conNameStr + ' connection.autoconnect no ' + '&&' +
-             'sudo nmcli -g connection.uuid con show ' + conNameStr, (error, stdout, stderr) => {
+             'sudo nmcli -g connection.uuid con show ' + conNameStr, (error: Error | null, stdout: string, stderr: string) => {
       if (stderr) {
         console.error(`exec error: ${error}`)
         return callback(stderr)
@@ -253,9 +257,9 @@ function addConnection (conNameStr, conType, conAdapter, conSettings, callback) 
         // once the network is created, add in the settings
         const conUUID = stdout.split('\n')[stdout.split('\n').length - 2]
         console.log('Added network Wired: ' + conNameStr + ' - ' + conAdapter + ' - ' + conUUID)
-        this.editConnection(conUUID, conSettings, (err) => {
+        this.editConnection(conUUID, conSettings, (err: any) => {
           // set autoconnect back to "yes"
-          exec('sudo nmcli connection mod ' + conUUID + ' connection.autoconnect yes', (error, stdout, stderr) => {
+          exec('sudo nmcli connection mod ' + conUUID + ' connection.autoconnect yes', (error: Error | null, stdout: string, stderr: string) => {
             if (!err && !stderr) {
               console.log('addConnection() wired OK')
               return callback(null, 'AddOK')
@@ -271,22 +275,22 @@ function addConnection (conNameStr, conType, conAdapter, conSettings, callback) 
   }
 }
 
-function editConnection (conName, conSettings, callback) {
+function editConnection (conName: string, conSettings: any, callback: Callback) {
   // edit an existing connection
   // assumed that conName is a valid UUID
   // there are 4 types of edits - AttachedInterface, IP, Wifi security, Wifi AP
   // small amount of callback hell here :(
   console.log(conSettings)
-  editConnectionAttached(conName, conSettings, (errAttach) => {
+  editConnectionAttached(conName, conSettings, (errAttach: any) => {
     console.log('Attach')
     if (!errAttach) {
-      editConnectionIP(conName, conSettings, (errIP) => {
+      editConnectionIP(conName, conSettings, (errIP: any) => {
         console.log('IP')
         if (!errIP) {
-          editConnectionPSK(conName, conSettings, (errPSK) => {
+          editConnectionPSK(conName, conSettings, (errPSK: any) => {
             console.log('PSK')
             if (!errPSK) {
-              editConnectionAPClient(conName, conSettings, (errAP) => {
+              editConnectionAPClient(conName, conSettings, (errAP: any) => {
                 console.log('AP')
                 if (!errAP) {
                   return callback(null, 'EditOK')
@@ -311,13 +315,13 @@ function editConnection (conName, conSettings, callback) {
   })
 }
 
-function editConnectionAttached (conName, conSettings, callback) {
+function editConnectionAttached (conName: string, conSettings: any, callback: Callback) {
   // edit the attached interface for a connection
   if (conSettings.attachedIface === '&quot;&quot;' || conSettings.attachedIface === 'undefined') {
     conSettings.attachedIface = '""'
   }
 
-  execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'connection.interface-name', conSettings.attachedIface], (error, stdout, stderr) => {
+  execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'connection.interface-name', conSettings.attachedIface], (error: Error | null, stdout: string, stderr: string) => {
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
@@ -328,11 +332,11 @@ function editConnectionAttached (conName, conSettings, callback) {
   })
 }
 
-function editConnectionIP (conName, conSettings, callback) {
+function editConnectionIP (conName: string, conSettings: any, callback: Callback) {
   // first sort out the IP Addressing (DHCP/static) for LAN and Wifi Client
   if (!conSettings.ssid || Object.keys(conSettings.ssid).length === 0 || conSettings.mode === 'infrastructure') {
     if (conSettings.ipaddresstype === 'auto') {
-      execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'ipv4.method', 'auto', 'ipv4.addresses', ''], (error, stdout, stderr) => {
+      execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'ipv4.method', 'auto', 'ipv4.addresses', ''], (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
@@ -343,7 +347,7 @@ function editConnectionIP (conName, conSettings, callback) {
       })
     } else if (conSettings.ipaddress && Object.keys(conSettings.ipaddress).length !== 0 && conSettings.subnet && Object.keys(conSettings.subnet).length !== 0) {
       execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'ipv4.addresses', conSettings.ipaddress + '/' +
-        netmask2CIDR(conSettings.subnet), 'ipv4.method', conSettings.ipaddresstype], (error, stdout, stderr) => {
+        netmask2CIDR(conSettings.subnet), 'ipv4.method', conSettings.ipaddresstype], (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
@@ -359,7 +363,7 @@ function editConnectionIP (conName, conSettings, callback) {
   }
 }
 
-function editConnectionPSK (conName, conSettings, callback) {
+function editConnectionPSK (conName: string, conSettings: any, callback: Callback) {
   // now sort out Wifi client/ap settings - password and security type
   if (!conSettings.mode || Object.keys(conSettings.mode).length === 0) {
     return callback(null, 'EditNotRequired')
@@ -369,12 +373,12 @@ function editConnectionPSK (conName, conSettings, callback) {
     if (conSettings.wpaType !== 'none' &&
             conSettings.ssid && Object.keys(conSettings.ssid).length !== 0 &&
             conSettings.password && Object.keys(conSettings.password).length !== 0) {
-            execFile('sudo', ['nmcli', 'connection', 'mod', conName, '802-11-wireless-security.key-mgmt', conSettings.wpaType], (error, stdout, stderr) => {
+            execFile('sudo', ['nmcli', 'connection', 'mod', conName, '802-11-wireless-security.key-mgmt', conSettings.wpaType], (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
         } else {
-          execFile('sudo', ['nmcli', '-s', 'connection', 'mod', conName, '802-11-wireless-security.pairwise', 'ccmp', '802-11-wireless-security.psk', conSettings.password], (error, stdout, stderr) => {
+          execFile('sudo', ['nmcli', '-s', 'connection', 'mod', conName, '802-11-wireless-security.pairwise', 'ccmp', '802-11-wireless-security.psk', conSettings.password], (error: Error | null, stdout: string, stderr: string) => {
             if (stderr) {
               console.error(`exec error: ${error}`)
               return callback(stderr)
@@ -388,7 +392,7 @@ function editConnectionPSK (conName, conSettings, callback) {
     }
     else if (conSettings.wpaType === 'none' &&
                  conSettings.ssid && Object.keys(conSettings.ssid).length !== 0) {
-      execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'remove', '802-11-wireless-security'], (error, stdout, stderr) => {
+      execFile('sudo', ['nmcli', 'connection', 'mod', conName, 'remove', '802-11-wireless-security'], (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
@@ -404,7 +408,7 @@ function editConnectionPSK (conName, conSettings, callback) {
   }
 }
 
-function editConnectionAPClient (conName, conSettings, callback) {
+function editConnectionAPClient (conName: string, conSettings: any, callback: Callback) {
   // now sort out Wifi ap or client settings - ssid, band, starting ip
   if (!conSettings.mode || Object.keys(conSettings.mode).length === 0) {
     return callback(null, 'EditNotRequired')
@@ -422,7 +426,7 @@ function editConnectionAPClient (conName, conSettings, callback) {
       if (conSettings.wpaType !== 'none') {
         cmds.push('802-11-wireless-security.group', 'ccmp', '802-11-wireless-security.wps-method', '1')
       }
-      execFile('sudo', cmds, (error, stdout, stderr) => {
+      execFile('sudo', cmds, (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
@@ -439,7 +443,7 @@ function editConnectionAPClient (conName, conSettings, callback) {
   } else {
     // client connection - edit ssid if required
     if (conSettings.ssid && Object.keys(conSettings.ssid).length !== 0) {
-      execFile('sudo', ['nmcli', 'connection', 'mod', conName, '802-11-wireless.ssid', conSettings.ssid], (error, stdout, stderr) => {
+      execFile('sudo', ['nmcli', 'connection', 'mod', conName, '802-11-wireless.ssid', conSettings.ssid], (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
@@ -456,10 +460,10 @@ function editConnectionAPClient (conName, conSettings, callback) {
   }
 }
 
-function deleteConnection (conName, callback) {
+function deleteConnection (conName: string, callback: Callback) {
   // delete the connection (by id)
   // assumed that conName is a valid UUID
-  execFile('sudo', ['nmcli', 'connection', 'delete', conName], (error, stdout, stderr) => {
+  execFile('sudo', ['nmcli', 'connection', 'delete', conName], (error: Error | null, stdout: string, stderr: string) => {
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
@@ -470,7 +474,7 @@ function deleteConnection (conName, callback) {
   })
 }
 
-function getConnections (callback) {
+function getConnections (callback: Callback) {
   let output = ''
   const conStatusList: any[] = []
   try {
@@ -511,15 +515,15 @@ function getConnections (callback) {
   }
 }
 
-function getConnectionDetails (conName, callback) {
-  execFile('sudo', ['nmcli', '-s', '-t', '-f', 'ipv4.addresses,802-11-wireless.band,ipv4.method,IP4.ADDRESS,802-11-wireless.ssid,802-11-wireless.mode,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,connection.interface-name,802-11-wireless.channel', 'connection', 'show', conName], (error, stdout, stderr) => {
+function getConnectionDetails (conName: string, callback: Callback) {
+  execFile('sudo', ['nmcli', '-s', '-t', '-f', 'ipv4.addresses,802-11-wireless.band,ipv4.method,IP4.ADDRESS,802-11-wireless.ssid,802-11-wireless.mode,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk,connection.interface-name,802-11-wireless.channel', 'connection', 'show', conName], (error: Error | null, stdout: string, stderr: string) => {
     if (stderr) {
       // no connection with that name
       console.error(`exec error: ${error}`)
       return callback(stderr)
     } else {
       const ret: any = { DHCP: 'auto', IP: '', subnet: '', mode: '', wpaType: 'none', password: '' }
-      stdout.split('\n').forEach(function (item) {
+      stdout.split('\n').forEach(function (item: string) {
         if (item.split(':')[0] === '802-11-wireless.ssid') {
           ret.ssid = item.split(':')[1]
         } else if (item.split(':')[0] === '802-11-wireless.band') {
@@ -557,7 +561,7 @@ function getConnectionDetails (conName, callback) {
   })
 }
 
-function CIDR2netmask (bitCountstr) {
+function CIDR2netmask (bitCountstr: string) {
   const mask: any[] = []
   let bitCount = parseInt(bitCountstr)
   // console.log(bitCountstr);
@@ -570,13 +574,13 @@ function CIDR2netmask (bitCountstr) {
   return mask.join('.')
 }
 
-function netmask2CIDR (mask) {
+function netmask2CIDR (mask: string) {
   let cidr = ''
   for (const m of mask.split('.')) {
     if (parseInt(m) > 255) { throw 'ERROR: Invalid Netmask' } // Check each group is 0-255
     if (parseInt(m) > 0 && parseInt(m) < 128) { throw 'ERROR: Invalid Netmask' }
 
-    cidr += (m >>> 0).toString(2)
+    cidr += ((m as unknown as number) >>> 0).toString(2)
   }
   // Condition to check for validity of the netmask
   if (cidr.substring(cidr.search('0'), 32).search('1') !== -1) {

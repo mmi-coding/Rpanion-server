@@ -27,7 +27,7 @@ class NetworkPriority {
 
   // Read rx/tx byte counters for every interface (skipping loopback).
   readNetStats () {
-    const result = {}
+    const result: { [iface: string]: { rx: number; tx: number } } = {}
     let ifaces
     try {
       ifaces = fs.readdirSync(this.netStatsBase)
@@ -79,18 +79,18 @@ class NetworkPriority {
     return out
   }
 
-  getBandwidth (now) {
+  getBandwidth (now: number) {
     return this.sample(now)
   }
 
   // List NetworkManager connections (name / uuid / type).
-  listConnections (callback) {
-    execFile('sudo', ['nmcli', '-t', '-f', 'NAME,UUID,TYPE', 'connection', 'show'], (error, stdout, stderr) => {
+  listConnections (callback: (err: string | null, list?: Array<{ name: string; uuid: string; type: string }>) => void) {
+    execFile('sudo', ['nmcli', '-t', '-f', 'NAME,UUID,TYPE', 'connection', 'show'], (error: Error | null, stdout: string, stderr: string) => {
       if (stderr && stderr.toString().trim() !== '') {
         console.error(`exec error: ${error}`)
         return callback(stderr.toString().trim(), [])
       }
-      const list = stdout.toString().trim().split('\n').filter(line => line !== '').map(line => {
+      const list = stdout.toString().trim().split('\n').filter((line: string) => line !== '').map((line: string) => {
         const parts = line.split(':')
         return { name: parts[0], uuid: parts[1], type: parts[2] }
       })
@@ -100,10 +100,10 @@ class NetworkPriority {
 
   // Set a connection's autoconnect priority (higher wins) and IPv4 route
   // metric (lower wins for the default route).
-  setPriority (conName, priority, metric, callback) {
+  setPriority (conName: string, priority: number, metric: number, callback: (err: string | null) => void) {
     execFile('sudo', ['nmcli', 'connection', 'modify', conName,
       'connection.autoconnect-priority', String(priority),
-      'ipv4.route-metric', String(metric)], (error, stdout, stderr) => {
+      'ipv4.route-metric', String(metric)], (error: Error | null, stdout: string, stderr: string) => {
       if (stderr && stderr.toString().trim() !== '') {
         console.error(`exec error: ${error}`)
         return callback(stderr.toString().trim())

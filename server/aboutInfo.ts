@@ -2,9 +2,9 @@ const process = require('process')
 const { exec, spawn, execSync } = require('child_process')
 const si = require('systeminformation')
 
-function getSoftwareInfo (callback) {
+function getSoftwareInfo (callback: (...args: any[]) => void) {
   // get the OS, Node.js and Rpanion-server versions
-  si.osInfo(function (data) {
+  si.osInfo(function (data: any) {
     const swstring = '' + data.distro + ' - ' + data.release + ' (' + data.codename + ')'
     let rpanionVersion = process.env.npm_package_version
     if (process.env.NODE_ENV !== 'development') {
@@ -18,10 +18,10 @@ function getSoftwareInfo (callback) {
   })
 }
 
-function getDiskInfo (callback) {
+function getDiskInfo (callback: (...args: any[]) => void) {
   // get the used and total disk space (in Gb) of root "/"
   // callback is (totalsize, usedsize, percentUsed, err)
-  si.fsSize(function (data) {
+  si.fsSize(function (data: any) {
     for (const disk of data) {
       if (disk.mount === '/') {
         return callback((disk.size / (1024 * 1024 * 1024)).toFixed(2), (disk.used / (1024 * 1024 * 1024)).toFixed(2), disk.use, null)
@@ -44,7 +44,7 @@ function getDiskInfo (callback) {
 function shutdownCC () {
   // shutdown the companion computer
   console.log('Shutting down')
-  exec('sudo shutdown now', function (error, stdout) {
+  exec('sudo shutdown now', function (error: Error | null, stdout: string) {
     if (error) {
       console.log(error)
     }
@@ -82,7 +82,7 @@ function shutdownCC () {
   })
 } */
 
-function getHardwareInfo (callback) {
+function getHardwareInfo (callback: (...args: any[]) => void) {
   // define all values, you want to get back
   const valueObject = {
     cpu: '*',
@@ -90,7 +90,7 @@ function getHardwareInfo (callback) {
     mem: '*'
   }
   // get the CPU, RAM info
-  si.get(valueObject).then(data => {
+  si.get(valueObject).then((data: any) => {
     const CPUString = data.cpu.manufacturer + ' ' + data.cpu.brand +
                     ' (' + data.cpu.speed + 'GHz x ' + data.cpu.cores + ')'
     const hatData = { product: '', vendor: '', version: '' }
@@ -100,7 +100,7 @@ function getHardwareInfo (callback) {
       sysData = execSync('cat /proc/cpuinfo | awk \'/Model/ {print substr($0, index($0,$3))}\'').toString()
     }
     // get Pi HAT data, if it exists
-    exec('cat /proc/device-tree/hat/product && printf "\n" && cat /proc/device-tree/hat/vendor && printf "\n" && cat /proc/device-tree/hat/product_ver', (error, stdout) => {
+    exec('cat /proc/device-tree/hat/product && printf "\n" && cat /proc/device-tree/hat/vendor && printf "\n" && cat /proc/device-tree/hat/product_ver', (error: Error | null, stdout: string) => {
       if (!error && stdout.split('\n').length === 3) {
         const items = stdout.split('\n')
         hatData.product = items[0]
@@ -114,9 +114,9 @@ function getHardwareInfo (callback) {
   })
 }
 
-function getsystemctllog(callback) {
+function getsystemctllog(callback: (log: string) => void) {
   // get the systemctl log
-  exec('journalctl -u rpanion-server.service -n 1000 --no-pager', (error, stdout, stderr) => {
+  exec('journalctl -u rpanion-server.service -n 1000 --no-pager', (error: Error | null, stdout: string, stderr: string) => {
     if (error) {
       console.log(`getsystemctllog exec error: ${error}`)
       return callback(error.toString())

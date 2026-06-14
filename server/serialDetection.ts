@@ -132,7 +132,7 @@ async function detectSerialDevices () {
  * @param {Array} devices - Array of serial device objects
  * @returns {string|null} The path of the serial device or null if not found
  */
-function getSerialPathFromValue(value, devices) {
+function getSerialPathFromValue(value: any, devices: any) {
   for (let i = 0; i < devices.length; i++) {
     if (devices[i].value === value) {
       return devices[i].path;

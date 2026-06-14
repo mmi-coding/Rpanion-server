@@ -1,13 +1,14 @@
 // NTRIP routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function ntripRoutes ({ authenticateToken, ntripClient }) {
+export = function ntripRoutes ({ authenticateToken, ntripClient }: { authenticateToken: any; ntripClient: any }) {
   const router = Router()
 
   // Serve the ntrip info
-  router.get('/api/ntripconfig', authenticateToken, (req, res) => {
-    ntripClient.getSettings((host, port, mountpoint, username, password, active, useTLS) => {
+  router.get('/api/ntripconfig', authenticateToken, (req: Request, res: Response) => {
+    ntripClient.getSettings((host: any, port: any, mountpoint: any, username: any, password: any, active: any, useTLS: any) => {
       res.setHeader('Content-Type', 'application/json')
       res.send({ host, port, mountpoint, username, password, active, useTLS })
     })
@@ -20,7 +21,7 @@ export = function ntripRoutes ({ authenticateToken, ntripClient }) {
     check('mountpoint').isLength({ min: 1 }),
     check('username').isLength({ min: 5 }),
     check('password').isLength({ min: 5 }),
-    check('useTLS').isBoolean()], function (req, res) {
+    check('useTLS').isBoolean()], function (req: Request, res: Response) {
     // User wants to start/stop NTRIP
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -30,7 +31,7 @@ export = function ntripRoutes ({ authenticateToken, ntripClient }) {
 
     ntripClient.setSettings(JSON.parse(req.body.host), req.body.port, JSON.parse(req.body.mountpoint), JSON.parse(req.body.username),
                             JSON.parse(req.body.password), req.body.active, req.body.useTLS)
-    ntripClient.getSettings((host, port, mountpoint, username, password, active, useTLS) => {
+    ntripClient.getSettings((host: any, port: any, mountpoint: any, username: any, password: any, active: any, useTLS: any) => {
       res.setHeader('Content-Type', 'application/json')
       res.send(JSON.stringify({ host, port, mountpoint, username, password, active, useTLS }))
     })

@@ -27,7 +27,7 @@ class cameraSwitcher {
   options: any
   eventEmitter: any
   settings: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.settings = settings
     this.eventEmitter = new events.EventEmitter()
 
@@ -91,7 +91,7 @@ class cameraSwitcher {
     return { ...this.options }
   }
 
-  setSettings (newOptions, callback) {
+  setSettings (newOptions: any, callback: (err: Error | null) => void) {
     const opts = { ...this.options, ...newOptions }
 
     // validation
@@ -144,7 +144,7 @@ class cameraSwitcher {
 
   // Decide which source should be active for a given RC value.
   // Returns 'A', 'B' or null (= stay in the hysteresis dead-band)
-  desiredSourceForValue (value) {
+  desiredSourceForValue (value: number | null | undefined) {
     if (value === null || value === undefined || value === 65535 || value === 0) {
       // 0 / UINT16_MAX = channel not available
       return null
@@ -160,7 +160,7 @@ class cameraSwitcher {
 
   // Process an RC value with debouncing. 'now' is injectable for tests.
   // Returns the newly committed source ('A'/'B') or null if no switch happened.
-  processRcValue (value, now = Date.now()) {
+  processRcValue (value: number | null | undefined, now = Date.now()) {
     this.lastRcValue = value
     this.lastRcTime = now
 
@@ -188,7 +188,7 @@ class cameraSwitcher {
 
   // Perform the actual switch: emit for the gstreamer path or run the
   // configured command for multiplexer boards
-  doSwitch (source, now = Date.now()) {
+  doSwitch (source: string, now = Date.now()) {
     if (source !== 'A' && source !== 'B') {
       return false
     }
@@ -199,7 +199,7 @@ class cameraSwitcher {
     if (this.options.switchMode === 'command') {
       const cmd = source === 'A' ? this.options.commandA : this.options.commandB
       if (cmd !== '') {
-        exec(cmd, (error, stdout, stderr) => {
+        exec(cmd, (error: Error | null, stdout: string, stderr: string) => {
           if (error) {
             console.error('Camera switch command failed: ' + stderr)
           }
@@ -213,7 +213,7 @@ class cameraSwitcher {
   }
 
   // MAVLink packet hook - wired to fcManager's gotMessage in index.js
-  onMavPacket (packet, data) {
+  onMavPacket (packet: any, data: any) {
     if (!this.options.enabled) {
       return
     }

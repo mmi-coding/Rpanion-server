@@ -115,9 +115,43 @@ Enabled `strictNullChecks: true` in `tsconfig`; 103 errors surfaced, all fixed:
 Behaviour-preserving. `typecheck` + `build:server` (`noEmitOnError`) clean,
 both suites 100/100/100/100, e2e 68, lint clean.
 
-### Stage 2b — `noImplicitAny` (follow-on)
+### Stage 2b — `noImplicitAny` (done)
 
-~1080 errors — roughly 10× stage 2a. Replace the remaining `any` boundaries with
-real types and switch `require()` of now-`.ts` deps to typed `import`. Depth
-(full real types end-to-end vs real types for internal logic + `any` at the
-external I/O boundaries) is the open decision.
+Enabled `noImplicitAny: true`; **1017 errors** surfaced (963 TS7006 implicit-any
+params, 49 TS7031 destructured bindings, 5 TS7053 index expressions) across 41
+files. All fixed under the chosen **pragmatic depth** — real types for internal
+logic, `any` only at genuine external I/O boundaries:
+
+- **Express handlers** → `(req: Request, res: Response[, next: NextFunction])`
+  (`import type` from `express`, erased, fine alongside `export =`).
+- **`child_process` exec/execFile/spawn callbacks** → `(error: Error | null,
+  stdout: string, stderr: string)`; stream `data` → `Buffer`, `close` →
+  `number | null`.
+- **Array-method callbacks** → real element type where the array's shape is known
+  (e.g. `String.split` → `string`); `any` where the array came from `JSON.parse`,
+  exec output, or an untyped dep.
+- **External-boundary `any` (correct, not lazy):** node-mavlink message/packet
+  args, `ntrip-client`/`ntrip-decoder`, `settings-store.value()`, socket.io /
+  EventEmitter payloads, request-body config objects.
+- **Internal data structures** → minimal local `type`/`interface` (e.g.
+  networkManager's node-style `type Callback`, videostream's stdin-command shape).
+
+Typing real types surfaced a few **non-implicit-any follow-ons** the agents fixed
+in place: `networkManager.netmask2CIDR` needed `(m as unknown as number)` for the
+`>>>` ToUint32 (erased, behaviour-identical) once `mask: string`; videostream's
+`sendCameraInformation`/`sendVideoStreamInformation` IDs are `number | null`
+(callers pass `null` for unsolicited heartbeats).
+
+**Execution:** a model-tiered multi-agent workflow — 21 agents over disjoint file
+sets (Opus on the 5 complex core files: networkManager, videostream, index,
+flightController, mavManager; Sonnet on managers + route factories; Haiku on the
+small leaves), ~930 annotations. Disjoint partitions → no edit collisions; a
+global `tsc` afterwards confirmed **zero cross-file residuals**.
+
+**Annotation-only**, verified behaviour-preserving: the diff adds no runtime
+assignments/statements and all 32 istanbul-ignore annotations are intact.
+`typecheck` + `build:server` (`noEmitOnError`) clean, both suites
+100/100/100/100, e2e 68, lint clean. The backend now compiles under
+`noImplicitAny` + `strictNullChecks` (full `strict` minus the rarely-impactful
+`strictFunctionTypes`/`strictBindCallApply` sub-flags, which can be a later
+tightening if wanted).

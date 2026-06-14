@@ -17,7 +17,7 @@ class userLogin {
   }
 
   // Serialize and persist the users array.
-  async _saveUsers (users) {
+  async _saveUsers (users: any[]) {
     await fs.writeFile(this.usersFile, JSON.stringify(users, null, 2))
   }
 
@@ -29,11 +29,11 @@ class userLogin {
    * @returns {Promise<boolean>} - A promise that resolves to true if the login details are correct, otherwise false.
    * @throws {Error} - Throws an error if there is an issue reading the users file.
    */
-  async checkLoginDetails(username, password) {
+  async checkLoginDetails(username: string, password: string) {
     try {
       const users = await this._loadUsers()
 
-      const user = users.find(user => user.username === username)
+      const user = users.find((user: any) => user.username === username)
       if (user) {
         const match = await bcrypt.compare(password, user.passwordhash)
         return match
@@ -55,7 +55,7 @@ class userLogin {
     try {
       const users = await this._loadUsers()
       // Normalise: users created before RBAC have no role; treat them as admin.
-      return users.map(user => ({ ...user, role: user.role || 'admin' }))
+      return users.map((user: any) => ({ ...user, role: user.role || 'admin' }))
     } catch (error) {
       console.error('Error getting users:', error)
       return []
@@ -69,10 +69,10 @@ class userLogin {
    * @returns {Promise<string|null>} - The role, 'admin' for pre-RBAC users
    *   without a stored role, or null if the user does not exist / on error.
    */
-  async getUserRole(username) {
+  async getUserRole(username: string) {
     try {
       const users = await this._loadUsers()
-      const user = users.find(user => user.username === username)
+      const user = users.find((user: any) => user.username === username)
       if (!user) {
         return null
       }
@@ -91,7 +91,7 @@ class userLogin {
    * @returns {Promise<boolean>} - A promise that resolves to true if the user was added successfully, otherwise false.
    * @throws {Error} - Throws an error if there is an issue reading the users file.
    */
-  async addUser(username, password, role = 'readonly') {
+  async addUser(username: string, password: string, role = 'readonly') {
     try {
       // New users default to least-privilege ('readonly'); only 'admin' or
       // 'readonly' are valid roles.
@@ -101,7 +101,7 @@ class userLogin {
 
       const users = await this._loadUsers()
 
-      const user = users.find(user => user.username === username)
+      const user = users.find((user: any) => user.username === username)
       if (user) {
         return false
       }
@@ -124,7 +124,7 @@ class userLogin {
    * @returns {Promise<boolean>} - A promise that resolves to true if the user was deleted successfully, otherwise false.
    * @throws {Error} - Throws an error if there is an issue reading the users file.
    */
-  async deleteUser(username) {
+  async deleteUser(username: string) {
     try {
       const users = await this._loadUsers()
 
@@ -133,7 +133,7 @@ class userLogin {
         return false
       }
 
-      const index = users.findIndex(user => user.username === username)
+      const index = users.findIndex((user: any) => user.username === username)
       if (index === -1) {
         return false
       }
@@ -156,11 +156,11 @@ class userLogin {
    * @returns {Promise<boolean>} - A promise that resolves to true if the password was changed successfully, otherwise false.
    * @throws {Error} - Throws an error if there is an issue reading the users file.
    */
-  async changePassword(username, password) {
+  async changePassword(username: string, password: string) {
     try {
       const users = await this._loadUsers()
 
-      const user = users.find(user => user.username === username)
+      const user = users.find((user: any) => user.username === username)
       if (!user) {
         return false
       }
@@ -187,7 +187,7 @@ class userLogin {
    * @returns {Promise<boolean>} - True if the role was changed, otherwise false.
    * @throws {Error} - Throws an error if there is an issue reading the users file.
    */
-  async updateRole(username, role) {
+  async updateRole(username: string, role: string) {
     try {
       if (role !== 'admin' && role !== 'readonly') {
         return false
@@ -195,7 +195,7 @@ class userLogin {
 
       const users = await this._loadUsers()
 
-      const user = users.find(user => user.username === username)
+      const user = users.find((user: any) => user.username === username)
       if (!user) {
         return false
       }

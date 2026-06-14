@@ -1,12 +1,13 @@
 // NetworkManager (wired/WiFi connection) routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function networkRoutes ({ authenticateToken, networkManager }) {
+export = function networkRoutes ({ authenticateToken, networkManager }: { authenticateToken: any; networkManager: any }) {
   const router = Router()
 
-  router.get('/api/networkadapters', authenticateToken, (req, res) => {
-    networkManager.getAdapters((err, netDeviceList) => {
+  router.get('/api/networkadapters', authenticateToken, (req: Request, res: Response) => {
+    networkManager.getAdapters((err: any, netDeviceList: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         const ret = { netDevice: netDeviceList }
@@ -20,8 +21,8 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
     })
   })
 
-  router.get('/api/wifiscan', authenticateToken, (req, res) => {
-    networkManager.getWifiScan((err, wifiList) => {
+  router.get('/api/wifiscan', authenticateToken, (req: Request, res: Response) => {
+    networkManager.getWifiScan((err: any, wifiList: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         const ret = { detWifi: wifiList }
@@ -35,8 +36,8 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
     })
   })
 
-  router.get('/api/wirelessstatus', authenticateToken, (req, res) => {
-    networkManager.getWirelessStatus((err, status) => {
+  router.get('/api/wirelessstatus', authenticateToken, (req: Request, res: Response) => {
+    networkManager.getWirelessStatus((err: any, status: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         const ret = { wirelessEnabled: status }
@@ -50,14 +51,14 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
     })
   })
 
-  router.post('/api/setwirelessstatus', authenticateToken, [check('status').isBoolean()], (req, res) => {
+  router.post('/api/setwirelessstatus', authenticateToken, [check('status').isBoolean()], (req: Request, res: Response) => {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/setwirelessstatus ', { message: JSON.stringify(errors.array()) })
       return res.status(422).json({ error: JSON.stringify(errors.array()) })
     }
     // user wants to toggle wifi enabled/disabled
-    networkManager.setWirelessStatus(req.body.status, (err, status) => {
+    networkManager.setWirelessStatus(req.body.status, (err: any, status: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         const ret = { wirelessEnabled: status }
@@ -71,8 +72,8 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
     })
   })
 
-  router.get('/api/networkconnections', authenticateToken, (req, res) => {
-    networkManager.getConnections((err, netConnectionList) => {
+  router.get('/api/networkconnections', authenticateToken, (req: Request, res: Response) => {
+    networkManager.getConnections((err: any, netConnectionList: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         const ret = { netConnection: netConnectionList }
@@ -87,14 +88,14 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
   })
 
   // Get details of a network connection by connection ID
-  router.post('/api/networkIP', authenticateToken, [check('conName').isUUID()], (req, res) => {
+  router.post('/api/networkIP', authenticateToken, [check('conName').isUUID()], (req: Request, res: Response) => {
     // Finds the validation errors in this request and wraps them in an object with handy functions
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/networkIP ', { message: JSON.stringify(errors.array()) })
       return res.status(422).json({ error: JSON.stringify(errors.array()) })
     }
-    networkManager.getConnectionDetails(req.body.conName, (err, conDetails) => {
+    networkManager.getConnectionDetails(req.body.conName, (err: any, conDetails: any) => {
       if (!err) {
         res.setHeader('Content-Type', 'application/json')
         const ret = { netConnectionDetails: conDetails }
@@ -109,7 +110,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
   })
 
   // user wants to activate network
-  router.post('/api/networkactivate', authenticateToken, [check('conName').isUUID()], (req, res) => {
+  router.post('/api/networkactivate', authenticateToken, [check('conName').isUUID()], (req: Request, res: Response) => {
     // Finds the validation errors in this request and wraps them in an object with handy functions
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -119,7 +120,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
       console.log('Bad POST vars in /api/networkactivate ', { message: errors.array() })
     } else {
       console.log('Activating network ' + req.body.conName)
-      networkManager.activateConnection(req.body.conName, (err) => {
+      networkManager.activateConnection(req.body.conName, (err: any) => {
         if (err) {
           res.setHeader('Content-Type', 'application/json')
           const ret = { error: err }
@@ -135,7 +136,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
   })
 
   // user wants to deactivate network
-  router.post('/api/networkdeactivate', authenticateToken, [check('conName').isUUID()], (req, res) => {
+  router.post('/api/networkdeactivate', authenticateToken, [check('conName').isUUID()], (req: Request, res: Response) => {
     // Finds the validation errors in this request and wraps them in an object with handy functions
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -145,7 +146,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
       console.log('Bad POST vars in /api/networkdeactivate ', { message: errors.array() })
     } else {
       console.log('Dectivating network ' + req.body.conName)
-      networkManager.deactivateConnection(req.body.conName, (err) => {
+      networkManager.deactivateConnection(req.body.conName, (err: any) => {
         if (err) {
           res.setHeader('Content-Type', 'application/json')
           const ret = { error: err }
@@ -161,7 +162,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
   })
 
   // user wants to delete network
-  router.post('/api/networkdelete', authenticateToken, [check('conName').isUUID()], (req, res) => {
+  router.post('/api/networkdelete', authenticateToken, [check('conName').isUUID()], (req: Request, res: Response) => {
     // Finds the validation errors in this request and wraps them in an object with handy functions
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -171,7 +172,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
       console.log('Bad POST vars in /api/networkdelete ', { message: errors.array() })
     } else {
       console.log('Deleting network ' + req.body.conName)
-      networkManager.deleteConnection(req.body.conName, (err) => {
+      networkManager.deleteConnection(req.body.conName, (err: any) => {
         if (err) {
           res.setHeader('Content-Type', 'application/json')
           const ret = { error: err }
@@ -199,7 +200,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
     check('conSettings.channel').optional().isInt(),
     check('conSettings.mode').optional().isIn(['infrastructure', 'ap'])
   ],
-  (req, res) => {
+  (req: Request, res: Response) => {
     // Finds the validation errors in this request and wraps them in an object with handy functions
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -209,7 +210,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
       console.log('Bad POST vars in /api/networkedit ', { message: errors.array() })
     } else {
       console.log('Editing network ' + req.body.conName)
-      networkManager.editConnection(req.body.conName, req.body.conSettings, (err) => {
+      networkManager.editConnection(req.body.conName, req.body.conSettings, (err: any) => {
         if (err) {
           res.setHeader('Content-Type', 'application/json')
           const ret = { error: err }
@@ -239,7 +240,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
     check('conType').escape(),
     check('conAdapter').escape()
   ],
-  (req, res) => {
+  (req: Request, res: Response) => {
     // Finds the validation errors in this request and wraps them in an object with handy functions
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
@@ -249,7 +250,7 @@ export = function networkRoutes ({ authenticateToken, networkManager }) {
       console.log('Bad POST vars in /api/networkadd ', { message: errors.array() })
     } else {
       console.log('Adding network ' + req.body)
-      networkManager.addConnection(req.body.conName, req.body.conType, req.body.conAdapter, req.body.conSettings, (err) => {
+      networkManager.addConnection(req.body.conName, req.body.conType, req.body.conAdapter, req.body.conSettings, (err: any) => {
         if (err) {
           res.setHeader('Content-Type', 'application/json')
           const ret = { error: err }

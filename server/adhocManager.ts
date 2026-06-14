@@ -10,7 +10,7 @@ class adhocManager {
   device: any
   devicesettings: any
   settings: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.settings = settings
 
     this.devicesettings = this.settings.value('adhoc.devicesettings', null)
@@ -19,7 +19,7 @@ class adhocManager {
     // if Ahoc mode is supposed to be active, then activate it. As OS won't save settings between reboots
     if (this.device !== null) {
       // this.setAdapter(true, this.device, this.devicesettings, null)
-      this.setAdapter(true, this.device, this.devicesettings, (err) => {
+      this.setAdapter(true, this.device, this.devicesettings, (err: any) => {
         if (!err) {
           console.log('Adhoc Init ' + this.device.toString())
         } else {
@@ -29,9 +29,9 @@ class adhocManager {
     }
   }
 
-  getAdapters (callback) {
+  getAdapters (callback: (...args: any[]) => void) {
     // Get all wifi adapters available to system
-    exec('nmcli -t -f device,type,state dev', (error, stdout, stderr) => {
+    exec('nmcli -t -f device,type,state dev', (error: Error | null, stdout: string, stderr: string) => {
       const netStatusList: any[] = []
       let netDeviceSelected: any = {}
       const curSettings = {
@@ -44,13 +44,13 @@ class adhocManager {
         isActive: false,
         gateway: ''
       }
-      let activeDevice = false
+      let activeDevice: string | false = false
 
       if (stderr) {
         console.error(`exec error: ${error}`)
         return callback(stderr)
       } else {
-        stdout.split('\n').forEach(function (item) {
+        stdout.split('\n').forEach(function (item: string) {
           const device = item.split(':')
           if (device.length === 3 && device[1] === 'wifi' && device[2] !== 'unavailable') {
             console.log('Adding Network device ' + device[0])
@@ -61,7 +61,7 @@ class adhocManager {
               const allFreqs = output.toString().split('\n')
               for (let i = 0, len = allFreqs.length; i < len; i++) {
                 if (allFreqs[i].includes('Channel ') && !allFreqs[i].includes('Current')) {
-                  const ln = allFreqs[i].split(' ').filter(i => i)
+                  const ln = allFreqs[i].split(' ').filter((i: string) => i)
                   // can only do 2.4GHz channels in adhoc mode
                   if (ln.length > 4 && parseFloat(ln[3]) < 3) {
                     // istanbul ignore next - the 'a' branch is unreachable: the enclosing if already requires < 3 GHz
@@ -137,7 +137,7 @@ class adhocManager {
     })
   }
 
-  setAdapter (toState, device, settings, callback) {
+  setAdapter (toState: boolean, device: string, settings: any, callback: (...args: any[]) => void) {
     // active or deactivate an ad-hoc connection
     this.settings.setValue('adhoc.devicesettings', settings)
     this.settings.setValue('adhoc.device', toState ? device : null)
@@ -153,14 +153,14 @@ class adhocManager {
       ' && ip addr flush ' + device +
       ' && ip addr add ' + settings.ipaddress + '/16 dev ' + device +
       ' && ip link set ' + device + ' up' +
-      (settings.gateway === '' ? '' : '&& route add default gw ' + settings.gateway + ' ' + device), (error, stdout, stderr) => {
+      (settings.gateway === '' ? '' : '&& route add default gw ' + settings.gateway + ' ' + device), (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.log(`exec error: ${error}`)
           return callback(stderr)
         }
         // refresh
         console.log('Activate Adhoc Success')
-        this.getAdapters((err, netStatusList, netDeviceSelected, settings) => {
+        this.getAdapters((err: any, netStatusList: any, netDeviceSelected: any, settings: any) => {
           if (!err) {
             callback(null, netStatusList, netDeviceSelected, settings)
           } else {
@@ -173,13 +173,13 @@ class adhocManager {
     } else {
       // deactivate
       console.log('Deactivate Adhoc')
-      exec('ip link set ' + device + ' down && sleep 1 && nmcli dev set ' + device + ' managed yes', (error, stdout, stderr) => {
+      exec('ip link set ' + device + ' down && sleep 1 && nmcli dev set ' + device + ' managed yes', (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)
         }
         // refresh
-        this.getAdapters((err, netStatusList, netDeviceSelected, settings) => {
+        this.getAdapters((err: any, netStatusList: any, netDeviceSelected: any, settings: any) => {
           if (!err) {
             callback(null, netStatusList, netDeviceSelected, settings)
           } else {

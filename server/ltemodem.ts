@@ -20,7 +20,7 @@ const serialDetection = require('./serialDetection')
 const VALID_BAUDS = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 3000000]
 
 // SIM7600 +CREG / +CGREG registration states
-const REG_STATES = {
+const REG_STATES: { [k: number]: string } = {
   0: 'Not registered',
   1: 'Registered (home)',
   2: 'Searching',
@@ -30,7 +30,7 @@ const REG_STATES = {
 }
 
 // +COPS <AcT> values
-const ACT_NAMES = {
+const ACT_NAMES: { [k: number]: string } = {
   0: 'GSM',
   1: 'GSM Compact',
   2: 'UMTS',
@@ -68,7 +68,7 @@ class LTEModem {
   qmiHandle: any
   options: any
   settings: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.settings = settings
     this.options = {
       enabled: this.settings.value('ltemodem.enabled', false),
@@ -150,7 +150,7 @@ class LTEModem {
   // --- AT response parsers (pure, static for unit testing) ---
 
   // +CSQ: 18,99 -> rssi dBm = -113 + 2*raw, raw 0..31 (99 = unknown)
-  static parseCSQ (lines) {
+  static parseCSQ (lines: string[]) {
     for (const line of lines) {
       const m = line.match(/\+CSQ:\s*(\d+),\s*(\d+)/)
       if (m) {
@@ -165,7 +165,7 @@ class LTEModem {
   }
 
   // +CREG: 0,1 (also +CGREG/+CEREG) -> registration state
-  static parseCREG (lines) {
+  static parseCREG (lines: string[]) {
     for (const line of lines) {
       const m = line.match(/\+C(?:G|E)?REG:\s*\d+,\s*(\d+)/)
       if (m) {
@@ -182,7 +182,7 @@ class LTEModem {
   }
 
   // +COPS: 0,0,"Vodafone",7 -> operator name + access technology
-  static parseCOPS (lines) {
+  static parseCOPS (lines: string[]) {
     for (const line of lines) {
       const m = line.match(/\+COPS:\s*\d+(?:,\s*\d+,\s*"([^"]*)"(?:,\s*(\d+))?)?/)
       if (m) {
@@ -197,11 +197,11 @@ class LTEModem {
 
   // +CPSI: LTE,Online,505-01,0x5A1E,187214780,257,EUTRAN-BAND3,1850,5,5,-94,-850,-545,15
   // -> system mode, operator MCC-MNC, band (LTE: RSRP/SINR too)
-  static parseCPSI (lines) {
+  static parseCPSI (lines: string[]) {
     for (const line of lines) {
       const m = line.match(/\+CPSI:\s*(.+)/)
       if (m) {
-        const fields = m[1].split(',').map(f => f.trim())
+        const fields = m[1].split(',').map((f: string) => f.trim())
         if (fields.length < 2 || fields[0] === 'NO SERVICE') {
           return { rat: fields[0] || '', online: false, mccmnc: '', band: '' }
         }
@@ -222,7 +222,7 @@ class LTEModem {
   }
 
   // +CGPADDR: 1,10.123.45.67 (sometimes quoted)
-  static parseCGPADDR (lines) {
+  static parseCGPADDR (lines: string[]) {
     for (const line of lines) {
       const m = line.match(/\+CGPADDR:\s*\d+,\s*"?([0-9.]+)"?/)
       if (m && m[1] !== '0.0.0.0') {
@@ -233,7 +233,7 @@ class LTEModem {
   }
 
   // +CPIN: READY (or SIM PIN / SIM PUK), +CME ERROR: SIM not inserted
-  static parsePIN (lines) {
+  static parsePIN (lines: string[]) {
     for (const line of lines) {
       const m = line.match(/\+CPIN:\s*(.+)/)
       if (m) {
@@ -248,7 +248,7 @@ class LTEModem {
   }
 
   // AT+CGMM / AT+CGMI answer with a bare text line before OK
-  static parseIdentLine (lines) {
+  static parseIdentLine (lines: string[] | null) {
     if (!lines) {
       return ''
     }
@@ -261,7 +261,7 @@ class LTEModem {
     return ''
   }
 
-  static isModemNetDriver (driver) {
+  static isModemNetDriver (driver: string) {
     return MODEM_NET_DRIVERS.includes(driver)
   }
 
@@ -269,10 +269,10 @@ class LTEModem {
   // detected port (USB serial and board UARTs) plus the currently
   // configured AT port, minus the flight controller's link - AT chatter
   // must never land in the MAVLink stream
-  static buildProbeCandidates (detected, currentAtPort, excludePaths) {
-    const seen = new Set()
+  static buildProbeCandidates (detected: Array<{ path: string }>, currentAtPort: string, excludePaths: string[]) {
+    const seen = new Set<string>()
     const candidates: any[] = []
-    const add = (p) => {
+    const add = (p: string) => {
       if (!p || p === '' || seen.has(p)) {
         return
       }
@@ -293,7 +293,7 @@ class LTEModem {
 
   // --- serial port handling ---
 
-  openPort (callback) {
+  openPort (callback: (err: Error | null) => void) {
     if (this.portOpen) {
       return callback(null)
     }
@@ -302,19 +302,19 @@ class LTEModem {
     } catch (err) {
       return callback(err)
     }
-    this.port.open((err) => {
+    this.port.open((err: Error | null) => {
       if (err) {
         this.port = null
         return callback(err)
       }
       this.portOpen = true
       this.parser = this.port.pipe(new ReadlineParser({ delimiter: '\r\n' }))
-      this.parser.on('data', (line) => this._onLine(line))
+      this.parser.on('data', (line: any) => this._onLine(line))
       this.port.on('close', () => {
         this.portOpen = false
         this.parser = null
       })
-      this.port.on('error', (portErr) => {
+      this.port.on('error', (portErr: Error) => {
         console.log('LTE modem port error: ' + portErr.toString())
         this.status.error = portErr.toString()
       })
@@ -338,7 +338,7 @@ class LTEModem {
     this.pending = null
   }
 
-  _onLine (line) {
+  _onLine (line: any) {
     if (this.pending) {
       this.pending(line)
     }
@@ -347,13 +347,13 @@ class LTEModem {
 
   // send one AT command, resolve with all response lines (up to OK/ERROR).
   // Commands are queued - the modem handles one at a time
-  sendAT (cmd, timeout = 3000) {
+  sendAT (cmd: string, timeout = 3000) {
     const run = () => this._sendATNow(cmd, timeout)
     this.atQueue = this.atQueue.then(run, run)
     return this.atQueue
   }
 
-  _sendATNow (cmd, timeout) {
+  _sendATNow (cmd: string, timeout: number) {
     return new Promise((resolve, reject) => {
       if (!this.port || !this.portOpen) {
         return reject(new Error('AT port not open'))
@@ -363,7 +363,7 @@ class LTEModem {
         this.pending = null
         reject(new Error('AT timeout: ' + cmd))
       }, timeout)
-      this.pending = (line) => {
+      this.pending = (line: any) => {
         const l = line.toString().trim()
         if (l === '') {
           return
@@ -459,7 +459,7 @@ class LTEModem {
 
       if (!this.portOpen) {
         await new Promise((resolve) => {
-          this.openPort((err) => {
+          this.openPort((err: Error | null) => {
             if (err) {
               this.status.available = false
               this.status.error = 'AT port: ' + err.message
@@ -536,9 +536,9 @@ class LTEModem {
   // --- multi-mode data path (RNDIS / QMI / PPP) ---
   // Promise-wrapping execFile seam (single stub point for tests; never runs
   // ModemManager). Rejects with the command's stderr (or error message).
-  _exec (cmd, args): Promise<any> {
+  _exec (cmd: string, args: string[]): Promise<any> {
     return new Promise((resolve, reject) => {
-      execFile(cmd, args, (error, stdout, stderr) => {
+      execFile(cmd, args, (error: Error | null, stdout: string, stderr: string) => {
         if (error) {
           const msg = (stderr && stderr.toString().trim()) ? stderr.toString().trim() : error.message
           return reject(new Error(msg))
@@ -630,7 +630,7 @@ class LTEModem {
   // Switch the modem's USB composition by PID (e.g. 9001=QMI, 9011=RNDIS) via
   // AT+CUSBPIDSWITCH. This REBOOTS the modem and re-enumerates its USB
   // interfaces, so the AT port drops out for ~30s afterwards.
-  async setUsbMode (pid) {
+  async setUsbMode (pid: string | number) {
     return this.sendAT(`AT+CUSBPIDSWITCH=${pid},1,1`, 15000)
   }
 
@@ -639,27 +639,27 @@ class LTEModem {
   // Probe one serial path at one baud rate: open it, expect OK to AT,
   // then identify the modem. Self-contained session - does not touch the
   // monitor's port object
-  probeAttempt (devPath, baud): Promise<any> {
+  probeAttempt (devPath: string, baud: number): Promise<any> {
     return new Promise((resolve) => {
       let port
       try {
         port = new SerialPort({ path: devPath, baudRate: baud, autoOpen: false })
-      } catch (err) {
+      } catch (err: any) {
         return resolve({ ok: false, error: err.message })
       }
-      port.open((err) => {
+      port.open((err: Error | null) => {
         if (err) {
           return resolve({ ok: false, error: err.message })
         }
         const parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }))
         let pending: ((l: any) => void) | null = null
-        parser.on('data', (line) => {
+        parser.on('data', (line: any) => {
           if (pending) {
             pending(line.toString().trim())
           }
         })
         port.on('error', () => {})
-        const sendCmd = (cmd, timeout) => new Promise((res) => {
+        const sendCmd = (cmd: string, timeout: number) => new Promise((res) => {
           const lines: string[] = []
           const timer = setTimeout(() => {
             pending = null
@@ -678,7 +678,7 @@ class LTEModem {
           }
           port.write(cmd + '\r')
         })
-        const done = (result) => {
+        const done = (result: any) => {
           try {
             port.close()
           } catch (closeErr) { /* already closed */ }
@@ -692,8 +692,8 @@ class LTEModem {
             if (resp === null || !resp.includes('OK')) {
               return done({ ok: false, error: 'no response to AT' })
             }
-            const model = LTEModem.parseIdentLine(await sendCmd('AT+CGMM', 1000))
-            const manufacturer = LTEModem.parseIdentLine(await sendCmd('AT+CGMI', 1000))
+            const model = LTEModem.parseIdentLine(await sendCmd('AT+CGMM', 1000) as string[] | null)
+            const manufacturer = LTEModem.parseIdentLine(await sendCmd('AT+CGMI', 1000) as string[] | null)
             done({ ok: true, model, manufacturer })
           })
       })
@@ -701,7 +701,7 @@ class LTEModem {
   }
 
   // try a candidate at each of its baud rates until one answers
-  async probePort (candidate) {
+  async probePort (candidate: any) {
     for (const baud of candidate.bauds) {
       const r = await this.probeAttempt(candidate.path, baud)
       if (r.ok) {
@@ -751,7 +751,7 @@ class LTEModem {
       const simcom = hits.filter(r => /SIM\d{4}|SIMCOM/i.test((r.model || '') + ' ' + (r.manufacturer || '')))
       const pool = simcom.length > 0 ? simcom : hits
       if (pool.length > 0) {
-        pool.sort((a, b) => a.path.localeCompare(b.path))[0].recommended = true
+        pool.sort((a: any, b: any) => a.path.localeCompare(b.path))[0].recommended = true
       }
 
       const interfaces = this.listNetInterfaces()
@@ -788,7 +788,7 @@ class LTEModem {
       try {
         operstate = fs.readFileSync(path.join(this.netStatsBase, name, 'operstate'), 'utf8').trim()
       } catch (err) { /* ignore */ }
-      const v4 = (addrs[name] || []).find(a => a.family === 'IPv4' || a.family === 4)
+      const v4 = (addrs[name] || []).find((a: any) => a.family === 'IPv4' || a.family === 4)
       out.push({
         name,
         driver,
@@ -807,14 +807,14 @@ class LTEModem {
 
   // ping through a specific interface - proves the route over the modem,
   // not whatever the default route happens to be. Overridable for tests
-  _ping (iface, host): Promise<any> {
+  _ping (iface: string, host: string): Promise<any> {
     return new Promise((resolve) => {
       const p = spawn('ping', ['-I', iface, '-c', '2', '-W', '3', host])
       let out = ''
-      p.stdout.on('data', (d) => { out += d.toString() })
-      p.stderr.on('data', (d) => { out += d.toString() })
-      p.on('error', (err) => resolve({ ok: false, detail: err.message }))
-      p.on('close', (code) => {
+      p.stdout.on('data', (d: any) => { out += d.toString() })
+      p.stderr.on('data', (d: any) => { out += d.toString() })
+      p.on('error', (err: Error) => resolve({ ok: false, detail: err.message }))
+      p.on('close', (code: number | null) => {
         const m = out.match(/rtt [^=]*= ([\d./]+)/)
         resolve({
           ok: code === 0,
@@ -833,7 +833,7 @@ class LTEModem {
   // {name, pass, detail} per step; pass is null for skipped steps
   async testConnection (pingHost = '8.8.8.8') {
     const steps: any[] = []
-    const add = (name, pass, detail) => steps.push({ name, pass, detail })
+    const add = (name: string, pass: boolean | null, detail: string) => steps.push({ name, pass, detail })
 
     // 1. AT port + modem responding
     let openedHere = false
@@ -938,16 +938,16 @@ class LTEModem {
   }
 
   // raw AT console for the web UI
-  sendUserCommand (cmd, callback) {
+  sendUserCommand (cmd: string, callback: (err: Error | null, lines?: string[]) => void) {
     if (typeof cmd !== 'string' || !/^at/i.test(cmd.trim()) || cmd.trim().length > 128) {
-      return callback(new Error('Commands must start with AT and be under 128 characters'), null)
+      return callback(new Error('Commands must start with AT and be under 128 characters'), undefined)
     }
     if (!this.portOpen) {
-      return callback(new Error('AT port not open - enable the modem monitor first'), null)
+      return callback(new Error('AT port not open - enable the modem monitor first'), undefined)
     }
     this.sendAT(cmd.trim(), 10000)
-      .then((lines) => callback(null, lines))
-      .catch((err) => callback(err, null))
+      .then((lines: string[]) => callback(null, lines))
+      .catch((err: Error) => callback(err, undefined))
   }
 
   async getSerialPorts () {
@@ -967,7 +967,7 @@ class LTEModem {
     return { ...this.status, enabled: this.options.enabled, usage: { ...this.usage } }
   }
 
-  setSettings (newSettings, callback) {
+  setSettings (newSettings: any, callback: (err: Error | null) => void) {
     const errors: string[] = []
     const next = { ...this.options }
 

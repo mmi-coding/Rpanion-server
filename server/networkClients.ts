@@ -1,10 +1,10 @@
 const { exec, execSync } = require('child_process')
 const fs = require('fs')
 
-function getClients (callback) {
+function getClients (callback: any) {
   // If in AP mode, get list of clients
   // get all connections
-  exec('nmcli -t -f NAME,UUID,TYPE,DEVICE connection show', (error, stdout, stderr) => {
+  exec('nmcli -t -f NAME,UUID,TYPE,DEVICE connection show', (error: any, stdout: any, stderr: any) => {
     if (stderr) {
       console.error(`exec error: ${error}`)
       return callback(stderr.toString(), null, null)

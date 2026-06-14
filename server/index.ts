@@ -1,3 +1,4 @@
+import type { Request, Response, NextFunction } from 'express'
 const express = require('express')
 const fileUpload = require('express-fileupload')
 const compression = require('compression')
@@ -40,7 +41,7 @@ const MEDIA_ROOT = logpaths.mediaDir; // absolute path to rpanion-server/media
 const io = require('socket.io')(http, { cookie: false })
 
 // Coerce a request-body field to boolean, accepting JSON true or the string 'true'
-const toBool = (v) => v === true || v === 'true'
+const toBool = (v: unknown) => v === true || v === 'true'
 
 // set up rate limiter: maximum of fifty requests per minute
 const RateLimit = require('express-rate-limit')
@@ -52,7 +53,7 @@ const limiter = RateLimit({
   // from 127.0.0.1) never hits the 50-req/min ceiling.  Production behaviour
   // is unchanged.  Set ENABLE_RATE_LIMIT=1 to force the limiter on even in
   // development (e.g. to test the 429 path).
-  skip: (req) => process.env.NODE_ENV === 'development' && !process.env.ENABLE_RATE_LIMIT
+  skip: (req: Request) => process.env.NODE_ENV === 'development' && !process.env.ENABLE_RATE_LIMIT
 })
 
 
@@ -90,7 +91,7 @@ const cellularTuning = new CellularTuning(settings, {
   },
   isStreaming: () => vManager.active && vManager.cameraMode === 'streaming' && vManager.deviceStream !== null,
   getConfiguredBitrate: () => (vManager.videoSettings && vManager.videoSettings.bitrate) || null,
-  setBitrate: (kbps) => vManager.setBitrate(kbps),
+  setBitrate: (kbps: number) => vManager.setBitrate(kbps),
   getAckBitrate: () => vManager.currentBitrate
 })
 
@@ -108,7 +109,7 @@ const { authenticateToken, router: authRouter } = require('./auth')({ userMgmt }
 let isShuttingDown = false
 const SHUTDOWN_TIMEOUT = 10000 // 10 seconds
 
-async function gracefulShutdown(signal, exitCode = 0) {
+async function gracefulShutdown(signal: string, exitCode = 0) {
   if (isShuttingDown) {
     return
   }
@@ -130,7 +131,7 @@ async function gracefulShutdown(signal, exitCode = 0) {
       console.log(`Waiting for ${activeConnections.size} active connections to finish...`)
       
       await new Promise((resolve, reject) => {
-        http.close((err) => {
+        http.close((err: Error | undefined) => {
           if (err) {
             console.error('Error closing HTTP server:', err)
             reject(err)
@@ -199,14 +200,14 @@ process.on('SIGTERM', () => {
 
 // Handle uncaught exceptions
 /* istanbul ignore next -- global handler: triggering uncaughtException would terminate mocha; covered path is gracefulShutdown itself */
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', (err: Error) => {
   console.error('Uncaught exception:', err)
   gracefulShutdown('uncaughtException', 1)
 })
 
 // Handle unhandled promise rejections
 /* istanbul ignore next -- global handler: triggering unhandledRejection would terminate mocha; covered path is gracefulShutdown itself */
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
   console.error('Unhandled rejection at:', promise, 'reason:', reason)
   gracefulShutdown('unhandledRejection', 1)
 })
@@ -221,7 +222,7 @@ process.once('SIGUSR2', () => {
 })
 
 // Got an RTCM message, send to flight controller
-ntripClient.eventEmitter.on('rtcmpacket', (msg, seq) => {
+ntripClient.eventEmitter.on('rtcmpacket', (msg: any, seq: any) => {
   // logManager.writetlog(msg.buf);
   try {
     if (fcManager.m) {
@@ -234,7 +235,7 @@ ntripClient.eventEmitter.on('rtcmpacket', (msg, seq) => {
 
 
 // This function responds to a MAVLink command to capture a photo.
-vManager.eventEmitter.on('digicamcontrol', (senderSysId, senderCompId, targetComponent) => {
+vManager.eventEmitter.on('digicamcontrol', (senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
     if (fcManager.m) {
       // Acknowledge the MAV_CMD_DO_DIGICAM_CONTROL command
@@ -246,7 +247,7 @@ vManager.eventEmitter.on('digicamcontrol', (senderSysId, senderCompId, targetCom
 })
 
 // Got a camera heartbeat event, send to flight controller
-vManager.eventEmitter.on('cameraheartbeat', (mavType, autopilot, component) => {
+vManager.eventEmitter.on('cameraheartbeat', (mavType: any, autopilot: any, component: any) => {
   try {
     if (fcManager.m) {
       fcManager.m.sendHeartbeat(mavType, autopilot, component)
@@ -257,7 +258,7 @@ vManager.eventEmitter.on('cameraheartbeat', (mavType, autopilot, component) => {
 })
 
 // Got a CAMERA_INFORMATION event, send to flight controller
-vManager.eventEmitter.on('camerainfo', (msg, senderSysId, senderCompId, targetComponent) => {
+vManager.eventEmitter.on('camerainfo', (msg: any, senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
     if (fcManager.m) {
       // Acknowledge the CAMERA_INFORMATION request
@@ -270,7 +271,7 @@ vManager.eventEmitter.on('camerainfo', (msg, senderSysId, senderCompId, targetCo
 })
 
 // Got a VIDEO_STREAM_INFORMATION event, send to flight controller
-vManager.eventEmitter.on('videostreaminfo', (msg, senderSysId, senderCompId, targetComponent) => {
+vManager.eventEmitter.on('videostreaminfo', (msg: any, senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
     if (fcManager.m) {
       // Acknowledge the VIDEO_STREAM_INFORMATION request
@@ -283,7 +284,7 @@ vManager.eventEmitter.on('videostreaminfo', (msg, senderSysId, senderCompId, tar
 })
 
 // Got a CAMERA_SETTINGS event, send to flight controller
-vManager.eventEmitter.on('camerasettings', (msg, senderSysId, senderCompId, targetComponent) => {
+vManager.eventEmitter.on('camerasettings', (msg: any, senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
     if (fcManager.m) {
       // Acknowledge the CAMERA_SETTINGS request
@@ -297,7 +298,7 @@ vManager.eventEmitter.on('camerasettings', (msg, senderSysId, senderCompId, targ
 })
 
 // Got a CAMERA_TRIGGER event, send to flight controller
-vManager.eventEmitter.on('cameratrigger', (msg, senderCompId) => {
+vManager.eventEmitter.on('cameratrigger', (msg: any, senderCompId: any) => {
   try {
     if (fcManager.m) {
       // Send the CAMERA_TRIGGER message to the flight controller
@@ -308,7 +309,7 @@ vManager.eventEmitter.on('cameratrigger', (msg, senderCompId) => {
   }
 })
 
-vManager.eventEmitter.on('filesaved', (filepath) => {
+vManager.eventEmitter.on('filesaved', (filepath: string) => {
   try {
     io.sockets.emit('camera:filesaved', { filename: filepath });
     console.log('Pushed filesaved to clients:', filepath);
@@ -319,7 +320,7 @@ vManager.eventEmitter.on('filesaved', (filepath) => {
 
 // Connecting the flight controller datastream to the logger
 // and ntrip and video
-fcManager.eventEmitter.on('gotMessage', (packet, data) => {
+fcManager.eventEmitter.on('gotMessage', (packet: any, data: any) => {
   try {
     ntripClient.onMavPacket(packet, data)
     vManager.onMavPacket(packet, data)
@@ -338,7 +339,7 @@ fcManager.eventEmitter.on('gotMessage', (packet, data) => {
 
 // Camera switcher decided to switch - flip the video pipeline source.
 // In 'command' mode the switch command has already been run by the switcher
-camSwitcher.eventEmitter.on('switch', (source, switchMode) => {
+camSwitcher.eventEmitter.on('switch', (source: any, switchMode: string) => {
   try {
     if (switchMode === 'gstreamer') {
       vManager.switchSource(source)
@@ -431,7 +432,7 @@ app.use('/media', express.static(MEDIA_ROOT))
 // Flight controller routes (extracted to ./routes/flightController.js)
 app.use(require('./routes/flightController')({ authenticateToken, fcManager }))
 
-io.engine.use((req, res, next) => {
+io.engine.use((req: any, res: any, next: any) => {
   const isHandshake = req._query.sid === undefined
   if (isHandshake) {
     authenticateToken(req, res, next)
@@ -470,7 +471,7 @@ if (process.env.NODE_ENV !== 'development')
   /* istanbul ignore next -- spa-catch-all handler: only active in production mode */
   app.get(['/', '/controller', '/about', '/network',
           '/video', '/vpn', '/ntrip', '/cloud', '/flightlogs',
-          '/apclients', '/adhoc', '/logoutconfirm', '/users', '/ppp'], (req, res) => {
+          '/apclients', '/adhoc', '/logoutconfirm', '/users', '/ppp'], (req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, '..', '/build/index.html'))
   })
 }
@@ -479,7 +480,7 @@ if (process.env.NODE_ENV !== 'development')
 const activeConnections = new Set()
 
 // Add connection tracking middleware
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   // Return 503 if shutting down
   if (isShuttingDown) {
     res.set('Connection', 'close')
@@ -520,7 +521,7 @@ app.use((req, res, next) => {
   io,
   gracefulShutdown,
   getIsShuttingDown: () => isShuttingDown,
-  setIsShuttingDown: (v) => { isShuttingDown = v }
+  setIsShuttingDown: (v: boolean) => { isShuttingDown = v }
 };
 
 // Only start the server if this file is being run directly (not imported)

@@ -25,7 +25,7 @@ class TelemetryInjector {
   seq: any
   options: any
   settings: any
-  constructor (settings) {
+  constructor (settings: any) {
     this.settings = settings
     this.options = {
       enabled: this.settings.value('telemetryInjector.enabled', false),
@@ -55,7 +55,7 @@ class TelemetryInjector {
   }
 
   // --- MAVLink encoding ---
-  encodeFloat (name, value) {
+  encodeFloat (name: any, value: any) {
     const m = new common.NamedValueFloat()
     m.timeBootMs = Math.round(process.uptime() * 1000) & 0xffffffff
     m.name = String(name).slice(0, 10)
@@ -64,7 +64,7 @@ class TelemetryInjector {
     return new MavLinkProtocolV2(this.options.sysid, this.options.compid).serialize(m, this.seq)
   }
 
-  encodeText (text, severity) {
+  encodeText (text: any, severity: any) {
     const m = new common.StatusText()
     m.severity = (typeof severity === 'number') ? severity : common.MavSeverity.INFO
     m.text = String(text).slice(0, 50)
@@ -73,7 +73,7 @@ class TelemetryInjector {
   }
 
   // funnel for every source; returns null on success or an Error for a bad reading
-  ingest (obj) {
+  ingest (obj: any) {
     if (obj && typeof obj.name === 'string' && typeof obj.value === 'number') {
       this._send(this.encodeFloat(obj.name, obj.value))
       this.stats.sentFloat++
@@ -92,7 +92,7 @@ class TelemetryInjector {
   }
 
   // parse one NDJSON line and ingest it (UDP + serial sources)
-  _ingestLine (line) {
+  _ingestLine (line: any) {
     const s = line.toString().trim()
     if (s === '') {
       return
@@ -108,14 +108,14 @@ class TelemetryInjector {
   }
 
   // --- seams (stubbed in tests) ---
-  _send (buf) {
+  _send (buf: any) {
     if (!this.sendSock) {
       this.sendSock = dgram.createSocket('udp4')
     }
     this.sendSock.send(buf, ROUTER_PORT, ROUTER_HOST, () => {})
   }
 
-  _makeSerial (devPath, baud) {
+  _makeSerial (devPath: string, baud: number) {
     return new SerialPort({ path: devPath, baudRate: baud })
   }
 
@@ -131,7 +131,7 @@ class TelemetryInjector {
 
   _startUdp () {
     this.udpListener = dgram.createSocket('udp4')
-    this.udpListener.on('message', (msg) => {
+    this.udpListener.on('message', (msg: any) => {
       for (const line of msg.toString().split('\n')) {
         this._ingestLine(line)
       }
@@ -149,7 +149,7 @@ class TelemetryInjector {
       return
     }
     const parser = this.serial.pipe(new ReadlineParser({ delimiter: '\n' }))
-    parser.on('data', (line) => this._ingestLine(line))
+    parser.on('data', (line: any) => this._ingestLine(line))
     this.serial.on('error', () => { this.stats.errors++ })
   }
 
@@ -192,7 +192,7 @@ class TelemetryInjector {
     }
   }
 
-  setSettings (newSettings, callback) {
+  setSettings (newSettings: any, callback: (err: Error | null) => void) {
     const errors: any[] = []
     const next = { ...this.options }
 

@@ -1,12 +1,13 @@
 // Telemetry injector routes. Extracted from index.js.
+import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function telemetryInjectorRoutes ({ authenticateToken, toBool, telemetryInjector }) {
+export = function telemetryInjectorRoutes ({ authenticateToken, toBool, telemetryInjector }: { authenticateToken: any; toBool: any; telemetryInjector: any }) {
   const router = Router()
 
   // telemetry injector settings + status
-  router.get('/api/telemetryinjector', authenticateToken, (req, res) => {
+  router.get('/api/telemetryinjector', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify({ settings: telemetryInjector.getSettings(), status: telemetryInjector.getStatus() }))
   })
@@ -22,7 +23,7 @@ export = function telemetryInjectorRoutes ({ authenticateToken, toBool, telemetr
     check('serialBaud').isInt(),
     check('sysid').isInt({ min: 1, max: 255 }),
     check('compid').isInt({ min: 1, max: 255 })
-  ], function (req, res) {
+  ], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/telemetryinjectormodify', { message: JSON.stringify(errors.array()) })
@@ -38,7 +39,7 @@ export = function telemetryInjectorRoutes ({ authenticateToken, toBool, telemetr
       serialBaud: parseInt(req.body.serialBaud, 10),
       sysid: parseInt(req.body.sysid, 10),
       compid: parseInt(req.body.compid, 10)
-    }, (err) => {
+    }, (err: any) => {
       res.setHeader('Content-Type', 'application/json')
       if (err) {
         res.status(422).send(JSON.stringify({ error: err.message, settings: telemetryInjector.getSettings() }))
@@ -54,7 +55,7 @@ export = function telemetryInjectorRoutes ({ authenticateToken, toBool, telemetr
     check('value').optional().isFloat(),
     check('text').optional().isString().isLength({ max: 50 }),
     check('severity').optional().isInt({ min: 0, max: 7 })
-  ], function (req, res) {
+  ], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       return res.status(422).json({ error: JSON.stringify(errors.array()) })
