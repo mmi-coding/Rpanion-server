@@ -15,7 +15,7 @@ function generateSecretKey () {
   return crypto.randomBytes(64).toString('hex')
 }
 
-module.exports = function authModule ({ userMgmt }) {
+export = function authModule ({ userMgmt }) {
   const RPANION_SECRET_KEY = process.env.RPANION_SECRET_KEY || generateSecretKey()
   const tokenBlacklist = new Set()
   // RBAC: read-only users may not perform mutating (POST) requests. These POST
@@ -83,8 +83,8 @@ module.exports = function authModule ({ userMgmt }) {
       return res.status(422).json({ error: JSON.stringify(errors.array()) })
     }
     // Capture the input fields
-    let username = req.body.username
-    let password = req.body.password
+    const username = req.body.username
+    const password = req.body.password
 
     userMgmt.checkLoginDetails(username, password).then(async (match) => {
       if (match) {

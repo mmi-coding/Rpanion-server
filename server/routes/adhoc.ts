@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function adhocRoutes ({ authenticateToken, adhocManager }) {
+export = function adhocRoutes ({ authenticateToken, adhocManager }) {
   const router = Router()
 
   // Serve the adhocwifi info

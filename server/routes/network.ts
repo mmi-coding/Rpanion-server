@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function networkRoutes ({ authenticateToken, networkManager }) {
+export = function networkRoutes ({ authenticateToken, networkManager }) {
   const router = Router()
 
   router.get('/api/networkadapters', authenticateToken, (req, res) => {

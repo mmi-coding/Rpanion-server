@@ -5,7 +5,7 @@ const fs = require('fs')
 const appRoot = require('app-root-path')
 const logpaths = require('../paths')
 
-module.exports = function systemRoutes ({ authenticateToken, aboutPage, networkClients, logManager, fcManager }) {
+export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, logManager, fcManager }) {
   const router = Router()
 
   // Serve the logfile

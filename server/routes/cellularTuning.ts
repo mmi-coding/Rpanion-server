@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function cellularTuningRoutes ({ authenticateToken, toBool, cellularTuning }) {
+export = function cellularTuningRoutes ({ authenticateToken, toBool, cellularTuning }) {
   const router = Router()
 
   // cellular video tuning settings and status

@@ -3,7 +3,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function lteModemRoutes ({ authenticateToken, toBool, lteModem }) {
+export = function lteModemRoutes ({ authenticateToken, toBool, lteModem }) {
   const router = Router()
 
   // Serve the LTE modem settings, status and detected serial ports

@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function dynamicDnsRoutes ({ authenticateToken, toBool, ddns }) {
+export = function dynamicDnsRoutes ({ authenticateToken, toBool, ddns }) {
   const router = Router()
 
   // Serve the dynamic DNS settings + status

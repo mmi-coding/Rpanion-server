@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function vpnRoutes ({ authenticateToken, VPNManager }) {
+export = function vpnRoutes ({ authenticateToken, VPNManager }) {
   const router = Router()
 
   // Serve the vpn zerotier info

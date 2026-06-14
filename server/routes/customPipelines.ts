@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function customPipelineRoutes ({ authenticateToken, toBool, customPipelines, vManager }) {
+export = function customPipelineRoutes ({ authenticateToken, toBool, customPipelines, vManager }) {
   const router = Router()
 
   // Serve the custom video pipelines and the pipeline used by the last stream

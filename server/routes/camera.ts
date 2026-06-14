@@ -4,7 +4,7 @@ const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 const path = require('path')
 
-module.exports = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }) {
+export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }) {
   const router = Router()
 
   // Capture a single still photo when in photo mode

@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function flightControllerRoutes ({ authenticateToken, fcManager }) {
+export = function flightControllerRoutes ({ authenticateToken, fcManager }) {
   const router = Router()
 
   router.get('/api/FCOutputs', authenticateToken, (req, res) => {

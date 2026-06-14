@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function networkPriorityRoutes ({ authenticateToken, networkPriority }) {
+export = function networkPriorityRoutes ({ authenticateToken, networkPriority }) {
   const router = Router()
 
   // List NetworkManager connections for priority configuration

@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function ntripRoutes ({ authenticateToken, ntripClient }) {
+export = function ntripRoutes ({ authenticateToken, ntripClient }) {
   const router = Router()
 
   // Serve the ntrip info

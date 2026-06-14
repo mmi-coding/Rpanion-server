@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher }) {
+export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher }) {
   const router = Router()
 
   // Serve the camera switcher config and status

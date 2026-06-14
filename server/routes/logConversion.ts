@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function logConversionRoutes ({ authenticateToken, logConversion }) {
+export = function logConversionRoutes ({ authenticateToken, logConversion }) {
   const router = Router()
 
   // Serve the logconversion info

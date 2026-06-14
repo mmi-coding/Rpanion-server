@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function pppRoutes ({ authenticateToken, pppConnectionManager }) {
+export = function pppRoutes ({ authenticateToken, pppConnectionManager }) {
   const router = Router()
 
   router.get('/api/pppconfig', authenticateToken, (req, res) => {

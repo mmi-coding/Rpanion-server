@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function cloudRoutes ({ authenticateToken, cloud }) {
+export = function cloudRoutes ({ authenticateToken, cloud }) {
   const router = Router()
 
   // Serve the cloud info

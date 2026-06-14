@@ -2,7 +2,7 @@
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-module.exports = function telemetryInjectorRoutes ({ authenticateToken, toBool, telemetryInjector }) {
+export = function telemetryInjectorRoutes ({ authenticateToken, toBool, telemetryInjector }) {
   const router = Router()
 
   // telemetry injector settings + status
