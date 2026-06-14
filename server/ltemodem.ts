@@ -271,7 +271,7 @@ class LTEModem {
   // must never land in the MAVLink stream
   static buildProbeCandidates (detected, currentAtPort, excludePaths) {
     const seen = new Set()
-    const candidates = []
+    const candidates: any[] = []
     const add = (p) => {
       if (!p || p === '' || seen.has(p)) {
         return
@@ -358,7 +358,7 @@ class LTEModem {
       if (!this.port || !this.portOpen) {
         return reject(new Error('AT port not open'))
       }
-      const lines = []
+      const lines: string[] = []
       const timer = setTimeout(() => {
         this.pending = null
         reject(new Error('AT timeout: ' + cmd))
@@ -652,7 +652,7 @@ class LTEModem {
           return resolve({ ok: false, error: err.message })
         }
         const parser = port.pipe(new ReadlineParser({ delimiter: '\r\n' }))
-        let pending = null
+        let pending: ((l: any) => void) | null = null
         parser.on('data', (line) => {
           if (pending) {
             pending(line.toString().trim())
@@ -660,7 +660,7 @@ class LTEModem {
         })
         port.on('error', () => {})
         const sendCmd = (cmd, timeout) => new Promise((res) => {
-          const lines = []
+          const lines: string[] = []
           const timer = setTimeout(() => {
             pending = null
             res(null)
@@ -721,7 +721,7 @@ class LTEModem {
     this.scanning = true
     try {
       const detected = await this.getSerialPorts()
-      const exclude = []
+      const exclude: string[] = []
       const fcDevice = this.settings.value('flightcontroller.activeDevice', null)
       if (fcDevice !== null && fcDevice.serial !== undefined) {
         exclude.push(fcDevice.serial)
@@ -736,7 +736,7 @@ class LTEModem {
       // loop reopens it lazily once the scan is over
       this.closePort()
 
-      const results = []
+      const results: any[] = []
       for (const c of candidates) {
         if (c.skipped) {
           results.push({ path: c.path, ok: false, skipped: true, reason: c.reason })
@@ -768,8 +768,8 @@ class LTEModem {
   // list network interfaces with their kernel driver - the modem's RNDIS
   // device shows up as rndis_host/cdc_ether
   listNetInterfaces () {
-    const out = []
-    let names = []
+    const out: any[] = []
+    let names: any[] = []
     try {
       names = fs.readdirSync(this.netStatsBase)
     } catch (err) {
@@ -832,7 +832,7 @@ class LTEModem {
   // -> PDP address -> network interface -> internet. Returns one
   // {name, pass, detail} per step; pass is null for skipped steps
   async testConnection (pingHost = '8.8.8.8') {
-    const steps = []
+    const steps: any[] = []
     const add = (name, pass, detail) => steps.push({ name, pass, detail })
 
     // 1. AT port + modem responding
@@ -968,7 +968,7 @@ class LTEModem {
   }
 
   setSettings (newSettings, callback) {
-    const errors = []
+    const errors: string[] = []
     const next = { ...this.options }
 
     if (typeof newSettings.enabled === 'boolean') {

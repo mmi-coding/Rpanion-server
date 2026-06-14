@@ -186,7 +186,7 @@ class FCDetails {
 
   getUDPOutputs () {
     // get list of current UDP outputs
-    const ret = []
+    const ret: any[] = []
     for (let i = 0, len = this.UDPoutputs.length; i < len; i++) {
       ret.push({ IPPort: this.UDPoutputs[i].IP + ':' + this.UDPoutputs[i].port })
     }
@@ -535,7 +535,7 @@ class FCDetails {
   async getDeviceSettings (callback) {
     // get all serial devices
     this.serialDevices = []
-    let retError = null
+    let retError: Error | null = null
 
     // Detect all serial devices using hardwareDetection module
     this.serialDevices = await serialDetection.detectSerialDevices()

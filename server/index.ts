@@ -362,7 +362,7 @@ fcManager.eventEmitter.on('armed', () => {
 fcManager.eventEmitter.on('disarmed', () => {
 })
 
-let FCStatusLoop = null
+let FCStatusLoop: NodeJS.Timeout | null = null
 
 app.use(express.urlencoded({ extended: true }))
 app.use(pino)

@@ -32,8 +32,8 @@ class adhocManager {
   getAdapters (callback) {
     // Get all wifi adapters available to system
     exec('nmcli -t -f device,type,state dev', (error, stdout, stderr) => {
-      const netStatusList = []
-      let netDeviceSelected = {}
+      const netStatusList: any[] = []
+      let netDeviceSelected: any = {}
       const curSettings = {
         ipaddress: '',
         wpaType: 'none',
@@ -55,7 +55,7 @@ class adhocManager {
           if (device.length === 3 && device[1] === 'wifi' && device[2] !== 'unavailable') {
             console.log('Adding Network device ' + device[0])
             // if wifi, check for avail channels
-            const freqList = []
+            const freqList: any[] = []
             try {
               const output = execSync('iwlist ' + device[0] + ' channel')
               const allFreqs = output.toString().split('\n')

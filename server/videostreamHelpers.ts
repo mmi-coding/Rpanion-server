@@ -67,9 +67,12 @@ export function scanInterfaces (): string[] {
   const iface: string[] = []
   const ifaces = os.networkInterfaces()
   for (const ifacename in ifaces) {
-    for (let j = 0; j < ifaces[ifacename].length; j++) {
-      if (ifaces[ifacename][j].family === 'IPv4') {
-        iface.push(ifaces[ifacename][j].address)
+    // for...in only yields keys present in `ifaces`, so the lookup is always
+    // defined — assert it (no runtime branch) rather than guard a dead path.
+    const list = ifaces[ifacename]!
+    for (let j = 0; j < list.length; j++) {
+      if (list[j].family === 'IPv4') {
+        iface.push(list[j].address)
       }
     }
   }

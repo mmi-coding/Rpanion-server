@@ -59,7 +59,7 @@ class NetworkPriority {
       return []
     }
     const dt = (cur.t - this.lastSample.t) / 1000
-    const out = []
+    const out: any[] = []
     for (const name of Object.keys(cur.perIface)) {
       const prev = this.lastSample.perIface[name]
       const b = cur.perIface[name]

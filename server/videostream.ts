@@ -271,7 +271,7 @@ class videoStream {
         selectedUseUDPPort: 5400,
         selectedIsRecording: false,
         selectedUseTimestamp: false,
-        fpsOptions: [],
+        fpsOptions: [] as any[],
         fpsMax: 0,
         resolutionCaps: [],
         selectedUseCameraHeartbeat: this.useCameraHeartbeat,

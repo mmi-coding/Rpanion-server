@@ -256,7 +256,7 @@ class mavManager {
       return
     }
 
-    let protocol = null
+    let protocol: any = null
     if (this.version === 2) {
       protocol = new MavLinkProtocolV2(this.targetSystem, component)
     } else {
@@ -387,7 +387,7 @@ class mavManager {
     }
     // send data in 180 byte parts
     let buf = Buffer.from(gpmessage)
-    const msgset = []
+    const msgset: any[] = []
     const maxBytes = 180
     while (buf.length > maxBytes) {
       //if (buf.length > maxBytes) {

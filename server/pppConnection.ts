@@ -246,7 +246,7 @@ class PPPConnection {
     // uses ifconfig to get the PPP connection datarate
     getPPPDataRate() {
         if (!this.isConnected) {
-            return { rxRate: 0, txRate: 0 };
+            return { rxRate: 0, txRate: 0, percentusedRx: 0, percentusedTx: 0 };
         }
         // get current data transfer stats for connected PPP session
         try {
