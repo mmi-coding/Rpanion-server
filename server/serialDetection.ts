@@ -141,7 +141,7 @@ function getSerialPathFromValue(value, devices) {
   return null;
 }
 
-module.exports = {
+export = {
   isPi,
   isOrangePi,
   isModemManagerInstalled,

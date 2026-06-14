@@ -51,3 +51,8 @@ __pycache__/
 *.js.map
 # --- emitted JS for converted modules (keep in sync with the .ts conversions) ---
 /server/videostreamHelpers.js
+/server/paths.js
+/server/userLogin.js
+/server/networkClients.js
+/server/networkPriority.js
+/server/serialDetection.js

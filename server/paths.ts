@@ -30,7 +30,7 @@ function getPythonPath() {
 }
 
 // Export the paths
-module.exports = {
+export = {
     usersFile: path.join(baseDir, 'config', 'user.json'),
     settingsFile: path.join(baseDir, 'config', 'settings.json'),
     flightsLogsDir: path.join(baseDir, 'flightlogs'),

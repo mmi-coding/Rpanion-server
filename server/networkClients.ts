@@ -55,4 +55,4 @@ function getClients (callback) {
   })
 }
 
-module.exports = { getClients }
+export = { getClients }

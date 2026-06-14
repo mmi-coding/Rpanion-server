@@ -4,6 +4,8 @@ const bcrypt = require('bcryptjs');
 const logpaths = require('./paths')
 
 class userLogin {
+  usersFile: string
+
   constructor () {
     this.usersFile = logpaths.usersFile
   }
@@ -210,4 +212,4 @@ class userLogin {
 
 }
 
-module.exports = userLogin
+export = userLogin

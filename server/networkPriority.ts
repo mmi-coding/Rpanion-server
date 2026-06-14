@@ -17,6 +17,9 @@ const fs = require('fs')
 const path = require('path')
 
 class NetworkPriority {
+  netStatsBase: string
+  lastSample: any
+
   constructor () {
     this.netStatsBase = '/sys/class/net'
     this.lastSample = null
@@ -110,4 +113,4 @@ class NetworkPriority {
   }
 }
 
-module.exports = NetworkPriority
+export = NetworkPriority
