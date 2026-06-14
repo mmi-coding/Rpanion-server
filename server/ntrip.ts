@@ -6,6 +6,14 @@ const events = require('events')
 const { common } = require('node-mavlink')
 
 class ntrip {
+  client: any
+  settings: any
+  seq: any
+  eventEmitter: any
+  timeofLastPacket: any
+  errorDescription: any
+  status: any
+  options: any
   constructor (settings) {
     this.options = {
       host: '',
@@ -216,4 +224,4 @@ class ntrip {
   }
 }
 
-module.exports = ntrip
+export = ntrip

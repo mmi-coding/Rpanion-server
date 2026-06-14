@@ -51,6 +51,23 @@ const UART_PROBE_BAUDS = [115200, 921600, 460800, 9600]
 const MODEM_NET_DRIVERS = ['rndis_host', 'cdc_ether', 'cdc_ncm', 'cdc_mbim', 'qmi_wwan']
 
 class LTEModem {
+  netStatsBase: any
+  lastReconnectAttempt: any
+  scanning: any
+  polling: any
+  pollTimer: any
+  pending: any
+  atQueue: any
+  portOpen: any
+  parser: any
+  port: any
+  status: any
+  lastRawStats: any
+  usage: any
+  qmiCid: any
+  qmiHandle: any
+  options: any
+  settings: any
   constructor (settings) {
     this.settings = settings
     this.options = {
@@ -188,7 +205,7 @@ class LTEModem {
         if (fields.length < 2 || fields[0] === 'NO SERVICE') {
           return { rat: fields[0] || '', online: false, mccmnc: '', band: '' }
         }
-        const out = {
+        const out: any = {
           rat: fields[0],
           online: fields[1].toLowerCase() === 'online',
           mccmnc: fields[2] || '',
@@ -447,7 +464,7 @@ class LTEModem {
               this.status.available = false
               this.status.error = 'AT port: ' + err.message
             }
-            resolve()
+            resolve(undefined)
           })
         })
         if (!this.portOpen) {
@@ -519,7 +536,7 @@ class LTEModem {
   // --- multi-mode data path (RNDIS / QMI / PPP) ---
   // Promise-wrapping execFile seam (single stub point for tests; never runs
   // ModemManager). Rejects with the command's stderr (or error message).
-  _exec (cmd, args) {
+  _exec (cmd, args): Promise<any> {
     return new Promise((resolve, reject) => {
       execFile(cmd, args, (error, stdout, stderr) => {
         if (error) {
@@ -622,7 +639,7 @@ class LTEModem {
   // Probe one serial path at one baud rate: open it, expect OK to AT,
   // then identify the modem. Self-contained session - does not touch the
   // monitor's port object
-  probeAttempt (devPath, baud) {
+  probeAttempt (devPath, baud): Promise<any> {
     return new Promise((resolve) => {
       let port
       try {
@@ -671,7 +688,7 @@ class LTEModem {
         // A GPS/NMEA port streams sentences but never answers OK - it times out
         sendCmd('ATE0', 800)
           .then(() => sendCmd('AT', 1200))
-          .then(async (resp) => {
+          .then(async (resp: any) => {
             if (resp === null || !resp.includes('OK')) {
               return done({ ok: false, error: 'no response to AT' })
             }
@@ -790,7 +807,7 @@ class LTEModem {
 
   // ping through a specific interface - proves the route over the modem,
   // not whatever the default route happens to be. Overridable for tests
-  _ping (iface, host) {
+  _ping (iface, host): Promise<any> {
     return new Promise((resolve) => {
       const p = spawn('ping', ['-I', iface, '-c', '2', '-W', '3', host])
       let out = ''
@@ -821,7 +838,7 @@ class LTEModem {
     // 1. AT port + modem responding
     let openedHere = false
     if (!this.portOpen) {
-      const err = await new Promise((resolve) => this.openPort(resolve))
+      const err = await new Promise<any>((resolve) => this.openPort(resolve))
       if (err) {
         add('AT port', false, this.options.atPort + ': ' + err.message)
       } else {
@@ -1053,4 +1070,4 @@ class LTEModem {
   }
 }
 
-module.exports = LTEModem
+export = LTEModem

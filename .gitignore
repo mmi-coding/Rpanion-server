@@ -65,3 +65,12 @@ __pycache__/
 /server/aboutInfo.js
 /server/vpn.js
 /server/cloudUpload.js
+/server/adhocManager.js
+/server/networkManager.js
+/server/pppConnection.js
+/server/telemetryInjector.js
+/server/ntrip.js
+/server/ltemodem.js
+/server/flightController.js
+/server/videostream.js
+/mavlink/mavManager.js

@@ -198,7 +198,7 @@ function addConnection (conNameStr, conType, conAdapter, conSettings, callback) 
   if (conType === 'wifi') {
     // Build nmcli command gradually for readability
     // Build argument array for nmcli command
-    let nmcliArgs = ['connection', 'add', 'type', conType, 'ifname', conAdapter, 'con-name', conNameStr, 'ssid', conSettings.ssid, '802-11-wireless.mode', conSettings.mode];
+    const nmcliArgs = ['connection', 'add', 'type', conType, 'ifname', conAdapter, 'con-name', conNameStr, 'ssid', conSettings.ssid, '802-11-wireless.mode', conSettings.mode];
 
     if (conSettings.band !== undefined && conSettings.band !== null) {
       nmcliArgs.push('802-11-wireless.band', conSettings.band);
@@ -518,7 +518,7 @@ function getConnectionDetails (conName, callback) {
       console.error(`exec error: ${error}`)
       return callback(stderr)
     } else {
-      const ret = { DHCP: 'auto', IP: '', subnet: '', mode: '', wpaType: 'none', password: '' }
+      const ret: any = { DHCP: 'auto', IP: '', subnet: '', mode: '', wpaType: 'none', password: '' }
       stdout.split('\n').forEach(function (item) {
         if (item.split(':')[0] === '802-11-wireless.ssid') {
           ret.ssid = item.split(':')[1]
@@ -586,7 +586,7 @@ function netmask2CIDR (mask) {
   return cidr.split('1').length - 1
 }
 
-module.exports = {
+export = {
   getAdapters,
   getConnections,
   getConnectionDetails,

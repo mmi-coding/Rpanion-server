@@ -92,7 +92,7 @@ function activateWireguardProfile (filename, callback) {
     execFile('sudo', ['systemctl', 'enable', 'wg-quick@' + profile], (error, stdout) => {
       if (error !== null || errorw !== null) {
         console.error(`exec error: ${error} ${errorw}`)
-        let errstr = (error !== null ? error.toString().trim() : '') + (errorw !== null ? errorw.toString().trim() : '')
+        const errstr = (error !== null ? error.toString().trim() : '') + (errorw !== null ? errorw.toString().trim() : '')
         getVPNStatusWireguard(errstr, (stderrnot, statusJSON) => {
           return callback(stderrnot, statusJSON)
         })
@@ -118,7 +118,7 @@ function deactivateWireguardProfile (filename, callback) {
       execFile('sudo', ['wg-quick', 'down', profile], (errorw, stdoutw) => {
         if (error !== null || errorw !== null) {
         console.error(`exec error: ${error} ${errorw}`)
-        let errstr = (error !== null ? error.toString().trim() : '') + (errorw !== null ? errorw.toString().trim() : '')
+        const errstr = (error !== null ? error.toString().trim() : '') + (errorw !== null ? errorw.toString().trim() : '')
         getVPNStatusWireguard(errstr, (stderrnot, statusJSON) => {
           return callback(stderrnot, statusJSON)
         })

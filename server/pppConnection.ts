@@ -9,6 +9,20 @@ const { spawn, execSync } = require('child_process');
 const serialDetection = require('./serialDetection')
 
 class PPPConnection {
+  isQuitting: any
+  devices: any
+  isManualStop: any
+  prevdata: any
+  badbaudRate: any
+  serialDevices: any
+  baudRates: any
+  remoteIP: any
+  localIP: any
+  baudRate: any
+  device: any
+  pppProcess: any
+  isConnected: any
+  settings: any
     constructor(settings) {
         this.settings = settings
         this.isConnected = this.settings.value('ppp.enabled', false);
@@ -236,7 +250,7 @@ class PPPConnection {
         }
         // get current data transfer stats for connected PPP session
         try {
-            let stdout = execSync('ifconfig ppp0 | grep packets', { encoding: 'utf8' }).toString().trim();
+            const stdout = execSync('ifconfig ppp0 | grep packets', { encoding: 'utf8' }).toString().trim();
             /* istanbul ignore next - grep exits 1 (throws) when no lines match; stdout is never empty here */
             if (!stdout) {
                 return { rxRate: 0, txRate: 0, percentusedRx: 0, percentusedTx: 0 };
@@ -298,4 +312,4 @@ class PPPConnection {
 }
 
 
-module.exports = PPPConnection;
+export = PPPConnection;

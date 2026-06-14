@@ -7,6 +7,9 @@ as nmcli does not support ad-hoc networks
 const { exec, execSync } = require('child_process')
 
 class adhocManager {
+  device: any
+  devicesettings: any
+  settings: any
   constructor (settings) {
     this.settings = settings
 
@@ -188,4 +191,4 @@ class adhocManager {
   }
 }
 
-module.exports = adhocManager
+export = adhocManager

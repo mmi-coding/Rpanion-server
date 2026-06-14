@@ -12,6 +12,29 @@ const REGISTRY = {
 }
 
 class mavManager {
+  enableDSRequest: any
+  inStream: any
+  RinudpIP: any
+  RinudpPort: any
+  inudpIP: any
+  inudpPort: any
+  udpStream: any
+  targetComponent: any
+  targetSystem: any
+  seq: any
+  statusArmed: any
+  statusText: any
+  timeofLastPacket: any
+  fcVersion: any
+  statusVehType: any
+  statusFWName: any
+  statusBytesPerSec: any
+  statusNumRxPackets: any
+  isRebooting: any
+  eventEmitter: any
+  version: any
+  mavmsg: any
+  mav: any
   constructor (version, inudpIP, inudpPort, enableDSRequest) {
     this.mav = null
     this.mavmsg = null
@@ -222,7 +245,7 @@ class mavManager {
     this.udpStream.bind(this.inudpPort, this.inudpIP)
   }
 
-  sendData (msg, component) {
+  sendData (msg, component?: any) {
     // Set the default target component if it wasn't specified
     if (component === null || component === undefined) {
       component = minimal.MavComponent.ONBOARD_COMPUTER
@@ -243,7 +266,8 @@ class mavManager {
     const buffer = protocol.serialize(msg, this.seq++)
     this.seq &= 255
 
-    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, function (error) { // istanbul ignore next - error callback loses 'this' (non-arrow fn); UDP send-error path would throw, upstream bug
+    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, function (error) {
+      /* istanbul ignore next - error callback loses 'this' (non-arrow fn); UDP send-error path would throw, upstream bug */
       if (error) {
         this.udpStream.close()
         console.log(error)
@@ -457,4 +481,4 @@ class mavManager {
   }
 }
 
-module.exports = mavManager
+export = mavManager

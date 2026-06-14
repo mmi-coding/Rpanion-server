@@ -18,6 +18,13 @@ const ROUTER_PORT = 14540 // mavlink-router endpoint; rebroadcasts to FC + GCS
 const BAUDS = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
 
 class TelemetryInjector {
+  stats: any
+  serial: any
+  udpListener: any
+  sendSock: any
+  seq: any
+  options: any
+  settings: any
   constructor (settings) {
     this.settings = settings
     this.options = {
@@ -257,4 +264,4 @@ class TelemetryInjector {
   }
 }
 
-module.exports = TelemetryInjector
+export = TelemetryInjector

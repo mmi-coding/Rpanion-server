@@ -9,6 +9,29 @@ const logpaths = require('./paths')
 const serialDetection = require('./serialDetection')
 
 class FCDetails {
+  UDPoutputs: any
+  settings: any
+  vehiclePosition: any
+  mavlinkRouterPath: any
+  active: any
+  dflogger: any
+  doLogging: any
+  binlog: any
+  enableDSRequest: any
+  UDPBPort: any
+  enableUDPB: any
+  enableTCP: any
+  enableHeartbeat: any
+  intervalObj: any
+  eventEmitter: any
+  m: any
+  router: any
+  activeDevice: any
+  inputTypes: any
+  mavlinkVersions: any
+  baudRates: any
+  serialDevices: any
+  previousConnection: any
   constructor (settings) {
     // if the device was successfully opend and got packets
     this.previousConnection = false
@@ -665,4 +688,4 @@ class FCDetails {
   }
 }
 
-module.exports = FCDetails
+export = FCDetails

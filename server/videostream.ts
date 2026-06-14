@@ -8,6 +8,24 @@ const fs = require('fs')
 const vsHelpers = require('./videostreamHelpers')
 
 class videoStream {
+  videoSettings: any
+  stillDevices: any
+  lastSavedFile: any
+  ifaces: any
+  useCameraHeartbeat: any
+  currentBitrate: any
+  customPipelineFallback: any
+  lastPipeline: any
+  stillSettings: any
+  devices: any
+  eventEmitter: any
+  intervalObj: any
+  photoSeq: any
+  cameraMode: any
+  deviceAddresses: any
+  deviceStream: any
+  active: any
+  settings: any
   constructor (settings) {
     this.settings = settings
 
@@ -79,7 +97,7 @@ class videoStream {
             reject(err);
           } else {
             // this.devices is now populated inside getVideoDevices callback
-            resolve();
+            resolve(undefined);
           }
         });
       });
@@ -88,7 +106,7 @@ class videoStream {
       // For now, we wrap it in a try/catch so it doesn't crash if the helper isn't there yet
       try {
         await new Promise((resolve, reject) => {
-          this.getStillDevices((err) => err ? reject(err) : resolve());
+          this.getStillDevices((err) => err ? reject(err) : resolve(undefined));
         });
       } catch (e) {
         console.log("Still hardware discovery skipped or failed.");
@@ -116,7 +134,7 @@ class videoStream {
         if (error) {
           reject(error)
         } else {
-          resolve()
+          resolve(undefined)
         }
       })
     })
@@ -179,7 +197,7 @@ class videoStream {
     if (this.deviceStream !== null) {
       console.log("Camera active; returning cached hardware details.");
 
-      const responseData = {
+      const responseData: any = {
         devices: this.devices || [],
         networkInterfaces: networkInterfaces,
         active: this.active,
@@ -276,8 +294,8 @@ class videoStream {
         responseData.devices = devices;
 
         // Populate defaults or saved settings as before...
-        let selectedDevice = devices[0];
-        let selectedCap = selectedDevice?.caps[0];
+        const selectedDevice = devices[0];
+        const selectedCap = selectedDevice?.caps[0];
 
         responseData.selectedDevice = selectedDevice;
         responseData.selectedCap = selectedCap;
@@ -1027,4 +1045,4 @@ class videoStream {
   }
 }
 
-module.exports = videoStream
+export = videoStream
