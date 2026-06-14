@@ -2,7 +2,7 @@ const assert = require('assert')
 const path = require('path')
 const fs = require('fs')
 const sinon = require('sinon')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 
 describe('Paths Functions', function () {
   afterEach(function () {
@@ -18,17 +18,17 @@ describe('Paths Functions', function () {
   it('#pathsProdBaseDir()', function () {
     // re-require with NODE_ENV unset to get the installed-system base dir
     const prevEnv = process.env.NODE_ENV
-    delete require.cache[require.resolve('./paths.js')]
+    delete require.cache[require.resolve('./paths')]
     process.env.NODE_ENV = 'production'
     try {
-      const prodPaths = require('./paths.js')
+      const prodPaths = require('./paths')
       assert.ok(prodPaths.settingsFile.startsWith('/etc/rpanion-server'))
       assert.ok(prodPaths.flightsLogsDir.startsWith('/etc/rpanion-server'))
     } finally {
       process.env.NODE_ENV = prevEnv
       // re-prime the cache with the development paths for later requires
-      delete require.cache[require.resolve('./paths.js')]
-      require('./paths.js')
+      delete require.cache[require.resolve('./paths')]
+      require('./paths')
     }
   })
 

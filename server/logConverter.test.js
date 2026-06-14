@@ -4,7 +4,7 @@ const os = require('os')
 const path = require('path')
 const sinon = require('sinon')
 const settings = require('settings-store')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 const LogConverter = require('./logConverter')
 
 describe('Log Converter Functions', function () {

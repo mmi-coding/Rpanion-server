@@ -34,10 +34,12 @@ export default [
       },
     },
     rules: {
-      // Loose to match the gradual tsconfig; tighten with the strictness roadmap.
+      // Loose to match the gradual tsconfig (noUnusedLocals off etc.); tighten
+      // with the strictness roadmap.
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/no-var-requires": "off",
+      "@typescript-eslint/no-unused-vars": "off",
     },
   },
   {

@@ -15,7 +15,7 @@ import NTRIPPage from './ntripcontroller.jsx'
 import AdhocConfig from './adhocwifi.jsx'
 import CloudConfig from './cloud.jsx'
 import UserManagement from './userManagement.jsx'
-import PPPConnection from '../server/pppConnection.js'
+import PPPPage from './ppp.jsx'
 import CameraSwitcherPage from './cameraswitcher.jsx'
 import PipelineEditorPage from './pipelineeditor.jsx'
 import LTEModemPage from './ltemodem.jsx'
@@ -93,10 +93,10 @@ describe('#apptest()', function () {
     root.unmount()
   })
 
-  test('PPP connection page renders without crashing', function () {
+  test('PPP page renders without crashing', function () {
     const div = document.createElement('div')
     const root = createRoot(div)
-    root.render(<PPPConnection />)
+    root.render(<PPPPage />)
     root.unmount()
   })
 

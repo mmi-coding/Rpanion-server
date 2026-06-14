@@ -4,7 +4,7 @@ const os = require('os')
 const path = require('path')
 const sinon = require('sinon')
 const settings = require('settings-store')
-const logpaths = require('./paths.js')
+const logpaths = require('./paths')
 const CustomPipelines = require('./customPipelines')
 
 const GOOD_PIPELINE = 'videotestsrc is-live=true ! video/x-raw,width=640,height=480 ! videoconvert ! x264enc tune=zerolatency bitrate=1000 ! rtph264pay config-interval=1 name=pay0 pt=96'

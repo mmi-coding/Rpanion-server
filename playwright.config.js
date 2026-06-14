@@ -51,7 +51,7 @@ export default defineConfig({
   // settings.json (an empty file breaks settings-store, mirroring CI's `rm -f`).
   webServer: [
     {
-      command: 'rm -f ./config/settings.json && NODE_ENV=development node -r ts-node/register ./server/index.js',
+      command: 'rm -f ./config/settings.json && NODE_ENV=development node -r ts-node/register ./server/index.ts',
       port: BACKEND_PORT,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

@@ -1,6 +1,6 @@
 const assert = require('assert')
 const sinon = require('sinon')
-const DynamicDns = require('./dynamicDns.js')
+const DynamicDns = require('./dynamicDns')
 
 // Minimal in-memory stand-in for settings-store
 function makeSettings (initial = {}) {
