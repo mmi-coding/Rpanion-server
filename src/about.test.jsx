@@ -379,4 +379,77 @@ describe('#AboutPage()', function () {
     expect(page.container.textContent).toContain('Error restoring settings:')
     page.unmount()
   })
+
+  // -------------------------------------------------------------------------
+  // Time zone
+  // -------------------------------------------------------------------------
+  const tzFetch = {
+    ...defaultFetch,
+    '/api/timezone': { current: 'Europe/London', zones: ['Europe/London', 'Europe/Paris', 'America/New_York'] }
+  }
+
+  test('Time Zone: loads the current zone and the IANA list into the select', async function () {
+    mockFetch(tzFetch)
+    const page = renderPage(<AboutPage />)
+    await page.flush()
+    const select = page.container.querySelector('select')
+    expect(select).toBeTruthy()
+    expect(select.value).toBe('Europe/London')
+    expect([...select.options].map(o => o.value)).toContain('America/New_York')
+    page.unmount()
+  })
+
+  test('Time Zone: selecting a new zone and applying it shows a success message that clears', async function () {
+    const fetch = mockFetch({ ...tzFetch, 'POST /api/timezone': { error: null } })
+    const page = renderPage(<AboutPage />)
+    await page.flush()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    const select = page.container.querySelector('select')
+    await act(async () => { select.value = 'Europe/Paris'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const setBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Set Time Zone'))
+    act(() => { setBtn.click() })
+    await page.flush()
+    expect(fetch).toHaveBeenCalledWith('/api/timezone', expect.objectContaining({ method: 'POST' }))
+    expect(page.container.textContent).toContain('Time zone set to Europe/Paris')
+    act(() => { vi.advanceTimersByTime(5000) })
+    expect(page.container.textContent).not.toContain('Time zone set to Europe/Paris')
+    vi.useRealTimers()
+    page.unmount()
+  })
+
+  test('Time Zone: a backend error is surfaced', async function () {
+    mockFetch({ ...tzFetch, 'POST /api/timezone': { error: 'Invalid timezone' } })
+    const page = renderPage(<AboutPage />)
+    await page.flush()
+    const select = page.container.querySelector('select')
+    await act(async () => { select.value = 'Europe/Paris'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const setBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Set Time Zone'))
+    act(() => { setBtn.click() })
+    await page.flush()
+    expect(page.container.textContent).toContain('Error setting time zone: Invalid timezone')
+    page.unmount()
+  })
+
+  test('Time Zone: a fetch failure is caught and reported', async function () {
+    vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
+      const method = (opts.method || 'GET').toUpperCase()
+      if (method === 'POST' && url === '/api/timezone') {
+        throw new Error('network down')
+      }
+      if (url === '/api/timezone') return { ok: true, status: 200, json: async () => ({ current: 'Europe/London', zones: ['Europe/London', 'Europe/Paris'] }) }
+      if (url === '/api/softwareinfo') return { ok: true, status: 200, json: async () => ({ OSVersion: '', Nodejsversion: '', rpanionversion: '', hostname: '' }) }
+      if (url === '/api/diskinfo') return { ok: true, status: 200, json: async () => ({ diskSpaceStatus: '' }) }
+      if (url === '/api/hardwareinfo') return { ok: true, status: 200, json: async () => ({ CPUName: '', RAMName: '', SYSName: '', HATName: { product: '', vendor: '', version: '' } }) }
+      throw new Error(`unhandled: ${method} ${url}`)
+    }))
+    const page = renderPage(<AboutPage />)
+    await page.flush()
+    const select = page.container.querySelector('select')
+    await act(async () => { select.value = 'Europe/Paris'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const setBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Set Time Zone'))
+    act(() => { setBtn.click() })
+    await page.flush()
+    expect(page.container.textContent).toContain('Error setting time zone: network down')
+    page.unmount()
+  })
 })

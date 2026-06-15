@@ -103,6 +103,24 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     })
   })
 
+  router.get('/api/timezone', authenticateToken, (req: Request, res: Response) => {
+    aboutPage.getTimezone((data: any) => {
+      res.setHeader('Content-Type', 'application/json')
+      res.send(JSON.stringify(data))
+    })
+  })
+
+  router.post('/api/timezone', authenticateToken, [check('timezone').isString()], (req: Request, res: Response) => {
+    const errors = validationResult(req)
+    if (!errors.isEmpty()) {
+      return res.status(422).json({ error: 'Bad input - timezone' })
+    }
+    aboutPage.setTimezone(req.body.timezone, (err: any) => {
+      res.setHeader('Content-Type', 'application/json')
+      res.send(JSON.stringify({ error: err || null }))
+    })
+  })
+
   router.post('/api/shutdowncc', authenticateToken, function () {
     // User wants to shutdown the computer
     aboutPage.shutdownCC()

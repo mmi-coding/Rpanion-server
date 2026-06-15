@@ -185,6 +185,55 @@ describe('Package B — delegate HTTP routes', function () {
     })
   })
 
+  describe('GET /api/timezone', function () {
+    it('200 — returns the current zone and the list', function (done) {
+      sinon.stub(aboutPage, 'getTimezone').callsFake(function (cb) {
+        cb({ current: 'Europe/Paris', zones: ['Europe/Paris', 'Europe/London'] })
+      })
+      request('GET', '/api/timezone').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.current, 'Europe/Paris')
+          assert.ok(res.body.zones.includes('Europe/London'))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/timezone', function () {
+    it('200 — applies the timezone', function (done) {
+      sinon.stub(aboutPage, 'setTimezone').callsFake(function (tz, cb) { cb(null) })
+      request('POST', '/api/timezone', { body: { timezone: 'Europe/London' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.error, null)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — surfaces a setTimezone error', function (done) {
+      sinon.stub(aboutPage, 'setTimezone').callsFake(function (tz, cb) { cb('bad zone') })
+      request('POST', '/api/timezone', { body: { timezone: 'Europe/London' } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.error, 'bad zone')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('422 — rejects a missing/non-string timezone', function (done) {
+      request('POST', '/api/timezone', { body: {} }).then(function (res) {
+        try {
+          assert.equal(res.status, 422)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
   describe('GET /api/approot', function () {
     it('200 — returns appRoot string', function (done) {
       request('GET', '/api/approot').then(function (res) {

@@ -141,6 +141,51 @@ describe('About Functions', function () {
     })
   })
 
+  describe('#getTimezone() / #setTimezone()', function () {
+    it('getTimezone returns the current zone and the IANA list', function (done) {
+      aboutPage.getTimezone(function (data) {
+        try {
+          assert.ok(typeof data.current === 'string' && data.current.length > 0)
+          assert.ok(Array.isArray(data.zones) && data.zones.length > 100)
+          done()
+        } catch (e) { done(e) }
+      })
+    })
+
+    it('setTimezone rejects an unknown zone (no command run)', function (done) {
+      aboutPage.setTimezone('Not/AZone', function (err) {
+        try { assert.equal(err, 'Invalid timezone'); done() } catch (e) { done(e) }
+      })
+    })
+
+    it('setTimezone applies a valid zone', function (done) {
+      const fake = new FakeBin()
+      fake.install('sudo', 'exit 0')
+      fake.activate()
+      aboutPage.setTimezone('Europe/London', function (err) {
+        try { assert.equal(err, null); done() } catch (e) { done(e) } finally { fake.cleanup() }
+      })
+    })
+
+    it('setTimezone surfaces a command failure (non-zero exit)', function (done) {
+      const fake = new FakeBin()
+      fake.install('sudo', 'exit 1')
+      fake.activate()
+      aboutPage.setTimezone('Europe/London', function (err) {
+        try { assert.ok(err); done() } catch (e) { done(e) } finally { fake.cleanup() }
+      })
+    })
+
+    it('setTimezone surfaces stderr output', function (done) {
+      const fake = new FakeBin()
+      fake.install('sudo', 'echo boom >&2; exit 0')
+      fake.activate()
+      aboutPage.setTimezone('Europe/London', function (err) {
+        try { assert.ok(err.includes('boom')); done() } catch (e) { done(e) } finally { fake.cleanup() }
+      })
+    })
+  })
+
   describe('#getSoftwareInfo() production', function () {
     it('should read the package version from dpkg', function (done) {
       // outside development the version comes from the installed package

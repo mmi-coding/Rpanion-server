@@ -1,6 +1,7 @@
 import React from 'react'
 import Modal from 'react-bootstrap/Modal';
 import Button from 'react-bootstrap/Button';
+import Form from 'react-bootstrap/Form';
 
 import basePage from './basePage.jsx'
 import { HelpTip, HelpSection } from './components/Help.jsx'
@@ -24,7 +25,11 @@ class AboutPage extends basePage {
       showModalResult: "",
       showResetModal: false,
       resetMessage: "",
-      restoreMessage: ""
+      restoreMessage: "",
+      timezones: [],
+      timezone: '',
+      selectedTimezone: '',
+      timezoneMessage: ''
     }
 
   }
@@ -33,6 +38,38 @@ class AboutPage extends basePage {
     fetch('/api/softwareinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => this.setState(state))
     fetch('/api/diskinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => this.setState(state))
     fetch('/api/hardwareinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() })
+    fetch('/api/timezone', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(data => this.setState({ timezones: data.zones, timezone: data.current, selectedTimezone: data.current })).catch(() => {})
+  }
+
+  handleTimezoneChange = (e) => {
+    this.setState({ selectedTimezone: e.target.value })
+  }
+
+  applyTimezone = () => {
+    // push the selected IANA zone to the OS via the backend
+    fetch('/api/timezone', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.state.token}`
+      },
+      body: JSON.stringify({ timezone: this.state.selectedTimezone })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        this.setState({ timezoneMessage: 'Error setting time zone: ' + data.error })
+      } else {
+        this.setState({ timezone: this.state.selectedTimezone, timezoneMessage: 'Time zone set to ' + this.state.selectedTimezone })
+        setTimeout(() => {
+          this.setState({ timezoneMessage: "" })
+        }, 5000)
+      }
+    })
+    .catch(error => {
+      this.setState({ timezoneMessage: 'Error setting time zone: ' + error.message })
+    })
   }
 
   confirmShutdown = () => {
@@ -217,6 +254,32 @@ class AboutPage extends basePage {
         {this.state.resetMessage && (
           <div className="alert alert-info" role="alert">
             {this.state.resetMessage}
+          </div>
+        )}
+
+        <h2>Time Zone <HelpTip text="The system clock's IANA time zone. Affects log timestamps and scheduled tasks on the companion computer." /></h2>
+        <HelpSection title="How the time zone is applied">
+          <p>The list comes from the IANA time-zone database on this companion computer. Picking a zone and pressing <i>Set Time Zone</i> runs <code>timedatectl set-timezone</code>, so it takes effect immediately and persists across reboots.</p>
+          <p>Current zone: <code>{this.state.timezone || 'unknown'}</code>.</p>
+        </HelpSection>
+        <p>
+          <Form.Select
+            size="sm"
+            style={{ maxWidth: '20em', display: 'inline-block', marginRight: '0.5em' }}
+            value={this.state.selectedTimezone}
+            onChange={this.handleTimezoneChange}
+            aria-label="Time zone"
+          >
+            {this.state.timezones.map(zone => (
+              <option key={zone} value={zone}>{zone}</option>
+            ))}
+          </Form.Select>
+          <Button size="sm" onClick={this.applyTimezone} disabled={!this.state.selectedTimezone || this.state.selectedTimezone === this.state.timezone}>Set Time Zone</Button>
+          <HelpTip text="Apply the selected IANA time zone to the companion computer's system clock." />
+        </p>
+        {this.state.timezoneMessage && (
+          <div className="alert alert-info" role="alert">
+            {this.state.timezoneMessage}
           </div>
         )}
 

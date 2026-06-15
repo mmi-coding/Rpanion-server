@@ -262,3 +262,14 @@ be enabled before serial telemetry to the FC works:
 
 - [ ] From a GCS / MAVProxy, send IMAGE_START_CAPTURE (2000) to the camera component → a photo is captured (CAMERA_TRIGGER emitted)
 - [ ] In video mode, VIDEO_START_CAPTURE (2500) starts recording and VIDEO_STOP_CAPTURE (2501) stops it; repeated identical commands are no-ops
+
+## Feature #224: set the system time zone from the web UI
+
+`POST /api/timezone` runs `sudo timedatectl set-timezone <zone>`; the service user
+needs a password-less sudoers grant for it (the page will otherwise hang on a
+prompt). Add to the rpanion sudoers drop-in, e.g.:
+`rpanion ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *`
+
+- [ ] About page → **Time Zone**: the select is populated and defaults to the box's current zone
+- [ ] Pick a different zone → **Set Time Zone** → success message; `timedatectl` (and log timestamps) reflect the new zone
+- [ ] Reboot → the zone persists (no password prompt was needed for the apply)
