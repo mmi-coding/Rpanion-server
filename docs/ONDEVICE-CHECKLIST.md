@@ -223,3 +223,8 @@ real-browser confirmations on the deployed Pi. See docs/GROUND-STATION-THEME.md.
 
 - [ ] Attach a USB analog capture grabber (EasyCAP / MacroSilicon) and open the Video page → it loads within ~15 s (with a "scan timed out" notice if the device is unresponsive) instead of hanging and bouncing to login
 - [ ] Normal cameras (Pi Camera / standard USB webcam) still enumerate with full caps
+
+## Bug fix #187 / #158: Adhoc Wi-Fi page robustness
+
+- [ ] Open the Adhoc Wi-Fi page on a board whose adapter reports no channels → the page renders (no blank screen) instead of crashing
+- [ ] On a card that rejects ad-hoc/WEP, enabling shows the backend error and the HelpSection explains the adapter caveat
