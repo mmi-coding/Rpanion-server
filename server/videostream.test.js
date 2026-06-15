@@ -1042,6 +1042,26 @@ describe('Video Functions', function () {
       })
     }).timeout(5000)
 
+    it('streaming mode: graphic HUD passes --hud-style=graphic', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.cameraMode = 'streaming'
+      vManager.videoSettings = {
+        device: '/dev/video0', width: 1280, height: 720,
+        format: 'image/jpeg', rotation: 0, bitrate: 1100, fps: 30,
+        compression: 'H264', useUDP: false, useUDPIP: '127.0.0.1',
+        useUDPPort: 5600, useTimestamp: false, useHud: true, hudStyle: 'graphic', isRecording: false,
+        mavStreamSelected: '127.0.0.1', mediaDestination: ''
+      }
+      vManager.startCamera(function (err, result) {
+        try {
+          assert.equal(err, null)
+          streamChild = vManager.deviceStream
+          done()
+        } catch (e) { done(e) }
+      })
+    }).timeout(5000)
+
     it('streaming mode: with RTP/UDP transport', function (done) {
       settings.clear()
       const vManager = new VideoStream(settings)
@@ -2070,6 +2090,28 @@ describe('Video Functions', function () {
       vManager.videoSettings = { useHud: true }
       vManager.updateHudFromPacket({ header: { msgid: mavMinimal.Heartbeat.MSG_ID } }, { type: 2, customMode: 3 })
       assert.equal(vManager.hudData.mode, 'AUTO')
+    })
+
+    it('captures ATTITUDE roll/pitch (radians → degrees)', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.Attitude.MSG_ID } }, { roll: Math.PI / 6, pitch: -Math.PI / 12 })
+      assert.ok(Math.abs(vManager.hudData.roll - 30) < 0.001)
+      assert.ok(Math.abs(vManager.hudData.pitch - (-15)) < 0.001)
+    })
+
+    it('graphic HUD style pushes the raw fields, not formatted text', function () {
+      settings.clear()
+      sinon.stub(Date, 'now').returns(20000)
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true, hudStyle: 'graphic' }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.Attitude.MSG_ID } }, { roll: 0, pitch: 0 })
+      assert.equal(vManager._writes.length, 1)
+      const payload = JSON.parse(vManager._writes[0])
+      assert.equal(payload.cmd, 'hud')
+      assert.ok(payload.hud && typeof payload.hud === 'object')
+      assert.equal(payload.text, undefined)
     })
 
     it('ignores a non-telemetry msgid without sending', function () {

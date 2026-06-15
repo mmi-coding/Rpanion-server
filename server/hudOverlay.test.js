@@ -42,7 +42,7 @@ describe('HUD overlay helpers (#173)', function () {
     it('returns an all-null shape', function () {
       assert.deepEqual(hud.emptyHudData(), {
         alt: null, spd: null, hdg: null, batV: null, batPct: null,
-        mode: null, gpsFix: null, gpsSats: null
+        mode: null, gpsFix: null, gpsSats: null, roll: null, pitch: null
       })
     })
   })

@@ -61,6 +61,59 @@ def is_multicast(ip: str) -> bool:
 # stdin control channel (see doBitrate)
 LOW_LATENCY = False
 
+# Telemetry HUD style (#173 follow-up): 'text' (textoverlay readout) or 'graphic'
+# (an SVG artificial-horizon via rsvgoverlay — no extra dependency, the element
+# renders the SVG data we feed it over the control channel).
+HUD_STYLE = "text"
+
+
+def hudOverlayElement():
+    # the overlay element inserted as name=hud0 (its text/data is set at runtime)
+    if HUD_STYLE == "graphic":
+        return "rsvgoverlay name=hud0 fit-to-frame=true"
+    return "textoverlay name=hud0 text=\"\" valignment=top halignment=left font-desc=\"Monospace, 12\" shaded-background=true ypad=4 xpad=8"
+
+
+def buildHudSvg(f):
+    # an artificial-horizon HUD as an SVG string (16:9 viewBox; rsvgoverlay
+    # fit-to-frame scales it onto the video). f is the telemetry field dict.
+    def num(v, suffix, digits=0):
+        if v is None:
+            return "--"
+        return ("{0:." + str(digits) + "f}").format(v) + suffix
+    roll = f.get("roll") or 0
+    pitch = f.get("pitch") or 0
+    cx, cy = 800, 450
+    ppd = 8  # pixels per degree of pitch
+    pitch_off = pitch * ppd
+    rungs = []
+    for d in (-20, -10, 10, 20):
+        y = cy + d * ppd
+        rungs.append('<line x1="{0}" y1="{1}" x2="{2}" y2="{1}" stroke="#00e0a0" stroke-width="3"/>'.format(cx - 90, y, cx + 90))
+        rungs.append('<text x="{0}" y="{1}" fill="#00e0a0" font-size="26" font-family="monospace">{2}</text>'.format(cx + 100, y + 8, abs(d)))
+    horizon = ('<g transform="rotate({0} {1} {2}) translate(0 {3})">'
+               '<line x1="-200" y1="{2}" x2="1800" y2="{2}" stroke="#00e0a0" stroke-width="4"/>'
+               '{4}</g>').format(-roll, cx, cy, pitch_off, "".join(rungs))
+    # fixed aircraft marker + corner readouts
+    marker = ('<path d="M {0} {1} l -70 0 l 20 22 M {0} {1} l 70 0 l -20 22" '
+              'stroke="#ffcf40" stroke-width="5" fill="none"/>').format(cx, cy)
+    readout = (
+        '<text x="40" y="60" fill="#ffffff" font-size="34" font-family="monospace">SPD {0}</text>'
+        '<text x="1180" y="60" fill="#ffffff" font-size="34" font-family="monospace">ALT {1}</text>'
+        '<text x="660" y="60" fill="#ffffff" font-size="34" font-family="monospace">HDG {2}</text>'
+        '<text x="40" y="860" fill="#ffffff" font-size="34" font-family="monospace">{3}</text>'
+        '<text x="1100" y="860" fill="#ffffff" font-size="34" font-family="monospace">BAT {4} {5}</text>'
+    ).format(
+        num(f.get("spd"), "", 1),
+        num(f.get("alt"), "m"),
+        "--" if f.get("hdg") is None else str(int(round(f.get("hdg")))),
+        (f.get("mode") or "MODE --"),
+        num(f.get("batV"), "V", 1),
+        "--" if f.get("batPct") is None else (str(f.get("batPct")) + "%")
+    )
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">'
+            + horizon + marker + readout + '</svg>')
+
 
 def gopFrames(framerate) -> int:
     # one keyframe per second; assume 30 fps if the rate is unspecified
@@ -221,7 +274,7 @@ def getPipeline(device, height, width, bitrate, format, rotation, framerate, tim
         # be overlaid without a decode/re-encode - and not on the Jetson NVMM path
         if hud and device not in ["0rpicam", "1rpicam"] and 'tegra' not in platform.uname().release:
             pipeline.append("videoconvert")
-            pipeline.append("textoverlay name=hud0 text=\"\" valignment=top halignment=left font-desc=\"Monospace, 12\" shaded-background=true ypad=4 xpad=8")
+            pipeline.append(hudOverlayElement())
 
         # 3 options for H264: Rpi hardware compression (v4l2h264enc), Jetson hardware compression (nvv4l2h264enc)
         # or software compression (x264enc)
@@ -325,7 +378,7 @@ live_selectors = []
 live_pipelines = []
 # latest HUD overlay text (#173), so a client connecting after the last update
 # still shows the current readout
-hud_state = {"text": ""}
+hud_state = {"text": "", "svg": ""}
 
 
 def applySwitchToSelector(sel):
@@ -379,24 +432,43 @@ def doBitrate(kbps):
         print("BITRATE-NOENCODER:{0}".format(kbps), flush=True)
 
 
-def doHud(text):
-    # update the text of every HUD overlay (hud0) in every running pipeline
+def setHudElement(el):
+    # push the current text / SVG onto one hud0 overlay, whichever kind it is
+    try:
+        kind = el.get_factory().get_name()
+        if kind == "rsvgoverlay":
+            if hud_state["svg"] != "":
+                el.set_property("data", hud_state["svg"])
+        else:
+            el.set_property("text", hud_state["text"])
+    except Exception as e:
+        print("HUD error: {0}".format(e))
+
+
+def doHudText(text):
+    # text-mode HUD: update the textoverlay readout on every running pipeline
     hud_state["text"] = text
     for pipe in list(live_pipelines):
         el = pipe.get_by_name("hud0")
         if el is not None:
-            try:
-                el.set_property("text", text)
-            except Exception as e:
-                print("HUD error: {0}".format(e))
+            setHudElement(el)
+
+
+def doHudGraphic(fields):
+    # graphic-mode HUD: render an artificial-horizon SVG and feed every rsvgoverlay
+    hud_state["svg"] = buildHudSvg(fields)
+    for pipe in list(live_pipelines):
+        el = pipe.get_by_name("hud0")
+        if el is not None:
+            setHudElement(el)
 
 
 def applyHudToPipeline(element):
-    # seed a freshly-prepared pipeline's HUD overlay with the latest text, so a
-    # late-joining client doesn't show a blank readout until the next update
+    # seed a freshly-prepared pipeline's HUD overlay so a late-joining client
+    # doesn't show a blank readout until the next update
     el = element.get_by_name("hud0")
-    if el is not None and hud_state["text"] != "":
-        el.set_property("text", hud_state["text"])
+    if el is not None:
+        setHudElement(el)
 
 
 def handleControlLine(line):
@@ -407,7 +479,9 @@ def handleControlLine(line):
         elif cmd.get("cmd") == "bitrate" and isinstance(cmd.get("kbps"), int) and 50 <= cmd.get("kbps") <= 100000:
             doBitrate(cmd.get("kbps"))
         elif cmd.get("cmd") == "hud" and isinstance(cmd.get("text"), str) and len(cmd.get("text")) <= 500:
-            doHud(cmd.get("text"))
+            doHudText(cmd.get("text"))
+        elif cmd.get("cmd") == "hud" and isinstance(cmd.get("hud"), dict):
+            doHudGraphic(cmd.get("hud"))
         else:
             print("Unknown control command: {0}".format(line.strip()))
     except ValueError:
@@ -578,7 +652,7 @@ def getDualPipeline(primary_device, primary_format, height, width, framerate,
         tail.append("clockoverlay time-format=\"%d-%b-%Y %H:%M:%S\"")
     if hud:
         tail.append("videoconvert")
-        tail.append("textoverlay name=hud0 text=\"\" valignment=top halignment=left font-desc=\"Monospace, 12\" shaded-background=true ypad=4 xpad=8")
+        tail.append(hudOverlayElement())
     tail.extend(getEncodeTail(primary_device, bitrate, compression, framerate))
     if udp_sink != "":
         tail.append(udp_sink)
@@ -757,6 +831,8 @@ if __name__ == '__main__':
                         default=False, action='store_true')
     parser.add_argument("--rtsp-port", help="RTSP server listen port (default 8554; secondary streams use a distinct port)",
                         default=8554, type=int)
+    parser.add_argument("--hud-style", help="HUD style when --hud is set: text readout or graphic artificial horizon",
+                        default="text", type=str, choices=["text", "graphic"])
     parser.add_argument(
         "--secondary", help="Secondary video device for runtime source switching", default="", type=str)
     parser.add_argument("--secondary-format", help="Secondary video format",
@@ -774,6 +850,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     LOW_LATENCY = args.lowlatency
+    HUD_STYLE = args.hud_style
 
     loop = GLib.MainLoop()
     Gst.init(None)

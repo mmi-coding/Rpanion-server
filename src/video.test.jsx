@@ -2488,5 +2488,21 @@ describe('#VideoPage()', function () {
     page.unmount()
   })
 
+  test('HUD: style selector appears when HUD is on (raw source) and switches to graphic', async function () {
+    defaultFetch({ selectedHudStyle: 'graphic' })
+    const { page, getRef } = renderVideo()
+    await page.flush()
+    expect(getRef().state.hudStyle).toBe('graphic')
+    // raw source + HUD on → the style select is shown
+    act(() => { getRef().handleVideoResChange({ target: { value: 'cap-yuv-1' } }) })
+    act(() => { getRef().setState({ useHud: true }) })
+    const styleRow = [...page.container.querySelectorAll('.form-group.row')].find(r => r.textContent.includes('HUD Style'))
+    expect(styleRow).toBeTruthy()
+    const select = styleRow.querySelector('select')
+    act(() => { select.value = 'text'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(getRef().state.hudStyle).toBe('text')
+    page.unmount()
+  })
+
 })
 

@@ -63,10 +63,12 @@ interface HudData {
   mode: string | null
   gpsFix: number | null
   gpsSats: number | null
+  roll: number | null
+  pitch: number | null
 }
 
 function emptyHudData (): HudData {
-  return { alt: null, spd: null, hdg: null, batV: null, batPct: null, mode: null, gpsFix: null, gpsSats: null }
+  return { alt: null, spd: null, hdg: null, batV: null, batPct: null, mode: null, gpsFix: null, gpsSats: null, roll: null, pitch: null }
 }
 
 function num (v: number | null, digits: number, suffix: string): string {
