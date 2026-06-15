@@ -188,6 +188,54 @@ timer, the global/per-element style validation, and the editor's mock chips,
 graphic previews, selection, global-style controls and per-element style panel.
 Both suites stay 100/100/100/100.
 
+### Follow-up (shipped): custom HUD fonts — curated set + user import
+
+The font picker went from the 3 generic CSS families to a real font system, with
+a curated set **and** user import.
+
+The constraint that shaped the design: the editor preview is a **browser** font,
+but the burned-in HUD is rendered on the device by `rsvgoverlay → librsvg → Pango
+→ fontconfig`. For WYSIWYG, a font must resolve identically on both sides. So a
+new `server/hudFonts.ts` keeps **one** fonts directory that is:
+
+- **served to the browser** (`GET /api/hudfonts/file/:name`, unauthenticated — a
+  CSS `@font-face url()` can't carry a bearer token, and only known path-safe font
+  files are served), which the editor injects as `@font-face` so the preview uses
+  the exact font the device will use; and
+- visible to the spawned `video-server.py` via **`XDG_DATA_HOME`** — `videostream.ts`
+  spawns the stream with `XDG_DATA_HOME=<fontDataHome>` (a new `_spawnEnv()`), and
+  fontconfig scans `$XDG_DATA_HOME/fonts`. **No sudo, no `/usr/share/fonts`, no
+  assumptions about the `rpanion` service user's home.**
+
+- **Curated** (`assets/hudfonts/`, bundled in the `.deb`, all OFL): **Oxanium** (a
+  DJI/FPV-OSD-style face — the variable font instanced to a medium weight),
+  **Chakra Petch**, **IBM Plex Mono**, **IBM Plex Sans** (the IBM Plex + Chakra
+  Petch files are the Latin subsets the app already bundles via `@fontsource`,
+  converted `woff2 → ttf`). `HudFonts.install()` copies them into the fonts dir on
+  startup and runs `fc-cache`.
+- **Import**: `POST /api/hudfonts` (the existing global `express-fileupload`
+  middleware, limit raised 1 KB → 6 MB) validates the upload (sfnt magic bytes,
+  ≤5 MB), writes it to the fonts dir, `fc-cache`s, reads its family via `fc-query`,
+  checks the family is a safe name, and registers it in settings. `DELETE
+  /api/hudfonts/:id` removes it. The editor gains an **Import font…** control and a
+  removable list of imported fonts.
+- `hudOverlay.ts`'s style validation now accepts **any** safe family name
+  (`/^[A-Za-z0-9 \-]{1,64}$/`, safe to interpolate into the SVG/CSS) instead of a
+  fixed allow-list, since curated/imported family names are open-ended.
+- Packaging: `assets` is added to the `node-deb` payload; `fontconfig` is added to
+  the `.deb` dependencies (for `fc-cache`/`fc-query`).
+
+Verified on real `fontconfig`/GStreamer (WSL **and** the Pi): with `XDG_DATA_HOME`
+pointed at the fonts dir, `fc-match` resolves each curated family to its bundled
+file (not a fallback), `fc-query` extracts families for the import path, and an
+`rsvgoverlay` pipeline renders HUD text in **Oxanium** to PLAYING/EOS. New tests:
+`hudFonts.test.js` (magic-byte validation, curated install incl. idempotent +
+missing-source + failing-cache paths, list, path-safe file serving, import
+success/duplicate/oversize/bad-family/non-font, remove, and the real `fc-*` exec
+seam via `fakeBin`), the `/api/hudfonts` routes in `index.io.test.js`, `_spawnEnv`
+in `videostream.test.js`, and the editor's font dropdown / `@font-face` injection
+/ import / remove in `hudeditor.test.jsx`. Both suites stay 100/100/100/100.
+
 ## Verification — WSL-verified
 
 - `lint` 0 · `typecheck` 0 · `covback` **100/100/100/100** (997 passing) ·

@@ -103,3 +103,6 @@ __pycache__/
 # Claude Code tooling — kept locally, never committed
 /CLAUDE.md
 /.claude/
+
+# runtime HUD font data (curated copies + imported fonts)
+/fontdata/

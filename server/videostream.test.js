@@ -2329,6 +2329,18 @@ describe('Video Functions', function () {
       assert.ok(layoutWrites[0].layout.elements.find(e => e.type === 'alt'))
     })
 
+    it('#_spawnEnv() adds XDG_DATA_HOME only when the HUD fonts manager is wired', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      // no fonts manager → inherits the process environment unchanged
+      assert.equal(vManager._spawnEnv(), process.env)
+      // wired → XDG_DATA_HOME points at the fonts data home (for librsvg)
+      vManager.hudFonts = { dataHome: '/tmp/rpanion-fontdata' }
+      const env = vManager._spawnEnv()
+      assert.equal(env.XDG_DATA_HOME, '/tmp/rpanion-fontdata')
+      assert.equal(env.PATH, process.env.PATH) // still inherits the rest
+    })
+
     it('#mergeModemGps() folds the SIM7600 GNSS fix into the HUD fields', function () {
       settings.clear()
       const vManager = liveStreamingManager()

@@ -90,11 +90,6 @@ describe('HUD overlay helpers (#173)', function () {
       assert.ok(els.find(e => e.type === 'modemLat').mock.startsWith('mLAT '))
     })
 
-    it('#hudFonts() lists the allowed (always-available) font families', function () {
-      const fonts = hud.hudFonts()
-      assert.deepEqual(fonts, ['monospace', 'sans-serif', 'serif'])
-    })
-
     it('#defaultHudLayout() has one entry per catalog element', function () {
       const layout = hud.defaultHudLayout()
       assert.equal(layout.elements.length, hud.hudElements().length)
@@ -137,8 +132,10 @@ describe('HUD overlay helpers (#173)', function () {
       // valid values pass through
       const ok = hud.validateHudLayout({ global: { font: 'serif', size: 50, color: '#0af' }, elements: [] })
       assert.deepEqual(ok.global, { font: 'serif', size: 50, color: '#0af' })
-      // invalid font/colour fall back to defaults; size is clamped & rounded
-      const bad = hud.validateHudLayout({ global: { font: 'Comic Sans', size: 999, color: 'red' }, elements: [] })
+      // a custom font name (curated/imported) is accepted as-is
+      assert.equal(hud.validateHudLayout({ global: { font: 'Chakra Petch' } }).global.font, 'Chakra Petch')
+      // unsafe font name + invalid colour fall back to defaults; size is clamped & rounded
+      const bad = hud.validateHudLayout({ global: { font: 'Bad/Font!', size: 999, color: 'red' }, elements: [] })
       assert.equal(bad.global.font, 'monospace')
       assert.equal(bad.global.size, 120) // clamped to the 10..120 max
       assert.equal(bad.global.color, '#ffffff')
@@ -150,7 +147,7 @@ describe('HUD overlay helpers (#173)', function () {
     it('#validateHudLayout() keeps only valid per-element style overrides', function () {
       const out = hud.validateHudLayout({ elements: [
         { type: 'alt', enabled: true, x: 0.8, y: 0.1, icon: true, font: 'sans-serif', size: 44, color: '#ff0000' },
-        { type: 'spd', enabled: true, x: 0.1, y: 0.1, icon: false, font: 'Wingdings', size: null, color: 'bad' },
+        { type: 'spd', enabled: true, x: 0.1, y: 0.1, icon: false, font: 'Bad/Font!', size: null, color: 'bad' },
         { type: 'hdg', enabled: true, x: 0.4, y: 0.1, icon: false, size: '300' } // string number, clamped
       ] })
       const alt = out.elements.find(e => e.type === 'alt')

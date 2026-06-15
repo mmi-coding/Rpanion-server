@@ -30,10 +30,21 @@ const elements = [
   { type: 'extrael', enabled: true, x: 0.2, y: 0.2, icon: false }
 ]
 const global = { font: 'monospace', size: 34, color: '#ffffff' }
-const fonts = ['monospace', 'sans-serif', 'serif']
+const fontList = {
+  generics: ['monospace', 'sans-serif', 'serif'],
+  fonts: [
+    { family: 'Oxanium', label: 'Oxanium — DJI / FPV OSD style', file: 'Oxanium-Medium.ttf', kind: 'curated' },
+    { family: 'IBM Plex Mono', label: 'IBM Plex Mono', file: 'IBMPlexMono-Regular.ttf', kind: 'curated' },
+    { family: 'My Upload', label: 'My Upload', file: 'My_Upload.ttf', kind: 'imported', id: 'My_Upload.ttf' }
+  ]
+}
 
 function fetchWith (extra = {}) {
-  return mockFetch({ '/api/hudlayout': { layout: { global, elements }, elements: catalog, fonts }, ...extra })
+  return mockFetch({
+    '/api/hudlayout': { layout: { global, elements }, elements: catalog },
+    '/api/hudfonts': fontList,
+    ...extra
+  })
 }
 
 function renderEd (setup) {
@@ -273,16 +284,108 @@ describe('#HudEditorPage()', function () {
     page.unmount()
   })
 
-  test('tolerates a layout response missing keys', async function () {
+  test('tolerates a layout/fonts response missing keys', async function () {
     let ref = null
-    mockFetch({ '/api/hudlayout': {} })
+    mockFetch({ '/api/hudlayout': {}, '/api/hudfonts': {} })
     const page = renderPage(<HudEditorPage ref={(r) => { ref = r }} />)
     await page.flush()
     expect(ref.state.elements).toEqual([])
     expect(ref.state.catalog).toEqual([])
-    // falls back to the built-in fonts + default global style
-    expect(ref.state.fonts).toContain('monospace')
+    // falls back to the built-in generic fonts + default global style
+    expect(ref.state.fontList.generics).toContain('monospace')
+    expect(ref.state.fontList.fonts).toEqual([])
     expect(ref.state.global.font).toBe('monospace')
+    page.unmount()
+  })
+
+  test('font helpers tolerate a fontList missing its arrays', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    act(() => { getRef().setState({ fontList: {} }) })
+    expect(getRef().fontOptions()).toEqual([])
+    expect(getRef().fontFaceCss()).toBe('')
+    page.unmount()
+  })
+
+  test('font dropdowns list generics + curated + imported, and @font-face is injected', async function () {
+    const { page } = renderEd(() => fetchWith())
+    await page.flush()
+    const opts = [...page.container.querySelector('[data-testid="global-font"]').options].map(o => o.value)
+    expect(opts).toContain('monospace')
+    expect(opts).toContain('Oxanium') // curated DJI-style font
+    expect(opts).toContain('My Upload') // imported
+    // the DJI-style label is shown
+    expect(page.container.textContent).toContain('Oxanium — DJI / FPV OSD style')
+    // @font-face rules reference the served files so the preview matches the device
+    const styleCss = [...page.container.querySelectorAll('style')].map(s => s.innerHTML).join('')
+    expect(styleCss).toContain("@font-face")
+    expect(styleCss).toContain('/api/hudfonts/file/Oxanium-Medium.ttf')
+    page.unmount()
+  })
+
+  test('importing a font posts it and refreshes the list', async function () {
+    const updated = { generics: fontList.generics, fonts: [...fontList.fonts, { family: 'New Font', label: 'New Font', file: 'New_Font.ttf', kind: 'imported', id: 'New_Font.ttf' }] }
+    const fetch = fetchWith({ 'POST /api/hudfonts': { font: { family: 'New Font', file: 'New_Font.ttf', id: 'New_Font.ttf' }, fonts: updated, error: null } })
+    let ref = null
+    const page = renderPage(<HudEditorPage ref={(r) => { ref = r }} />)
+    await page.flush()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    const input = page.container.querySelector('[data-testid="font-import"]')
+    const file = new File([new Uint8Array([0, 1, 0, 0])], 'New Font.ttf', { type: 'font/ttf' })
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(fetch).toHaveBeenCalledWith('/api/hudfonts', expect.objectContaining({ method: 'POST' }))
+    expect(ref.state.fontList.fonts.find(f => f.family === 'New Font')).toBeTruthy()
+    expect(page.container.textContent).toContain('Imported font: New Font')
+    act(() => { vi.advanceTimersByTime(4000) })
+    vi.useRealTimers()
+    page.unmount()
+  })
+
+  test('import surfaces a server error and a no-file change is a no-op', async function () {
+    const { page, getRef } = renderEd(() => fetchWith({ 'POST /api/hudfonts': { error: 'Not a TrueType/OpenType font' } }))
+    await page.flush()
+    // selecting no file does nothing
+    act(() => { getRef().importFont({ target: { files: [], value: '' } }) })
+    expect(getRef().state.importing).toBe(false)
+    // a rejected import shows the server error
+    const input = page.container.querySelector('[data-testid="font-import"]')
+    const file = new File([new Uint8Array([1, 2])], 'bad.ttf')
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(page.container.textContent).toContain('Not a TrueType/OpenType font')
+    page.unmount()
+  })
+
+  test('import network failure is caught', async function () {
+    const { page, getRef } = renderEd(() => fetchWith({ 'POST /api/hudfonts': () => { throw new Error('net') } }))
+    await page.flush()
+    await act(async () => { getRef().importFont({ target: { files: [new File([new Uint8Array([0, 1, 0, 0])], 'x.ttf')], value: '' } }) })
+    expect(page.container.textContent).toContain('Could not import font')
+    page.unmount()
+  })
+
+  test('removing an imported font calls DELETE and refreshes', async function () {
+    const without = { generics: fontList.generics, fonts: fontList.fonts.filter(f => f.kind !== 'imported') }
+    const { page, getRef } = renderEd(() => fetchWith({ 'DELETE /api/hudfonts/My_Upload.ttf': { fonts: without, error: null } }))
+    await page.flush()
+    const btn = page.container.querySelector('[data-testid="font-remove-My_Upload.ttf"]')
+    expect(btn).toBeTruthy()
+    await act(async () => { btn.click() })
+    expect(getRef().state.fontList.fonts.find(f => f.kind === 'imported')).toBeFalsy()
+    page.unmount()
+  })
+
+  test('remove tolerates a response without fonts, and a failure is caught', async function () {
+    const { page, getRef } = renderEd(() => fetchWith({ 'DELETE /api/hudfonts/My_Upload.ttf': {} }))
+    await page.flush()
+    const n = getRef().state.fontList.fonts.length
+    await act(async () => { getRef().removeFont('My_Upload.ttf') })
+    expect(getRef().state.fontList.fonts.length).toBe(n) // unchanged (no fonts in response)
+    // network failure path
+    mockFetch({ 'DELETE /api/hudfonts/My_Upload.ttf': () => { throw new Error('net') } })
+    await act(async () => { getRef().removeFont('My_Upload.ttf') })
+    expect(getRef().state.error).toContain('Could not remove font')
     page.unmount()
   })
 })
