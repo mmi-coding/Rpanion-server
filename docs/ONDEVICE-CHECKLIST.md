@@ -298,3 +298,11 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] The UDP-Server (broadcast) / TCP-Server outputs carry the first link; an explicit UDP-client destination carries every vehicle
 - [ ] An existing single-link config still works after upgrade (migrated to a one-element links list)
 - [ ] Removing a link stops its router/monitor and frees its slot for a new link
+
+## Feature #398/#289/#9: multiple (secondary) video streams
+
+- [ ] Primary stream (IMX708) on the Photo & Video page + a secondary stream from a second (USB) camera on the Secondary Streams page → both run at once; pull each into a viewer (secondary RTSP on `:8555`, or RTP to the GCS)
+- [ ] CPU headroom on a Pi 4 with two streams (drop the secondary resolution if the encoder/CPU saturates); a Pi Zero 2 W needs low secondary resolutions
+- [ ] The add form refuses the primary's camera (and another secondary's) — no double-open; backend rejects a duplicate device
+- [ ] Remove a secondary → its `video-server.py` process exits and the camera frees
+- [ ] Secondary streams are restored after a reboot (persisted in settings)

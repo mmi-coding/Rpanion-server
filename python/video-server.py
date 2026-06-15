@@ -675,14 +675,18 @@ class MyFactory(GstRtspServer.RTSPMediaFactory):
 
 
 class GstServer():
-    def __init__(self):
+    def __init__(self, port=8554):
         self.server = GstRtspServer.RTSPServer()
+        # the RTSP listen port. Defaults to 8554 (the primary stream); secondary
+        # streams (#398) run their own server on a distinct port to avoid a clash
+        self.port = port
+        self.server.set_service(str(port))
 
         # Configure server for low-latency streaming
         self.server.set_backlog(5)  # Limit queued connections
 
         self.sourceID = self.server.attach(None)
-        print("Server available on rtsp://<IP>:8554")
+        print("Server available on rtsp://<IP>:{0}".format(port))
 
     def addStream(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression, custom_pipeline="", hud=False):
         f = MyFactory(device, h, w, bitrate, format,
@@ -708,8 +712,8 @@ class GstServer():
             name = ''.join(filter(str.isalnum, name))
         m.add_factory("/" + name, f)
 
-        print("Added " + "rtsp://<IP>:8554/" + name)
-        print("Use: gst-launch-1.0 rtspsrc location=rtsp://<IP>:8554/" +
+        print("Added " + "rtsp://<IP>:{0}/".format(self.port) + name)
+        print("Use: gst-launch-1.0 rtspsrc location=rtsp://<IP>:{0}/".format(self.port) +
               name + " latency=0 ! queue ! decodebin ! autovideosink sync=false")
 
     def addSwitcherStream(self, device, pipeline_str):
@@ -751,6 +755,8 @@ if __name__ == '__main__':
                         default=False, action='store_true')
     parser.add_argument("--hud", help="burn a live telemetry HUD readout onto the stream (fed over the stdin control channel)",
                         default=False, action='store_true')
+    parser.add_argument("--rtsp-port", help="RTSP server listen port (default 8554; secondary streams use a distinct port)",
+                        default=8554, type=int)
     parser.add_argument(
         "--secondary", help="Secondary video device for runtime source switching", default="", type=str)
     parser.add_argument("--secondary-format", help="Secondary video format",
@@ -801,7 +807,7 @@ if __name__ == '__main__':
         # ./video-server.py --multirtsp="/dev/video0,480,640,2000,video/x-raw,0,10;/dev/video2,480,640,2000,video/x-raw,0,10"
 
         cams = args.multirtsp.split(';')
-        s = GstServer()
+        s = GstServer(args.rtsp_port)
 
         # Add each camera
         for cam in cams:
@@ -831,7 +837,7 @@ if __name__ == '__main__':
         if pipeline_str == "":
             print("Unable to build dual-source pipeline")
             sys.exit(1)
-        s = GstServer()
+        s = GstServer(args.rtsp_port)
         s.addSwitcherStream(args.videosource, pipeline_str)
 
         try:
@@ -869,7 +875,7 @@ if __name__ == '__main__':
             loop.quit()
     elif args.transport == "RTSP":
         # RTSP
-        s = GstServer()
+        s = GstServer(args.rtsp_port)
         s.addStream(args.videosource, args.height, args.width, args.bitrate,
                     args.format, args.rotation, args.fps, args.timestamp, args.compression,
                     custom_pipeline, args.hud)
