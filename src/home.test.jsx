@@ -35,6 +35,38 @@ describe('#homePage()', function () {
   })
 
   // -------------------------------------------------------------------------
+  // System stats card (#31)
+  // -------------------------------------------------------------------------
+  test('System card shows live stats from /api/systemstatus', async function () {
+    mockFetch({ '/api/systemstatus': { cpuLoad: 37, cpuTempC: 52, memUsedMB: 800, memTotalMB: 4096, diskUsedGB: 8, diskTotalGB: 32, uptimeSec: 3725 } })
+    const page = renderPage(<Home />)
+    await page.flush()
+    expect(page.container.textContent).toContain('System')
+    expect(page.container.textContent).toContain('37%')
+    expect(page.container.textContent).toContain('52 °C')
+    expect(page.container.textContent).toContain('800 / 4096 MB')
+    expect(page.container.textContent).toContain('8 / 32 GB')
+    expect(page.container.textContent).toContain('1h 2m') // 3725s
+    page.unmount()
+  })
+
+  test('System card shows N/A temperature when unavailable', async function () {
+    mockFetch({ '/api/systemstatus': { cpuLoad: 5, cpuTempC: null, memUsedMB: 100, memTotalMB: 2048, diskUsedGB: 1, diskTotalGB: 16, uptimeSec: 60 } })
+    const page = renderPage(<Home />)
+    await page.flush()
+    expect(page.container.textContent).toContain('N/A')
+    page.unmount()
+  })
+
+  test('System card tolerates a /api/systemstatus fetch failure', async function () {
+    mockFetch({ '/api/systemstatus': () => { throw new Error('boom') } })
+    const page = renderPage(<Home />)
+    await page.flush()
+    expect(page.container.textContent).toContain('System Status Overview') // no crash
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
   // Socket: FCStatus
   // -------------------------------------------------------------------------
   test('FCStatus socket event updates flight controller display', async function () {

@@ -30,6 +30,33 @@ function getDiskInfo (callback: (...args: any[]) => void) {
   })
 }
 
+function getLiveStats (callback: (...args: any[]) => void) {
+  // live load/health for the dashboard: CPU %, temp, RAM + disk usage, uptime.
+  // callback is (stats, err)
+  const valueObject = {
+    currentLoad: 'currentLoad',
+    cpuTemperature: 'main',
+    mem: 'total, available',
+    fsSize: 'mount, size, used',
+    time: 'uptime'
+  }
+  si.get(valueObject).then((data: any) => {
+    const root = data.fsSize.find((d: any) => d.mount === '/') || { size: 0, used: 0 }
+    return callback({
+      cpuLoad: Math.round(data.currentLoad.currentLoad),
+      cpuTempC: data.cpuTemperature.main > 0 ? Math.round(data.cpuTemperature.main) : null,
+      memUsedMB: Math.round((data.mem.total - data.mem.available) / (1024 * 1024)),
+      memTotalMB: Math.round(data.mem.total / (1024 * 1024)),
+      diskUsedGB: +(root.used / (1024 * 1024 * 1024)).toFixed(1),
+      diskTotalGB: +(root.size / (1024 * 1024 * 1024)).toFixed(1),
+      uptimeSec: Math.round(data.time.uptime)
+    }, null)
+  }).catch((err: any) => {
+    console.log('Error getting live stats:', err)
+    return callback(null, err)
+  })
+}
+
 /*function rebootCC () {
   // reboot the companion computer
   console.log('Reboot now')
@@ -131,4 +158,4 @@ function getsystemctllog(callback: (log: string) => void) {
   })
 }
 
-export = { getSoftwareInfo, getHardwareInfo, getDiskInfo, shutdownCC, getsystemctllog }
+export = { getSoftwareInfo, getHardwareInfo, getDiskInfo, getLiveStats, shutdownCC, getsystemctllog }

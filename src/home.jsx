@@ -18,7 +18,8 @@ class Home extends basePage {
       NTRIPStatus: 'Not connected',
       PPPStatus: 'Not connected',
       LogConversionStatus: 'N/A',
-      VideoStreamStatus: 'Not streaming'
+      VideoStreamStatus: 'Not streaming',
+      systemStatus: null
     }
 
     // Socket.io listeners for status updates
@@ -46,10 +47,26 @@ class Home extends basePage {
       // refresh state on reconnection
       this.componentDidMount()
     })
+
+    // Poll live system stats (CPU / temp / RAM / disk / uptime) for the dashboard (#31)
+    this.loadSystemStatus()
+    this.sysTimer = setInterval(this.loadSystemStatus.bind(this), 3000)
   }
 
   componentDidMount () {
     this.loadDone()
+  }
+
+  componentWillUnmount () {
+    clearInterval(this.sysTimer)
+    super.componentWillUnmount()
+  }
+
+  loadSystemStatus () {
+    fetch('/api/systemstatus', { headers: { Authorization: `Bearer ${this.state.token}` } })
+      .then(response => response.json())
+      .then(data => { this.setState({ systemStatus: data }) })
+      .catch(() => { /* keep the previous sample */ })
   }
 
   // Helper method to determine status variant (color)
@@ -181,6 +198,24 @@ class Home extends basePage {
               </Card.Header>
               <Card.Body>
                 <p>{this.state.LogConversionStatus}</p>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          <Col md={6} className="mb-3">
+            <Card>
+              <Card.Header>
+                <h5 className="mb-0">System</h5>
+              </Card.Header>
+              <Card.Body>
+                {this.state.systemStatus ? (
+                  <>
+                    <p><strong>CPU:</strong> {this.state.systemStatus.cpuLoad}% · {this.state.systemStatus.cpuTempC !== null ? this.state.systemStatus.cpuTempC + ' °C' : 'N/A'}</p>
+                    <p><strong>Memory:</strong> {this.state.systemStatus.memUsedMB} / {this.state.systemStatus.memTotalMB} MB</p>
+                    <p><strong>Disk:</strong> {this.state.systemStatus.diskUsedGB} / {this.state.systemStatus.diskTotalGB} GB</p>
+                    <p><strong>Uptime:</strong> {Math.floor(this.state.systemStatus.uptimeSec / 3600)}h {Math.floor((this.state.systemStatus.uptimeSec % 3600) / 60)}m</p>
+                  </>
+                ) : <p>—</p>}
               </Card.Body>
             </Card>
           </Col>

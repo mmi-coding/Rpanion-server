@@ -387,7 +387,7 @@ describe('#AppRouter()', function () {
     localStorage.setItem('token', JSON.stringify({ token: 'mytoken123' }))
     let capturedOpts = null
     vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
-      capturedOpts = opts
+      if (url === '/api/auth') capturedOpts = opts // ignore the Home page's /api/systemstatus fetch
       return { ok: true, status: 200, json: async () => ({ authEnabled: true }) }
     }))
     const page = renderPage(
@@ -406,7 +406,7 @@ describe('#AppRouter()', function () {
   test('sends empty headers when no token in localStorage', async function () {
     let capturedOpts = null
     vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
-      capturedOpts = opts
+      if (url === '/api/auth') capturedOpts = opts // ignore the Home page's /api/systemstatus fetch
       return { ok: true, status: 200, json: async () => ({ authEnabled: true }) }
     }))
     const page = renderPage(
