@@ -340,3 +340,10 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] In the HUD Editor, the font dropdowns list **Oxanium (DJI/FPV OSD style)**, Chakra Petch, IBM Plex Mono/Sans + the generics; pick **Oxanium** globally → on a graphic stream the burned-in HUD renders in Oxanium (not a fallback), matching the editor preview
 - [ ] **Import** a `.ttf`/`.otf` from the editor → it appears in the list and renders both in the preview and on the burned-in video; a **running** stream may need a restart to pick up a newly imported font (fontconfig caches per process). Confirm a non-font / >5 MB upload is rejected with a clear message
 - [ ] Remove an imported font → it disappears from the list (and from the fonts dir)
+
+## Feature #173 follow-up: LTE modem GNSS on the Modem page + discovery
+
+- [ ] With the GNSS antenna wired and the modem monitor enabled, the **LTE Modem** page shows a **GNSS (modem GPS)** row with the live fix (lat/lon · altitude · map link); confirm it tracks `AT+CGPSINFO`. On this unit the AT port is **`/dev/ttyUSB3`** (not the default `ttyUSB2`, which is the diag port in the `9001`/QMI composition) — set it on the page or via *Scan for modem*
+- [ ] Run **Scan for modem** → the responding AT port shows a **GNSS fix** badge with the position (the scan asks each responder for `AT+CGPSINFO`), so GPS can be confirmed before enabling the monitor
+- [ ] Cold start: the row reads **No fix · acquiring…** until the antenna gets a lock (can take a minute outdoors), then flips to the fix
+- [ ] The same fix feeds the video HUD's **Modem GPS** elements (modemFix/lat/lon/alt) on a graphic stream

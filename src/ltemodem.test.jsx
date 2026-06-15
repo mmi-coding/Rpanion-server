@@ -71,6 +71,44 @@ describe('#ltemodemp age()', function () {
         page.unmount()
     })
 
+    test('GNSS status row shows a fix with coordinates, altitude and a map link', async function () {
+        const status = { ...defaultStatus, available: true, gps: { lat: 49.552039, lon: -1.698747, alt: 63.7 } }
+        mockFetch({ '/api/ltemodem': { settings: defaultConfig, status, serialPorts: [] } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        expect(page.container.textContent).toContain('49.55204, -1.69875')
+        expect(page.container.textContent).toContain('· alt 63.7 m')
+        const map = [...page.container.querySelectorAll('a')].find(a => a.href.includes('openstreetmap'))
+        expect(map).toBeTruthy()
+        page.unmount()
+    })
+
+    test('GNSS status row: a fix without altitude omits the altitude', async function () {
+        const status = { ...defaultStatus, available: true, gps: { lat: 49.5, lon: -1.6, alt: null } }
+        mockFetch({ '/api/ltemodem': { settings: defaultConfig, status, serialPorts: [] } })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        expect(page.container.textContent).toContain('49.50000, -1.60000')
+        expect(page.container.textContent).not.toContain('· alt')
+        page.unmount()
+    })
+
+    test('GNSS status row: "No fix" while available, dash when modem unavailable', async function () {
+        const avail = { ...defaultStatus, available: true, gps: null }
+        mockFetch({ '/api/ltemodem': { settings: defaultConfig, status: avail, serialPorts: [] } })
+        let page = renderPage(<LTEModemPage />)
+        await page.flush()
+        expect(page.container.textContent).toContain('No fix')
+        page.unmount()
+        // unavailable modem → GNSS row shows an em dash, never "No fix"
+        mockFetch({ '/api/ltemodem': { settings: defaultConfig, status: defaultStatus, serialPorts: [] } })
+        page = renderPage(<LTEModemPage />)
+        await page.flush()
+        const gnssRow = [...page.container.querySelectorAll('tr')].find(r => r.textContent.includes('GNSS'))
+        expect(gnssRow.textContent).toContain('—')
+        page.unmount()
+    })
+
     // ------------------------------------------------------------------
     // fetchConfig branches
     // ------------------------------------------------------------------
@@ -898,7 +936,7 @@ describe('#ltemodemp age()', function () {
             '/api/ltemodem': { settings: defaultConfig, status: defaultStatus, serialPorts: [] },
             'POST /api/ltemodemdetect': {
                 ports: [
-                    { path: '/dev/ttyUSB2', ok: true, baud: 115200, manufacturer: 'SIMCOM', model: 'SIM7600', recommended: true }
+                    { path: '/dev/ttyUSB2', ok: true, baud: 115200, manufacturer: 'SIMCOM', model: 'SIM7600', recommended: true, gps: { lat: 49.552039, lon: -1.698747, alt: 63.7 } }
                 ],
                 interfaces: []
             }
@@ -910,6 +948,9 @@ describe('#ltemodemp age()', function () {
         await page.flush()
         expect(page.container.textContent).toContain('Recommended')
         expect(page.container.textContent).toContain('SIMCOM SIM7600')
+        // the scan previews the modem's GNSS fix
+        expect(page.container.textContent).toContain('GNSS fix')
+        expect(page.container.textContent).toContain('49.55204, -1.69875')
         page.unmount()
     })
 
