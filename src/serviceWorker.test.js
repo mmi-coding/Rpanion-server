@@ -127,6 +127,13 @@ describe('#serviceWorker', function () {
     const { stub } = makeServiceWorkerStub()
     // Make PUBLIC_URL match origin so origin check passes
     process.env.PUBLIC_URL = ''
+    // On localhost the load handler calls checkValidServiceWorker → fetch(swUrl).
+    // Stub fetch to the deterministic offline (.catch) branch so this never leaves
+    // a dangling promise: an un-awaited fetch that resolves to a 404/non-JS body in
+    // a *later* test would run `navigator.serviceWorker.ready.then(r => r.unregister()…)`
+    // against that test's redefined serviceWorker (whose unregister() returns
+    // undefined), surfacing as an unhandled rejection at serviceWorker.js:105.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
     const sw = await import('./serviceWorker.js')
 
     // Trigger the load event
@@ -142,10 +149,11 @@ describe('#serviceWorker', function () {
     // Manually invoke the load handler
     for (const h of loadHandlers) h()
     await stub.ready
+    // let the stubbed fetch + its .catch settle before the test ends (no dangling promise)
+    await new Promise(resolve => setTimeout(resolve, 0))
 
     // On localhost the ready.then logs; checkValidServiceWorker is called instead of registerValidSW.
-    // fetch is not stubbed here — this test just verifies register() reaches the load event setup
-    // when hostname='localhost' in production mode. The load handlers array captures the handler.
+    // The load handlers array captures the handler.
     expect(loadHandlers.length).toBeGreaterThan(0)
     process.env.PUBLIC_URL = ''
   })
