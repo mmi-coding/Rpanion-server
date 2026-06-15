@@ -218,3 +218,8 @@ real-browser confirmations on the deployed Pi. See docs/GROUND-STATION-THEME.md.
 - [ ] On a phone/narrow browser: the sidebar is hidden behind the top-bar hamburger; tapping it opens the drawer with a backdrop; tapping a nav link or the backdrop closes it
 - [ ] Dashboard cards stack and page content fits the viewport width (no horizontal scroll) on a phone
 - [ ] Desktop collapse rail (waypoint codes) still works ≥ 768px and is not used on phones
+
+## Bug fix #356: video device scan timeout
+
+- [ ] Attach a USB analog capture grabber (EasyCAP / MacroSilicon) and open the Video page → it loads within ~15 s (with a "scan timed out" notice if the device is unresponsive) instead of hanging and bouncing to login
+- [ ] Normal cameras (Pi Camera / standard USB webcam) still enumerate with full caps

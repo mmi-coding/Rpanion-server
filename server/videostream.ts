@@ -25,6 +25,7 @@ class videoStream {
   deviceAddresses: any
   deviceStream: any
   active: any
+  videoDeviceScanTimeoutMs: number
   settings: any
   constructor (settings: any) {
     this.settings = settings
@@ -35,6 +36,11 @@ class videoStream {
     this.deviceAddresses = []
     this.cameraMode = null; // 'streaming', 'photo', or 'video'
     this.photoSeq = 0;
+
+    // Max time (ms) to wait for the gstcaps device probe. An unresponsive USB /
+    // analog capture device (e.g. EasyCAP grabbers) must not hang the video
+    // page forever and bounce the user to login (#356).
+    this.videoDeviceScanTimeoutMs = 15000;
 
     // Interval to send camera heartbeat events
     this.intervalObj = null;
@@ -254,7 +260,8 @@ class videoStream {
 
     // If not streaming, proceed with hardware discovery
     const pythonPath = logpaths.getPythonPath();
-    exec(`${pythonPath} ./python/gstcaps.py`, (error: Error | null, stdout: string, stderr: string) => {
+    // timeout + SIGKILL so a hung device probe can't block the request forever (#356)
+    exec(`${pythonPath} ./python/gstcaps.py`, { timeout: this.videoDeviceScanTimeoutMs, killSignal: 'SIGKILL' as const }, (error: Error | null, stdout: string, stderr: string) => {
       const responseData = {
         devices: [],
         networkInterfaces: networkInterfaces,
@@ -306,7 +313,11 @@ class videoStream {
 
         return callback(null, responseData);
       } catch (e) {
-        return callback('Failed to process video devices', responseData);
+        // exec sets error.killed when the timeout fired — give a clearer hint.
+        const msg = (error && (error as any).killed)
+          ? 'Video device scan timed out — a connected camera may be unresponsive'
+          : 'Failed to process video devices';
+        return callback(msg, responseData);
       }
     });
   }
