@@ -743,7 +743,7 @@ describe('#NetworkConfig()', function () {
     page.submit(form)
     await page.flush()
     expect(fetch).toHaveBeenCalledWith('/api/networkadd', expect.objectContaining({ method: 'POST' }))
-    expect(ref.state.infoMessage).toBe('Network Added')
+    expect(ref.state.infoMessage).toMatch(/Activate/)
     page.unmount()
   })
 

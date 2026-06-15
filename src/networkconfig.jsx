@@ -266,7 +266,10 @@ class NetworkConfig extends basePage {
         }).then(response => response.json())
           .then(data => {
             if (data.error == null) {
-              this.setState({ waiting: false, infoMessage: "Network Added" });
+              // #221: adding a connection does not activate it — guide the user so
+              // they don't think the change had no effect (it otherwise only starts
+              // on the next reboot via autoconnect).
+              this.setState({ waiting: false, infoMessage: "Network added. Select it in the Connections list and click Activate to use it now — otherwise it starts on the next reboot. (Activating an access point on a different adapter switches the hotspot to it.)" });
             }
             else {
               this.setState({ waiting: false, error: "Error adding network: " + data.error });

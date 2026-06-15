@@ -228,3 +228,19 @@ real-browser confirmations on the deployed Pi. See docs/GROUND-STATION-THEME.md.
 
 - [ ] Open the Adhoc Wi-Fi page on a board whose adapter reports no channels → the page renders (no blank screen) instead of crashing
 - [ ] On a card that rejects ad-hoc/WEP, enabling shows the backend error and the HelpSection explains the adapter caveat
+
+## Bug #293 / #278: Zero 2 W hotspot gone after reboot — DIAGNOSIS NEEDED
+
+The AP NetworkManager profile is created with `connection.autoconnect=yes`, so this
+looks like a boot race / NM state issue specific to the Zero 2 W rather than a code
+bug. After reproducing (stop service → `shutdown` → power on), capture:
+
+- [ ] `nmcli -f NAME,TYPE,AUTOCONNECT,AUTOCONNECT-PRIORITY connection show` — is the AP profile present, AUTOCONNECT=yes?
+- [ ] `sudo nmcli connection up <AP-uuid>` — does it bring the hotspot back manually? (yes ⇒ boot race; candidate fix: raise `connection.autoconnect-priority` + a oneshot `nmcli con up` after NetworkManager is up)
+- [ ] `journalctl -b -u NetworkManager | grep -i wlan0` — any "device not ready" / rfkill / timeout around AP activation on boot?
+- [ ] `nmcli radio wifi` and `rfkill list` — is wlan0 soft/hard-blocked after boot?
+- [ ] Share the output so a *verified* fix can be implemented (the change is too risky to ship blind on the shared AP-activation path).
+
+## Bug #221: new USB-WiFi AP not active until reboot
+
+- [ ] Add an AP on a second (USB) Wi-Fi adapter → the page now prompts to **Activate** it; click Activate on the new connection in the list → the hotspot moves to the USB card without a reboot
