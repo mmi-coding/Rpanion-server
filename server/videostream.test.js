@@ -53,6 +53,11 @@ case "$ARGS" in
         echo '${gstcapsJson}'
         exit 0
         ;;
+      gst-hang)
+        sleep 5
+        echo '${gstcapsJson}'
+        exit 0
+        ;;
       *)
         echo '${gstcapsJson}'
         exit 0
@@ -635,6 +640,22 @@ describe('Video Functions', function () {
       vManager.getVideoDevices(function (err, data) {
         try {
           assert.ok(err)
+          done()
+        } catch (e) { done(e) }
+      })
+    })
+
+    it('times out a hung device probe instead of hanging (#356)', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.videoDeviceScanTimeoutMs = 200 // fake gstcaps sleeps 5s
+      process.env.FAKE_SCENARIO = 'gst-hang'
+      const t0 = Date.now()
+      vManager.getVideoDevices(function (err, data) {
+        try {
+          assert.ok(/timed out/.test(err)) // clear timeout message, not a hang
+          assert.ok(Date.now() - t0 < 4000) // returned well before the 5s sleep
+          assert.deepStrictEqual(data.devices, [])
           done()
         } catch (e) { done(e) }
       })
