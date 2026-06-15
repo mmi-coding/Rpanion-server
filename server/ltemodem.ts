@@ -627,13 +627,17 @@ class LTEModem {
 
   // QMI via libqmi (no ModemManager). Starts the WDS network and captures the
   // packet-data handle/CID for a clean stop, then leases an address via DHCP.
+  // All qmicli calls go through the qmi-proxy (--device-open-proxy) so they share
+  // the cdc-wdm device with the kernel/each other - without it a second opener
+  // gets a CID-allocation timeout, and the kept --client-no-release-cid only
+  // survives across invocations when both connect and stop use the proxy.
   async _qmiConnect () {
     this._markReconnect()
     // Raw-IP framing is set automatically by the shipped udev rule
     // (77-rpanion-qmi-rawip.rules) when the qmi_wwan interface appears; just
     // ensure it's up before starting the bearer + leasing an address.
     await this._exec('sudo', ['ip', 'link', 'set', this.options.netInterface, 'up'])
-    const out = await this._exec('sudo', ['qmicli', '-d', this.options.qmiDevice, `--wds-start-network=apn='${this.options.apn}',ip-type=4`, '--client-no-release-cid'])
+    const out = await this._exec('sudo', ['qmicli', '--device-open-proxy', '-d', this.options.qmiDevice, `--wds-start-network=apn='${this.options.apn}',ip-type=4`, '--client-no-release-cid'])
     const hMatch = out.match(/handle:\s*'?(\d+)'?/i)
     const cMatch = out.match(/CID:\s*'?(\d+)'?/i)
     this.qmiHandle = hMatch ? hMatch[1] : null
@@ -644,7 +648,7 @@ class LTEModem {
 
   async _qmiStop () {
     if (this.qmiHandle) {
-      await this._exec('sudo', ['qmicli', '-d', this.options.qmiDevice, `--wds-stop-network=${this.qmiHandle}`, `--client-cid=${this.qmiCid}`])
+      await this._exec('sudo', ['qmicli', '--device-open-proxy', '-d', this.options.qmiDevice, `--wds-stop-network=${this.qmiHandle}`, `--client-cid=${this.qmiCid}`])
       this.qmiHandle = null
       this.qmiCid = null
     } else {
