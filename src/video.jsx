@@ -4,6 +4,7 @@ import Form from 'react-bootstrap/Form';
 import React from 'react'
 import { Link } from 'react-router-dom';
 import IPAddressInput from './components/IPAddressInput.jsx';
+import { HelpTip } from './components/Help.jsx';
 
 import basePage from './basePage.jsx';
 
@@ -54,7 +55,8 @@ class VideoPage extends basePage {
       fpsOptions: [],
       fpsSelected: 1,
       timestamp: false,
-      
+      useHud: false,
+
       // Transport options
       multicastString: " ",
       compression: 'H264',
@@ -184,6 +186,7 @@ class VideoPage extends basePage {
           bitrate: videoData.selectedBitrate || 1100,
           rotSelected: (videoData.selectedRotation && videoData.selectedRotation.value != null) ? videoData.selectedRotation.value : 0,
           timestamp: videoData.selectedUseTimestamp || false,
+          useHud: videoData.selectedUseHud || false,
           enableCameraHeartbeat: videoData.selectedUseCameraHeartbeat || false,
           mavStreamSelected: (videoData.selectedMavStreamURI && videoData.selectedMavStreamURI.value) ? videoData.selectedMavStreamURI.value : (this.state.ifaces[0] || '127.0.0.1'),
 
@@ -441,6 +444,20 @@ componentWillUnmount() {
     this.setState({ timestamp: !this.state.timestamp });
   }
 
+  handleHudChange = () => {
+    // toggle the telemetry HUD overlay
+    this.setState({ useHud: !this.state.useHud });
+  }
+
+  // The HUD (like the timestamp) is drawn on raw video before encoding, so it
+  // can only be added to sources the companion computer re-encodes. A
+  // pre-compressed H264 source is passed through untouched - no overlay
+  // possible without a decode/re-encode.
+  isH264NativeSource() {
+    const cap = this.state.videoCaps.find(c => c.value === this.state.vidCapSelected);
+    return !!(cap && cap.format === 'video/x-h264');
+  }
+
   handleUseCameraHeartbeatChange = () => {
     // Toggle camera heartbeat events
     this.setState({ enableCameraHeartbeat: !this.state.enableCameraHeartbeat });
@@ -557,6 +574,7 @@ componentWillUnmount() {
           useUDPIP: this.state.useUDPIP,
           useUDPPort: this.state.useUDPPort,
           useTimestamp: this.state.timestamp,
+          useHud: this.state.useHud,
           mavStreamSelected: this.state.mavStreamSelected,
           compression: this.state.compression
         };
@@ -869,6 +887,23 @@ renderContent() {
                             disabled={active}
                             onChange={this.handleTimestampChange}
                             checked={this.state.timestamp} /></div>
+                      </div>
+                    )}
+
+                    {/* Telemetry HUD overlay (#173) - same raw-video constraint as the timestamp */}
+                    {!isVideo && (
+                      <div className="form-group row" style={{ marginBottom: '5px' }}>
+                        <label className="col-sm-4 col-form-label">Telemetry HUD<HelpTip text="Burn a live flight-telemetry readout (altitude, speed, heading, battery, mode, GPS) onto the video itself, so any viewer or recording sees it - not just a ground station with its own MAVLink link. Like the timestamp it is drawn before encoding, so it works on CSI / MJPEG / raw sources the companion computer re-encodes, not on a pre-compressed H264 source or RTSP passthrough." /></label>
+                        <div className="col-sm-8">
+                          <Form.Check
+                            type="checkbox"
+                            disabled={active || this.isH264NativeSource()}
+                            onChange={this.handleHudChange}
+                            checked={this.state.useHud} />
+                          {this.isH264NativeSource() && (
+                            <small className="text-muted">Not available on a pre-compressed H264 source (nothing to draw on before encoding).</small>
+                          )}
+                        </div>
                       </div>
                     )}
 

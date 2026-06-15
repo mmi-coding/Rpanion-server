@@ -6,6 +6,7 @@ const { minimal, common } = require('node-mavlink')
 const logpaths = require('./paths')
 const fs = require('fs')
 const vsHelpers = require('./videostreamHelpers')
+const hudOverlay = require('./hudOverlay')
 
 class videoStream {
   videoSettings: any
@@ -26,9 +27,16 @@ class videoStream {
   deviceStream: any
   active: any
   videoDeviceScanTimeoutMs: number
+  hudData: any
+  lastHudSend: number
   settings: any
   constructor (settings: any) {
     this.settings = settings
+
+    // Latest telemetry for the HUD overlay (#173) + the last time it was pushed
+    // to the video server, so MAVLink-rate updates are throttled to ~5 Hz.
+    this.hudData = hudOverlay.emptyHudData();
+    this.lastHudSend = 0;
 
     // Properties used in all modes
     this.active = false
@@ -249,6 +257,7 @@ class videoStream {
         responseData.selectedUseUDPIP = this.videoSettings.useUDPIP || '127.0.0.1';
         responseData.selectedUseUDPPort = this.videoSettings.useUDPPort || 5600;
         responseData.selectedUseTimestamp = this.videoSettings.useTimestamp || false;
+        responseData.selectedUseHud = this.videoSettings.useHud || false;
         responseData.selectedUseCameraHeartbeat = this.useCameraHeartbeat || false;
 
         // Return an empty string if no media destination is given.
@@ -544,6 +553,7 @@ class videoStream {
     ];
 
     if (this.videoSettings.useTimestamp) args.push('--timestamp');
+    if (this.videoSettings.useHud) args.push('--hud');
 
     // custom (user-editable) pipeline support. Takes precedence over the
     // camera switcher's dual-source mode
@@ -1041,7 +1051,38 @@ class videoStream {
     this.eventEmitter.emit('videostreaminfo', msg, senderSysId, senderCompId, targetComponent)
   }
 
+  // Capture the telemetry fields the HUD overlay needs and push a throttled
+  // text update to the running video server over its stdin control channel.
+  // No-op unless the HUD is enabled and the stream is live (#173).
+  updateHudFromPacket(packet: any, data: any) {
+    if (!this.videoSettings || !this.videoSettings.useHud || data === null) {
+      return
+    }
+    const id = packet.header.msgid
+    if (id === common.VfrHud.MSG_ID) {
+      this.hudData.alt = data.alt
+      this.hudData.spd = data.groundspeed
+      this.hudData.hdg = data.heading
+    } else if (id === common.SysStatus.MSG_ID) {
+      this.hudData.batV = data.voltageBattery === 65535 ? null : data.voltageBattery / 1000
+      this.hudData.batPct = data.batteryRemaining < 0 ? null : data.batteryRemaining
+    } else if (id === common.GpsRawInt.MSG_ID) {
+      this.hudData.gpsFix = data.fixType
+      this.hudData.gpsSats = data.satellitesVisible
+    } else if (id === minimal.Heartbeat.MSG_ID) {
+      this.hudData.mode = hudOverlay.mavlinkModeName(data.type, data.customMode)
+    } else {
+      return
+    }
+    const now = Date.now()
+    if (now - this.lastHudSend >= 200) {
+      this.lastHudSend = now
+      this._sendStdinCommand({ cmd: 'hud', text: hudOverlay.formatHudText(this.hudData) })
+    }
+  }
+
   onMavPacket(packet: any, data: any) {
+    this.updateHudFromPacket(packet, data)
     if (packet.header.msgid === common.CommandLong.MSG_ID &&
       data.targetComponent === minimal.MavComponent.CAMERA) {
       if (data._param1 === common.CameraInformation.MSG_ID) {

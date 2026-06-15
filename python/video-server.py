@@ -120,7 +120,7 @@ def udpSinkStr(udp) -> str:
     return sink
 
 
-def getPipeline(device, height, width, bitrate, format, rotation, framerate, timestamp, compression) -> str:
+def getPipeline(device, height, width, bitrate, format, rotation, framerate, timestamp, compression, hud=False) -> str:
     pipeline: List[str] = []
 
     # -1 is no framerate specified
@@ -215,6 +215,13 @@ def getPipeline(device, height, width, bitrate, format, rotation, framerate, tim
         if timestamp and device not in ["0rpicam", "1rpicam"] and 'tegra' not in platform.uname().release:
             pipeline.append("videoconvert")
             pipeline.append("clockoverlay time-format=\"%d-%b-%Y %H:%M:%S\"")
+
+        # telemetry HUD overlay (#173): a text readout updated live over the
+        # stdin control channel. Raw-video only - a pre-compressed source can't
+        # be overlaid without a decode/re-encode - and not on the Jetson NVMM path
+        if hud and device not in ["0rpicam", "1rpicam"] and 'tegra' not in platform.uname().release:
+            pipeline.append("videoconvert")
+            pipeline.append("textoverlay name=hud0 text=\"\" valignment=top halignment=left font-desc=\"Monospace, 12\" shaded-background=true ypad=4 xpad=8")
 
         # 3 options for H264: Rpi hardware compression (v4l2h264enc), Jetson hardware compression (nvv4l2h264enc)
         # or software compression (x264enc)
@@ -316,6 +323,9 @@ def validateCustomPipeline(pipeline_str):
 switch_state = {"source": "A"}
 live_selectors = []
 live_pipelines = []
+# latest HUD overlay text (#173), so a client connecting after the last update
+# still shows the current readout
+hud_state = {"text": ""}
 
 
 def applySwitchToSelector(sel):
@@ -369,6 +379,26 @@ def doBitrate(kbps):
         print("BITRATE-NOENCODER:{0}".format(kbps), flush=True)
 
 
+def doHud(text):
+    # update the text of every HUD overlay (hud0) in every running pipeline
+    hud_state["text"] = text
+    for pipe in list(live_pipelines):
+        el = pipe.get_by_name("hud0")
+        if el is not None:
+            try:
+                el.set_property("text", text)
+            except Exception as e:
+                print("HUD error: {0}".format(e))
+
+
+def applyHudToPipeline(element):
+    # seed a freshly-prepared pipeline's HUD overlay with the latest text, so a
+    # late-joining client doesn't show a blank readout until the next update
+    el = element.get_by_name("hud0")
+    if el is not None and hud_state["text"] != "":
+        el.set_property("text", hud_state["text"])
+
+
 def handleControlLine(line):
     try:
         cmd = json.loads(line)
@@ -376,6 +406,8 @@ def handleControlLine(line):
             doSwitch(cmd.get("source"))
         elif cmd.get("cmd") == "bitrate" and isinstance(cmd.get("kbps"), int) and 50 <= cmd.get("kbps") <= 100000:
             doBitrate(cmd.get("kbps"))
+        elif cmd.get("cmd") == "hud" and isinstance(cmd.get("text"), str) and len(cmd.get("text")) <= 500:
+            doHud(cmd.get("text"))
         else:
             print("Unknown control command: {0}".format(line.strip()))
     except ValueError:
@@ -516,7 +548,7 @@ def getEncodeTail(primary_device, bitrate, compression, framerate=-1) -> List[st
 
 def getDualPipeline(primary_device, primary_format, height, width, framerate,
                     secondary_device, secondary_format, sec_height, sec_width, sec_framerate,
-                    bitrate, rotation, timestamp, compression, udp_sink="") -> str:
+                    bitrate, rotation, timestamp, compression, hud=False, udp_sink="") -> str:
     """Build a dual-source pipeline with an input-selector, allowing runtime
     switching between the two sources without restarting the stream. The
     output caps follow the primary source's resolution/framerate."""
@@ -544,6 +576,9 @@ def getDualPipeline(primary_device, primary_format, height, width, framerate,
     if timestamp:
         tail.append("videoconvert")
         tail.append("clockoverlay time-format=\"%d-%b-%Y %H:%M:%S\"")
+    if hud:
+        tail.append("videoconvert")
+        tail.append("textoverlay name=hud0 text=\"\" valignment=top halignment=left font-desc=\"Monospace, 12\" shaded-background=true ypad=4 xpad=8")
     tail.extend(getEncodeTail(primary_device, bitrate, compression, framerate))
     if udp_sink != "":
         tail.append(udp_sink)
@@ -580,6 +615,7 @@ class SwitcherFactory(GstRtspServer.RTSPMediaFactory):
         element = media.get_element()
         # track the pipeline so runtime bitrate changes can reach it
         live_pipelines.append(element)
+        applyHudToPipeline(element)
         sel = element.get_by_name("sel")
         if sel is not None:
             live_selectors.append(sel)
@@ -595,7 +631,7 @@ class SwitcherFactory(GstRtspServer.RTSPMediaFactory):
 
 
 class MyFactory(GstRtspServer.RTSPMediaFactory):
-    def __init__(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression, custom_pipeline=""):
+    def __init__(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression, custom_pipeline="", hud=False):
         GstRtspServer.RTSPMediaFactory.__init__(self)
         self.device = device
         self.height = h
@@ -607,6 +643,7 @@ class MyFactory(GstRtspServer.RTSPMediaFactory):
         self.timestamp = timestamp
         self.compression = compression
         self.custom_pipeline = custom_pipeline
+        self.hud = hud
 
         # Configure for low latency streaming
         self.set_latency(0)  # Minimize latency
@@ -618,7 +655,7 @@ class MyFactory(GstRtspServer.RTSPMediaFactory):
             pipeline_str = self.custom_pipeline
         else:
             pipeline_str = getPipeline(self.device, self.height, self.width, self.bitrate, self.format, self.rotation,
-                                       self.framerate, self.timestamp, self.compression)
+                                       self.framerate, self.timestamp, self.compression, self.hud)
         print("PIPELINE:{0}".format(pipeline_str), flush=True)
         return Gst.parse_launch(pipeline_str)
 
@@ -629,6 +666,7 @@ class MyFactory(GstRtspServer.RTSPMediaFactory):
         # track the pipeline so runtime bitrate changes can reach it
         element = media.get_element()
         live_pipelines.append(element)
+        applyHudToPipeline(element)
         media.connect("unprepared", self.onMediaUnprepared, element)
 
     def onMediaUnprepared(self, media, element):
@@ -646,10 +684,10 @@ class GstServer():
         self.sourceID = self.server.attach(None)
         print("Server available on rtsp://<IP>:8554")
 
-    def addStream(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression, custom_pipeline=""):
+    def addStream(self, device, h, w, bitrate, format, rotation, framerate, timestamp, compression, custom_pipeline="", hud=False):
         f = MyFactory(device, h, w, bitrate, format,
                       rotation, framerate, timestamp,
-                      compression, custom_pipeline)
+                      compression, custom_pipeline, hud)
 
         # Don't share the media pipeline - each client gets their own
         # This prevents one slow client from affecting others
@@ -710,6 +748,8 @@ if __name__ == '__main__':
     parser.add_argument(
         "--multirtsp", help="CSV of multi-camera RTSP setup. Format is videosource,height,width,bitrate,formatstr,rotation, fps;source2,etc", default="", type=str)
     parser.add_argument("--timestamp", help="add timestamp",
+                        default=False, action='store_true')
+    parser.add_argument("--hud", help="burn a live telemetry HUD readout onto the stream (fed over the stdin control channel)",
                         default=False, action='store_true')
     parser.add_argument(
         "--secondary", help="Secondary video device for runtime source switching", default="", type=str)
@@ -775,7 +815,7 @@ if __name__ == '__main__':
                 print("Bad format: " + cam)
                 break
             s.addStream(videosource, height, width, bitrate,
-                        formatstr, rotation, fps, timestamp, args.compression)
+                        formatstr, rotation, fps, timestamp, args.compression, hud=args.hud)
 
         try:
             loop.run()
@@ -787,7 +827,7 @@ if __name__ == '__main__':
         pipeline_str = getDualPipeline(args.videosource, args.format, args.height, args.width, args.fps,
                                        args.secondary, args.secondary_format, args.secondary_height,
                                        args.secondary_width, args.secondary_fps,
-                                       args.bitrate, args.rotation, args.timestamp, args.compression)
+                                       args.bitrate, args.rotation, args.timestamp, args.compression, hud=args.hud)
         if pipeline_str == "":
             print("Unable to build dual-source pipeline")
             sys.exit(1)
@@ -806,7 +846,7 @@ if __name__ == '__main__':
                                        args.secondary, args.secondary_format, args.secondary_height,
                                        args.secondary_width, args.secondary_fps,
                                        args.bitrate, args.rotation, args.timestamp, args.compression,
-                                       udp_sink=udp_sink)
+                                       hud=args.hud, udp_sink=udp_sink)
         if pipeline_str == "":
             print("Unable to build dual-source pipeline")
             sys.exit(1)
@@ -832,7 +872,7 @@ if __name__ == '__main__':
         s = GstServer()
         s.addStream(args.videosource, args.height, args.width, args.bitrate,
                     args.format, args.rotation, args.fps, args.timestamp, args.compression,
-                    custom_pipeline)
+                    custom_pipeline, args.hud)
 
         try:
             loop.run()
@@ -846,7 +886,7 @@ if __name__ == '__main__':
         else:
             pipeline_str = getPipeline(args.videosource, args.height, args.width,
                                        args.bitrate, args.format, args.rotation, args.fps, args.timestamp,
-                                       args.compression)
+                                       args.compression, args.hud)
         pipeline_str += " ! " + udpSinkStr(args.udp)
         print("PIPELINE:{0}".format(pipeline_str), flush=True)
         pipeline = Gst.parse_launch(pipeline_str)
