@@ -2106,10 +2106,13 @@ describe('Video Functions', function () {
       sinon.stub(Date, 'now').returns(10000)
       const vManager = liveStreamingManager()
       vManager.videoSettings = { useHud: true }
-      vManager.updateHudFromPacket({ header: { msgid: mavCommon.VfrHud.MSG_ID } }, { alt: 124.4, groundspeed: 14.2, heading: 271 })
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.VfrHud.MSG_ID } }, { alt: 124.4, groundspeed: 14.2, heading: 271, airspeed: 15.1, climb: 0.5, throttle: 45 })
       assert.equal(vManager.hudData.alt, 124.4)
       assert.equal(vManager.hudData.spd, 14.2)
       assert.equal(vManager.hudData.hdg, 271)
+      assert.equal(vManager.hudData.airspeed, 15.1)
+      assert.equal(vManager.hudData.climb, 0.5)
+      assert.equal(vManager.hudData.throttle, 45)
       assert.equal(vManager._writes.length, 1)
       const payload = JSON.parse(vManager._writes[0])
       assert.equal(payload.cmd, 'hud')
@@ -2120,18 +2123,28 @@ describe('Video Functions', function () {
       settings.clear()
       const vManager = liveStreamingManager()
       vManager.videoSettings = { useHud: true }
-      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 15840, batteryRemaining: 62 })
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 15840, batteryRemaining: 62, currentBattery: 840 })
       assert.equal(vManager.hudData.batV, 15.84)
       assert.equal(vManager.hudData.batPct, 62)
+      assert.equal(vManager.hudData.current, 8.4)
     })
 
     it('treats unknown SYS_STATUS battery (0xFFFF / -1) as null', function () {
       settings.clear()
       const vManager = liveStreamingManager()
       vManager.videoSettings = { useHud: true }
-      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 65535, batteryRemaining: -1 })
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 65535, batteryRemaining: -1, currentBattery: -1 })
       assert.equal(vManager.hudData.batV, null)
       assert.equal(vManager.hudData.batPct, null)
+      assert.equal(vManager.hudData.current, null)
+    })
+
+    it('captures GLOBAL_POSITION_INT relative altitude (mm → m)', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.GlobalPositionInt.MSG_ID } }, { relativeAlt: 38000 })
+      assert.equal(vManager.hudData.altRel, 38)
     })
 
     it('captures GPS_RAW_INT fix and satellites', function () {
@@ -2147,8 +2160,9 @@ describe('Video Functions', function () {
       settings.clear()
       const vManager = liveStreamingManager()
       vManager.videoSettings = { useHud: true }
-      vManager.updateHudFromPacket({ header: { msgid: mavMinimal.Heartbeat.MSG_ID } }, { type: 2, customMode: 3 })
+      vManager.updateHudFromPacket({ header: { msgid: mavMinimal.Heartbeat.MSG_ID } }, { type: 2, customMode: 3, baseMode: 128 })
       assert.equal(vManager.hudData.mode, 'AUTO')
+      assert.equal(vManager.hudData.armed, true)
     })
 
     it('captures ATTITUDE roll/pitch (radians → degrees)', function () {
@@ -2195,6 +2209,27 @@ describe('Video Functions', function () {
       nowStub.returns(1400)
       vManager.updateHudFromPacket(pkt, data) // sends (1400 - 1000 >= 200)
       assert.equal(vManager._writes.length, 2)
+    })
+
+    it('#getHudLayout() returns the (default) layout', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      const layout = vManager.getHudLayout()
+      assert.ok(layout.elements && layout.elements.length > 10)
+      assert.ok(layout.elements.find(e => e.type === 'horizon'))
+    })
+
+    it('#setHudLayout() validates, persists and pushes to a running stream', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true, hudStyle: 'graphic' }
+      const out = vManager.setHudLayout({ elements: [{ type: 'alt', enabled: true, icon: true, x: 0.9, y: 0.1 }] })
+      // full normalized set returned
+      assert.equal(out.elements.length, vManager.getHudLayout().elements.length)
+      // pushed over stdin as a hudlayout command
+      const layoutWrites = vManager._writes.map(w => JSON.parse(w)).filter(p => p.cmd === 'hudlayout')
+      assert.equal(layoutWrites.length, 1)
+      assert.ok(layoutWrites[0].layout.elements.find(e => e.type === 'alt'))
     })
   })
 

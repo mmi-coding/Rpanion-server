@@ -41,9 +41,53 @@ describe('HUD overlay helpers (#173)', function () {
   describe('#emptyHudData()', function () {
     it('returns an all-null shape', function () {
       assert.deepEqual(hud.emptyHudData(), {
-        alt: null, spd: null, hdg: null, batV: null, batPct: null,
-        mode: null, gpsFix: null, gpsSats: null, roll: null, pitch: null
+        alt: null, altRel: null, spd: null, airspeed: null, hdg: null, climb: null,
+        throttle: null, batV: null, batPct: null, current: null, mode: null, armed: null,
+        gpsFix: null, gpsSats: null, roll: null, pitch: null
       })
+    })
+  })
+
+  describe('OSD layout (#173 editor)', function () {
+    it('#hudElements() lists the catalog with labels + samples', function () {
+      const els = hud.hudElements()
+      assert.ok(Array.isArray(els) && els.length > 10)
+      const alt = els.find(e => e.type === 'alt')
+      assert.equal(alt.label, 'Altitude (MSL)')
+      assert.ok(els.find(e => e.type === 'horizon'))
+    })
+
+    it('#defaultHudLayout() has one entry per catalog element', function () {
+      const layout = hud.defaultHudLayout()
+      assert.equal(layout.elements.length, hud.hudElements().length)
+      const horizon = layout.elements.find(e => e.type === 'horizon')
+      assert.equal(horizon.enabled, true)
+      assert.ok(layout.elements.every(e => e.x >= 0 && e.x <= 1 && e.y >= 0 && e.y <= 1))
+    })
+
+    it('#validateHudLayout(null) returns the default layout', function () {
+      assert.deepEqual(hud.validateHudLayout(null), hud.defaultHudLayout())
+      assert.deepEqual(hud.validateHudLayout({}), hud.defaultHudLayout())
+    })
+
+    it('#validateHudLayout() coerces flags, clamps positions, drops unknown types and fills missing ones', function () {
+      const out = hud.validateHudLayout({ elements: [
+        { type: 'alt', enabled: 1, icon: 0, x: 1.7, y: -0.3 },   // clamp x→1, y→0; coerce flags
+        { type: 'bogus', enabled: true, x: 0.5, y: 0.5 },         // unknown → dropped
+        { type: 'spd', enabled: false, icon: true, x: 'nope', y: 0.4 } // non-finite x → 0
+      ] })
+      assert.equal(out.elements.length, hud.hudElements().length) // full set
+      const alt = out.elements.find(e => e.type === 'alt')
+      assert.equal(alt.enabled, true)
+      assert.equal(alt.icon, false)
+      assert.equal(alt.x, 1)
+      assert.equal(alt.y, 0)
+      const spd = out.elements.find(e => e.type === 'spd')
+      assert.equal(spd.x, 0) // 'nope' → 0
+      assert.ok(!out.elements.find(e => e.type === 'bogus'))
+      // a not-supplied element falls back to its default
+      const gps = out.elements.find(e => e.type === 'gps')
+      assert.equal(gps.enabled, true)
     })
   })
 

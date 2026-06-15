@@ -77,6 +77,36 @@ fields instead of formatted text. The Video page gains a **HUD Style** select
 Verified on real GStreamer (the SVG renders through an `rsvgoverlay` pipeline to
 PLAYING on both WSL and the Pi). Both suites stay 100/100/100/100.
 
+### Follow-up (shipped): customizable HUD / OSD editor
+
+The graphic HUD became **fully customizable**, iNav-style, via a new **HUD Editor**
+page (`src/hudeditor.jsx`, Camera & Video nav): a black 16:9 canvas where each
+telemetry element is a **draggable** chip, plus a palette to toggle which stats
+show and whether each draws its **icon**. The artificial horizon is one
+toggleable, positionable element.
+
+- **Layout model** (`server/hudOverlay.ts`): a catalog of element types
+  (`hudElements()`), a `defaultHudLayout()`, and `validateHudLayout()` that
+  normalises a layout (known types only, booleans coerced, `x`/`y` clamped to the
+  0–1 frame fraction, missing elements filled from defaults). Element set:
+  altitude (MSL/AGL), ground speed, airspeed, heading, climb, throttle, battery
+  V/%/current, flight mode, arm state, GPS, and horizon.
+- **Telemetry tap** (`server/videostream.ts`): `updateHudFromPacket` now also
+  reads `GLOBAL_POSITION_INT` (relative altitude) and the extra `VFR_HUD`
+  (airspeed/climb/throttle), `SYS_STATUS` (current) and `HEARTBEAT` (armed) fields.
+  The layout is loaded from settings, pushed to a graphic stream on start and on
+  change (`{cmd:'hudlayout',…}`), and the field push is unchanged (`{cmd:'hud',…}`).
+- **Rendering** (`python/video-server.py`): `buildHudSvg(layout, fields)` is
+  layout-driven — for each enabled element it draws an icon glyph (if enabled) +
+  the formatted value at its `x,y`, and the `horizon` element draws the artificial
+  horizon at its position. Falls back to a built-in default layout if none has been
+  pushed yet. Same SVG/`rsvgoverlay` path → still no new dependency.
+- **Route**: `server/routes/hud.ts` — `GET /api/hudlayout` (layout + catalog),
+  `POST /api/hudlayout` (validate + persist + live-apply).
+- Verified on real GStreamer: a pushed layout + telemetry renders the selected
+  elements (e.g. AGL + GPS + horizon, with the disabled ALT omitted) and the
+  `rsvgoverlay` pipeline stays PLAYING. Both suites stay 100/100/100/100.
+
 ## Verification — WSL-verified
 
 - `lint` 0 · `typecheck` 0 · `covback` **100/100/100/100** (997 passing) ·

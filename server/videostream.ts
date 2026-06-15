@@ -29,6 +29,7 @@ class videoStream {
   videoDeviceScanTimeoutMs: number
   hudData: any
   lastHudSend: number
+  hudLayout: any
   secondaryStreams: any
   settings: any
   constructor (settings: any) {
@@ -42,6 +43,9 @@ class videoStream {
     // to the video server, so MAVLink-rate updates are throttled to ~5 Hz.
     this.hudData = hudOverlay.emptyHudData();
     this.lastHudSend = 0;
+    // customizable graphic-HUD layout (#173 OSD editor); validateHudLayout(null)
+    // returns the default layout
+    this.hudLayout = hudOverlay.validateHudLayout(this.settings.value('camera.hudLayout', null));
 
     // Properties used in all modes
     this.active = false
@@ -529,6 +533,28 @@ class videoStream {
     return this._sendStdinCommand({ cmd: 'switch', source })
   }
 
+  // ---- customizable graphic HUD layout (#173 OSD editor) ----
+  getHudLayout() {
+    return this.hudLayout
+  }
+
+  // push the current OSD layout to the running video server (graphic HUD only)
+  pushHudLayout() {
+    return this._sendStdinCommand({ cmd: 'hudlayout', layout: this.hudLayout })
+  }
+
+  // store + persist a new OSD layout, and apply it live to a running stream
+  setHudLayout(layout: any) {
+    this.hudLayout = hudOverlay.validateHudLayout(layout)
+    try {
+      this.settings.setValue('camera.hudLayout', this.hudLayout)
+    } catch (e) { /* istanbul ignore next -- settings-store is unavailable under the test runner */
+      console.log(e)
+    }
+    this.pushHudLayout()
+    return this.hudLayout
+  }
+
   async startVideoStreaming(callback: any) {
     if (!this.videoSettings) return callback(new Error('No video settings provided'));
 
@@ -582,6 +608,12 @@ class videoStream {
     const pythonPath = logpaths.getPythonPath()
     this.deviceStream = spawn(pythonPath, args)
     this.setupStreamEvents('Streaming', callback);
+
+    // push the customizable OSD layout to the graphic HUD so it renders even
+    // before the first telemetry tick
+    if (this.videoSettings.useHud && this.videoSettings.hudStyle === 'graphic') {
+      this.pushHudLayout();
+    }
 
     // Start MAVLink heartbeats if enabled
     if (this.useCameraHeartbeat) {
@@ -1100,15 +1132,22 @@ class videoStream {
     if (id === common.VfrHud.MSG_ID) {
       this.hudData.alt = data.alt
       this.hudData.spd = data.groundspeed
+      this.hudData.airspeed = data.airspeed
       this.hudData.hdg = data.heading
+      this.hudData.climb = data.climb
+      this.hudData.throttle = data.throttle
+    } else if (id === common.GlobalPositionInt.MSG_ID) {
+      this.hudData.altRel = data.relativeAlt / 1000 // mm → m
     } else if (id === common.SysStatus.MSG_ID) {
       this.hudData.batV = data.voltageBattery === 65535 ? null : data.voltageBattery / 1000
       this.hudData.batPct = data.batteryRemaining < 0 ? null : data.batteryRemaining
+      this.hudData.current = data.currentBattery < 0 ? null : data.currentBattery / 100 // cA → A
     } else if (id === common.GpsRawInt.MSG_ID) {
       this.hudData.gpsFix = data.fixType
       this.hudData.gpsSats = data.satellitesVisible
     } else if (id === minimal.Heartbeat.MSG_ID) {
       this.hudData.mode = hudOverlay.mavlinkModeName(data.type, data.customMode)
+      this.hudData.armed = (data.baseMode & 128) !== 0 // MAV_MODE_FLAG_SAFETY_ARMED
     } else if (id === common.Attitude.MSG_ID) {
       // radians → degrees, for the graphic artificial-horizon HUD
       this.hudData.roll = data.roll * 180 / Math.PI

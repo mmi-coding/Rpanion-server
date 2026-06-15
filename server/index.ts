@@ -397,6 +397,7 @@ app.use(require('./routes/adhoc')({ authenticateToken, adhocManager }))
 // body-parser middleware so camera/start sees req.body
 app.use(require('./routes/camera')({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }))
 app.use(require('./routes/secondaryStreams')({ authenticateToken, secondaryStreams }))
+app.use(require('./routes/hud')({ authenticateToken, vManager }))
 
 // Camera switcher routes (extracted to ./routes/cameraSwitcher.js)
 app.use(require('./routes/cameraSwitcher')({ authenticateToken, toBool, camSwitcher }))

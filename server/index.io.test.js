@@ -738,6 +738,39 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   })
 
   // =========================================================================
+  // HUD layout (OSD editor) routes (#173)
+  // =========================================================================
+  describe('HUD layout routes', function () {
+    it('GET /api/hudlayout — 200 returns the layout + element catalog', function (done) {
+      request('GET', '/api/hudlayout').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.layout && Array.isArray(res.body.layout.elements))
+          assert.ok(Array.isArray(res.body.elements) && res.body.elements.length > 10)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/hudlayout — 422 when layout is not an object', function (done) {
+      request('POST', '/api/hudlayout', { body: { layout: 'nope' } }).then(function (res) {
+        try { assert.equal(res.status, 422); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/hudlayout — 200 saves a layout', function (done) {
+      request('POST', '/api/hudlayout', { body: { layout: { elements: [{ type: 'alt', enabled: true, icon: true, x: 0.9, y: 0.1 }] } } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.error, null)
+          assert.ok(res.body.layout.elements.find(function (e) { return e.type === 'alt' }))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
   // /api/FCReboot (UPSTREAM BUG: no res param, request hangs; fire-and-forget)
   // =========================================================================
   describe('POST /api/FCReboot', function () {
