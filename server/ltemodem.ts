@@ -238,7 +238,10 @@ class LTEModem {
 
   // +CGPSINFO: <lat>,<N/S>,<lon>,<E/W>,<date>,<UTC>,<alt>,<speed>,<course>
   // lat/lon are ddmm.mmmmmm / dddmm.mmmmmm. Empty fields = no fix.
-  static parseCGPSINFO (lines: string[]) {
+  static parseCGPSINFO (lines: string[] | null) {
+    if (!lines) {
+      return null
+    }
     for (const line of lines) {
       if (line.indexOf('+CGPSINFO:') !== -1) {
         const p = (line.split(':')[1] || '').split(',').map((s) => s.trim())
@@ -738,7 +741,10 @@ class LTEModem {
             }
             const model = LTEModem.parseIdentLine(await sendCmd('AT+CGMM', 1000) as string[] | null)
             const manufacturer = LTEModem.parseIdentLine(await sendCmd('AT+CGMI', 1000) as string[] | null)
-            done({ ok: true, model, manufacturer })
+            // probe the GNSS so discovery can preview a fix (enable once, then read)
+            await sendCmd('AT+CGPS=1', 1000)
+            const gps = LTEModem.parseCGPSINFO(await sendCmd('AT+CGPSINFO', 1500) as string[] | null)
+            done({ ok: true, model, manufacturer, gps })
           })
       })
     })
@@ -749,7 +755,7 @@ class LTEModem {
     for (const baud of candidate.bauds) {
       const r = await this.probeAttempt(candidate.path, baud)
       if (r.ok) {
-        return { path: candidate.path, baud, ok: true, model: r.model, manufacturer: r.manufacturer }
+        return { path: candidate.path, baud, ok: true, model: r.model, manufacturer: r.manufacturer, gps: r.gps }
       }
     }
     return { path: candidate.path, ok: false }

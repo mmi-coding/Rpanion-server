@@ -15,6 +15,9 @@ RESPONSES = {
     "AT+CPSI?": ["+CPSI: LTE,Online,505-01,0x5A1E,187214780,257,EUTRAN-BAND3,1850,5,5,-94,-850,-545,15"],
     "AT+CGPADDR=1": ["+CGPADDR: 1,10.64.12.34"],
     "AT$QCRMCALL=1,1": ["$QCRMCALL: 1,V4"],
+    # GNSS: enable returns OK; CGPSINFO reports a fix
+    "AT+CGPS=1": [],
+    "AT+CGPSINFO": ["+CGPSINFO: 3722.500000,N,12205.000000,W,200624,120000.0,42.0,0.0,"],
 }
 
 master, slave = pty.openpty()

@@ -133,6 +133,7 @@ describe('LTE Modem Functions', function () {
     // header present but nothing after the colon (split(':')[1] is empty)
     assert.equal(LTEModem.parseCGPSINFO(['+CGPSINFO:', 'OK']), null)
     assert.equal(LTEModem.parseCGPSINFO(['OK']), null)
+    assert.equal(LTEModem.parseCGPSINFO(null), null) // no response (AT timeout)
   })
 
   it('#parsePIN()', function () {
@@ -1414,11 +1415,15 @@ exit 0`)
       assert.equal(r.ok, true)
       assert.equal(r.model, 'SIMCOM_SIM7600G-H')
       assert.equal(r.manufacturer, 'SIMCOM INCORPORATED')
+      // the GNSS probe surfaces a fix during discovery
+      assert.ok(Math.abs(r.gps.lat - 37.375) < 1e-6)
+      assert.equal(r.gps.alt, 42)
 
-      // probePort reports the answering baud
+      // probePort reports the answering baud + passes the GNSS fix through
       const viaPort = await modem.probePort({ path: pty.path, bauds: [115200] })
       assert.equal(viaPort.ok, true)
       assert.equal(viaPort.baud, 115200)
+      assert.ok(viaPort.gps && viaPort.gps.lat > 0)
 
       // open failures and constructor failures resolve, never throw
       const bad = await modem.probeAttempt('/dev/ttyNONEXISTENT99', 115200)

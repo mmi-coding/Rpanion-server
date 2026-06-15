@@ -30,6 +30,13 @@ function signalLabel(dbm) {
     return { text: 'Poor', variant: 'danger' };
 }
 
+// short text for a SIM7600 GNSS fix ({lat, lon, alt}) — callers guard for a fix
+function gnssText(gps) {
+    let t = gps.lat.toFixed(5) + ', ' + gps.lon.toFixed(5);
+    if (gps.alt !== null) t += ' · alt ' + gps.alt + ' m'; // parseCGPSINFO gives a number or null
+    return t;
+}
+
 class LTEModemPage extends basePage {
     constructor(props, useSocketIO = true) {
         super(props, useSocketIO);
@@ -46,6 +53,7 @@ class LTEModemPage extends basePage {
                 rat: '',
                 band: '',
                 ip: '',
+                gps: null,
                 usage: { totalRx: 0, totalTx: 0, sessionRx: 0, sessionTx: 0 },
                 lastReconnect: null,
                 reconnectCount: 0,
@@ -316,6 +324,12 @@ class LTEModemPage extends basePage {
                                 : 'Unknown'}
                         </td></tr>
                         <tr><td>WAN IP</td><td>{status.ip !== '' ? status.ip : <span>No data connection</span>}</td></tr>
+                        <tr><td>GNSS (modem GPS)<HelpTip text="The SIM7600's own satellite fix (AT+CGPSINFO). Needs the GNSS antenna; a cold start can take a minute. Also available to the video HUD as the Modem GPS elements." /></td><td>
+                            {status.gps ?
+                                <span><Badge bg="success">Fix</Badge> {gnssText(status.gps)}{' '}
+                                    <a href={`https://www.openstreetmap.org/?mlat=${status.gps.lat}&mlon=${status.gps.lon}&zoom=15`} target="_blank" rel="noreferrer">map</a></span>
+                                : (status.available ? <span><Badge bg="secondary">No fix</Badge> acquiring…</span> : '—')}
+                        </td></tr>
                         <tr><td>Data usage (session)</td><td>RX {formatBytes(status.usage.sessionRx)} / TX {formatBytes(status.usage.sessionTx)}</td></tr>
                         <tr><td>Data usage (total)</td><td>RX {formatBytes(status.usage.totalRx)} / TX {formatBytes(status.usage.totalTx)}{' '}
                             <Button size="sm" variant="outline-secondary" onClick={this.handleResetUsage}>Reset</Button></td></tr>
@@ -336,6 +350,8 @@ class LTEModemPage extends basePage {
                             UARTs are tried at the common modem bauds.</li>
                         <li>Responders are identified by model/manufacturer; the SIMCOM-identified, lowest-numbered
                             port is <b>recommended</b> (a SIM7600 answers AT on two of its USB ports - either works).</li>
+                        <li>Each responder is also asked for its <b>GNSS fix</b> (<code>AT+CGPSINFO</code>); if the GNSS
+                            antenna has a lock, the scan shows the position so you can confirm GPS works before enabling.</li>
                         <li>The flight controller&apos;s serial link is <b>never probed</b> (shown as <i>Skipped</i>) -
                             AT chatter must not land in the MAVLink stream.</li>
                         <li>Network interfaces are listed with their kernel driver; RNDIS/CDC ones (the modem&apos;s
@@ -359,7 +375,8 @@ class LTEModemPage extends basePage {
                                 <tr key={idx}>
                                     <td>{port.path}</td>
                                     <td>{port.ok ? port.baud : '-'}</td>
-                                    <td>{port.ok ? ((port.manufacturer || '') + ' ' + (port.model || '')).trim() || 'unidentified' : '-'}</td>
+                                    <td>{port.ok ? ((port.manufacturer || '') + ' ' + (port.model || '')).trim() || 'unidentified' : '-'}
+                                        {port.gps && <div><Badge bg="info">GNSS fix</Badge> <small>{gnssText(port.gps)}</small></div>}</td>
                                     <td>{port.ok ?
                                         <span><Badge bg="success">AT OK</Badge>{port.recommended ? <span> <Badge bg="primary">Recommended</Badge></span> : ''}</span> :
                                         (port.skipped ? <span><Badge bg="secondary">Skipped</Badge> {port.reason}</span> : <Badge bg="secondary">No response</Badge>)}
