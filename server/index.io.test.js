@@ -29,6 +29,7 @@ const ioclient = require('socket.io-client')
 // Manager class prototypes for prototype-level stubbing
 const FlightController = require('./flightController')
 const videoStream = require('./videostream')
+const SecondaryStreams = require('./secondaryStreams')
 const vpn = require('./vpn')
 
 // Shared harness
@@ -678,6 +679,59 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
     it('200 — applies options', function (done) {
       sinon.stub(FlightController.prototype, 'setGlobalOptions').callsFake(function (hb, tcp, udpb, port, ds, log, cb) { cb() })
       request('POST', '/api/FCOptions', { body: validOpts }).then(function (res) {
+        try { assert.equal(res.status, 200); assert.equal(res.body.error, null); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
+  // Secondary video streams (#398)
+  // =========================================================================
+  describe('Secondary streams routes', function () {
+    var validStream = { device: '/dev/video2', format: 'image/jpeg', width: 1280, height: 720, fps: 30, bitrate: 2000, rotation: 0, compression: 'H264', transport: 'RTSP' }
+
+    it('GET /api/secondarystreams — 200 returns streams + inUse', function (done) {
+      sinon.stub(SecondaryStreams.prototype, 'getStatus').returns([{ id: 0, running: true }])
+      sinon.stub(SecondaryStreams.prototype, 'inUseDevices').returns(['/dev/video0'])
+      request('GET', '/api/secondarystreams').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.streams.length, 1)
+          assert.deepEqual(res.body.inUse, ['/dev/video0'])
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/secondarystreamadd — 422 on bad fields', function (done) {
+      request('POST', '/api/secondarystreamadd', { body: { device: '/dev/video2' } }).then(function (res) {
+        try { assert.equal(res.status, 422); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/secondarystreamadd — 200 success', function (done) {
+      sinon.stub(SecondaryStreams.prototype, 'addStream').callsFake(function (cfg, cb) { cb(null, [{ id: 0 }]) })
+      request('POST', '/api/secondarystreamadd', { body: validStream }).then(function (res) {
+        try { assert.equal(res.status, 200); assert.equal(res.body.streams.length, 1); assert.equal(res.body.error, null); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/secondarystreamadd — 200 error path', function (done) {
+      sinon.stub(SecondaryStreams.prototype, 'addStream').callsFake(function (cfg, cb) { cb('that camera is already in use', []) })
+      request('POST', '/api/secondarystreamadd', { body: validStream }).then(function (res) {
+        try { assert.equal(res.status, 200); assert.ok(res.body.error); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/secondarystreamremove — 422 on missing id', function (done) {
+      request('POST', '/api/secondarystreamremove', { body: {} }).then(function (res) {
+        try { assert.equal(res.status, 422); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/secondarystreamremove — 200 success', function (done) {
+      sinon.stub(SecondaryStreams.prototype, 'removeStream').callsFake(function (id, cb) { cb(null, []) })
+      request('POST', '/api/secondarystreamremove', { body: { id: 0 } }).then(function (res) {
         try { assert.equal(res.status, 200); assert.equal(res.body.error, null); done() } catch (e) { done(e) }
       }).catch(done)
     })
