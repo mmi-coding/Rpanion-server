@@ -1611,6 +1611,35 @@ describe('Video Functions', function () {
     })
   })
 
+  describe('#setVideoRecording()', function () {
+    it('toggles when starting from not-recording', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.videoSettings = { isRecording: false }
+      const spy = sinon.stub(vManager, 'toggleVideoRecording')
+      vManager.setVideoRecording(true)
+      assert.ok(spy.calledOnce)
+    })
+
+    it('does not toggle when already in the desired state', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.videoSettings = { isRecording: true }
+      const spy = sinon.stub(vManager, 'toggleVideoRecording')
+      vManager.setVideoRecording(true)
+      assert.ok(spy.notCalled)
+    })
+
+    it('treats null videoSettings as not-recording', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.videoSettings = null
+      const spy = sinon.stub(vManager, 'toggleVideoRecording')
+      vManager.setVideoRecording(true)
+      assert.ok(spy.calledOnce)
+    })
+  })
+
   describe('#setRecordingFlag()', function () {
     it('sets isRecording flag and saves', function () {
       settings.clear()
@@ -1877,6 +1906,37 @@ describe('Video Functions', function () {
         command: 203
       }
       vManager.onMavPacket(packet, data)
+    })
+
+    it('MAV_CMD_IMAGE_START_CAPTURE (command=2000) triggers captureStillPhoto', function (done) {
+      const { minimal, common } = require('node-mavlink')
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.active = true
+      vManager.deviceStream = { kill: () => {} }
+      vManager.eventEmitter.on('cameratrigger', () => done())
+      const packet = { header: { msgid: common.CommandLong.MSG_ID, sysid: 1, compid: 1 } }
+      vManager.onMavPacket(packet, { targetComponent: minimal.MavComponent.CAMERA, _param1: 9999, command: 2000 })
+    })
+
+    it('MAV_CMD_VIDEO_START_CAPTURE (command=2500) starts recording', function () {
+      const { minimal, common } = require('node-mavlink')
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      const spy = sinon.stub(vManager, 'setVideoRecording')
+      const packet = { header: { msgid: common.CommandLong.MSG_ID, sysid: 1, compid: 1 } }
+      vManager.onMavPacket(packet, { targetComponent: minimal.MavComponent.CAMERA, _param1: 9999, command: 2500 })
+      assert.ok(spy.calledWith(true))
+    })
+
+    it('MAV_CMD_VIDEO_STOP_CAPTURE (command=2501) stops recording', function () {
+      const { minimal, common } = require('node-mavlink')
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      const spy = sinon.stub(vManager, 'setVideoRecording')
+      const packet = { header: { msgid: common.CommandLong.MSG_ID, sysid: 1, compid: 1 } }
+      vManager.onMavPacket(packet, { targetComponent: minimal.MavComponent.CAMERA, _param1: 9999, command: 2501 })
+      assert.ok(spy.calledWith(false))
     })
 
     it('unrecognized msgid is silently ignored', function () {

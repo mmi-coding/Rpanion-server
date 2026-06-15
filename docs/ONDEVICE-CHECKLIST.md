@@ -257,3 +257,8 @@ be enabled before serial telemetry to the FC works:
 ## Feature #31: live system stats
 
 - [ ] Home dashboard "System" card shows a real CPU temperature (°C, not N/A) plus live CPU load, RAM and disk usage, and uptime — updating every few seconds
+
+## Feature #396: MAVLink camera-capture commands
+
+- [ ] From a GCS / MAVProxy, send IMAGE_START_CAPTURE (2000) to the camera component → a photo is captured (CAMERA_TRIGGER emitted)
+- [ ] In video mode, VIDEO_START_CAPTURE (2500) starts recording and VIDEO_STOP_CAPTURE (2501) stops it; repeated identical commands are no-ops
