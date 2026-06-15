@@ -164,6 +164,24 @@ describe('#AdhocConfig()', function () {
     page.unmount()
   })
 
+  test('getValidChannels: adapter with no channels list renders without crashing (#187)', async function () {
+    const adapterNoChannels = { value: 'wlan0', label: 'wlan0' } // note: no `channels`
+    mockFetch({
+      '/api/adhocadapters': {
+        netDevice: [adapterNoChannels],
+        netDeviceSelected: adapterNoChannels,
+        curSettings: { ipaddress: '192.168.1.1', wpaType: 'none', password: '', ssid: 'X', band: 'bg', channel: 0, isActive: false, gateway: '' }
+      }
+    })
+    const page = renderPage(<AdhocConfig />)
+    await page.flush()
+    // Page renders (no blank/crash); the channel select just has no real options
+    expect(page.container.textContent).toContain('SSID')
+    const channelSelect = page.container.querySelector('select[name="channel"]')
+    expect(channelSelect).not.toBeNull()
+    page.unmount()
+  })
+
   // -------------------------------------------------------------------------
   // channelhandler
   // -------------------------------------------------------------------------

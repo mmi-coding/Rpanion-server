@@ -8,6 +8,7 @@ import Form from 'react-bootstrap/Form';
 import React from 'react'
 
 import basePage from './basePage.jsx';
+import { HelpSection } from './components/Help';
 
 import './css/styles.css';
 
@@ -51,9 +52,12 @@ class AdhocConfig extends basePage {
   getValidChannels() {
     // filter valid wifi channels
     var opt = [];
-    for (var i = 0, len = this.state.netDeviceSelected.channels.length; i < len; i++) {
-      if (this.state.netDeviceSelected.channels[i].band === this.state.curSettings.band || this.state.netDeviceSelected.channels[i].band === 0) {
-        opt.push(this.state.netDeviceSelected.channels[i]);
+    // An adapter may report no channels list; guard it so a render here can't
+    // throw and blank the whole page (#187). Caller already ensures non-null.
+    const channels = this.state.netDeviceSelected.channels || [];
+    for (var i = 0, len = channels.length; i < len; i++) {
+      if (channels[i].band === this.state.curSettings.band || channels[i].band === 0) {
+        opt.push(channels[i]);
       }
     }
     return opt;
@@ -146,6 +150,17 @@ class AdhocConfig extends basePage {
   renderContent() {
     return (
       <div>
+        <p><i>Configure an IEEE ad-hoc (IBSS) Wi-Fi network on a compatible wireless adapter.</i></p>
+        <HelpSection title="How ad-hoc Wi-Fi works (and adapter caveats)">
+          Ad-hoc (IBSS) mode is kept separate from the Access Point on the Network
+          Config page because they conflict over NetworkManager. It requires a
+          wireless adapter whose driver supports ad-hoc/IBSS mode — many modern
+          cards (e.g. Intel AX200) do not, and some reject WEP, producing a
+          <i>Set Encode / SET failed</i> error when you enable the network. If you
+          see that error, the adapter most likely does not support the chosen
+          mode or encryption — try <b>None</b> security, or a different USB Wi-Fi
+          adapter that is known to support ad-hoc mode.
+        </HelpSection>
         <div style={{ display: (this.state.netDeviceSelected !== null) ? "block" : "none" }}>
           <Form style={{ width: 600 }}>
             <div className="form-group row" style={{ marginBottom: '0px' }}>
