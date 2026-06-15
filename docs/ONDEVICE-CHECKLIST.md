@@ -306,3 +306,9 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] The add form refuses the primary's camera (and another secondary's) — no double-open; backend rejects a duplicate device
 - [ ] Remove a secondary → its `video-server.py` process exits and the camera frees
 - [ ] Secondary streams are restored after a reboot (persisted in settings)
+
+## Feature #173 follow-up: graphic artificial-horizon HUD
+
+- [ ] On the Video page, enable the HUD on a CSI/MJPEG source and set **HUD Style = Graphic** + a FC connected → an artificial-horizon overlay (roll/pitch horizon + ladder + corner readouts) appears and tracks attitude live in a recording / VLC; CPU acceptable on the Pi (rsvgoverlay redraw)
+- [ ] Switch back to **Text readout** → the corner text HUD returns
+- [ ] No new package needed (rsvgoverlay ships with gstreamer1.0-plugins-bad, already present)

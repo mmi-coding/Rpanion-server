@@ -189,6 +189,7 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
         useUDPPort: parseInt(req.body.useUDPPort, 10),
         useTimestamp: toBool(req.body.useTimestamp),
         useHud: toBool(req.body.useHud),
+        hudStyle: req.body.hudStyle === 'graphic' ? 'graphic' : 'text',
         mavStreamSelected: req.body.mavStreamSelected,
         compression: req.body.compression,
         mediaDestination: safeMediaDestination

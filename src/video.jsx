@@ -56,6 +56,7 @@ class VideoPage extends basePage {
       fpsSelected: 1,
       timestamp: false,
       useHud: false,
+      hudStyle: 'text',
 
       // Transport options
       multicastString: " ",
@@ -187,6 +188,7 @@ class VideoPage extends basePage {
           rotSelected: (videoData.selectedRotation && videoData.selectedRotation.value != null) ? videoData.selectedRotation.value : 0,
           timestamp: videoData.selectedUseTimestamp || false,
           useHud: videoData.selectedUseHud || false,
+          hudStyle: videoData.selectedHudStyle || 'text',
           enableCameraHeartbeat: videoData.selectedUseCameraHeartbeat || false,
           mavStreamSelected: (videoData.selectedMavStreamURI && videoData.selectedMavStreamURI.value) ? videoData.selectedMavStreamURI.value : (this.state.ifaces[0] || '127.0.0.1'),
 
@@ -575,6 +577,7 @@ componentWillUnmount() {
           useUDPPort: this.state.useUDPPort,
           useTimestamp: this.state.timestamp,
           useHud: this.state.useHud,
+          hudStyle: this.state.hudStyle,
           mavStreamSelected: this.state.mavStreamSelected,
           compression: this.state.compression
         };
@@ -903,6 +906,19 @@ renderContent() {
                           {this.isH264NativeSource() && (
                             <small className="text-muted">Not available on a pre-compressed H264 source (nothing to draw on before encoding).</small>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HUD style: text readout vs graphic artificial horizon (#173 follow-up) */}
+                    {!isVideo && this.state.useHud && !this.isH264NativeSource() && (
+                      <div className="form-group row" style={{ marginBottom: '5px' }}>
+                        <label className="col-sm-4 col-form-label">HUD Style<HelpTip text="Text: a compact corner readout. Graphic: an artificial-horizon overlay (attitude + ladders + readouts) rendered as an SVG. Graphic costs a little more CPU on the Pi." /></label>
+                        <div className="col-sm-8">
+                          <Form.Select disabled={active} value={this.state.hudStyle} onChange={(e) => this.setState({ hudStyle: e.target.value })}>
+                            <option value="text">Text readout</option>
+                            <option value="graphic">Graphic (artificial horizon)</option>
+                          </Form.Select>
                         </div>
                       </div>
                     )}

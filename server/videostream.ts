@@ -258,6 +258,7 @@ class videoStream {
         responseData.selectedUseUDPPort = this.videoSettings.useUDPPort || 5600;
         responseData.selectedUseTimestamp = this.videoSettings.useTimestamp || false;
         responseData.selectedUseHud = this.videoSettings.useHud || false;
+        responseData.selectedHudStyle = this.videoSettings.hudStyle || 'text';
         responseData.selectedUseCameraHeartbeat = this.useCameraHeartbeat || false;
 
         // Return an empty string if no media destination is given.
@@ -554,6 +555,7 @@ class videoStream {
 
     if (this.videoSettings.useTimestamp) args.push('--timestamp');
     if (this.videoSettings.useHud) args.push('--hud');
+    if (this.videoSettings.useHud && this.videoSettings.hudStyle === 'graphic') args.push('--hud-style=graphic');
 
     // custom (user-editable) pipeline support. Takes precedence over the
     // camera switcher's dual-source mode
@@ -1071,13 +1073,22 @@ class videoStream {
       this.hudData.gpsSats = data.satellitesVisible
     } else if (id === minimal.Heartbeat.MSG_ID) {
       this.hudData.mode = hudOverlay.mavlinkModeName(data.type, data.customMode)
+    } else if (id === common.Attitude.MSG_ID) {
+      // radians → degrees, for the graphic artificial-horizon HUD
+      this.hudData.roll = data.roll * 180 / Math.PI
+      this.hudData.pitch = data.pitch * 180 / Math.PI
     } else {
       return
     }
     const now = Date.now()
     if (now - this.lastHudSend >= 200) {
       this.lastHudSend = now
-      this._sendStdinCommand({ cmd: 'hud', text: hudOverlay.formatHudText(this.hudData) })
+      if (this.videoSettings.hudStyle === 'graphic') {
+        // graphic mode: send the raw fields; the SVG is built in the video server
+        this._sendStdinCommand({ cmd: 'hud', hud: this.hudData })
+      } else {
+        this._sendStdinCommand({ cmd: 'hud', text: hudOverlay.formatHudText(this.hudData) })
+      }
     }
   }
 

@@ -1165,7 +1165,9 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
       width: 1280,
       bitrate: 1000,
       fps: 30,
-      rotation: 0
+      rotation: 0,
+      useHud: true,
+      hudStyle: 'graphic'
     }
 
     var validPhotoBody = {

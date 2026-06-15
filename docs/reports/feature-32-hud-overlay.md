@@ -58,10 +58,24 @@ show the control. The Jetson NVMM path is also skipped (the fork targets the Pi)
 
 ## Phasing
 
-This ships the **text readout**. A graphical artificial-horizon HUD (pitch/roll
-ladders + compass tape via a `cairooverlay` draw callback) is a natural follow-up
-but costs measurable CPU on a Pi and adds a `pycairo` dependency, so it was
-deliberately deferred.
+This shipped the **text readout** first. The **graphic artificial-horizon HUD**
+has since been added (a HUD *style* choice on the Video page) — see the follow-up
+below.
+
+### Follow-up (shipped): graphic artificial-horizon HUD
+
+Rather than the originally-considered `cairooverlay` (which would need a `pycairo`
+dependency that is *not* installed), the graphic HUD is rendered as an **SVG via
+`rsvgoverlay`** — a GStreamer element present on the Pi, so **no new dependency**.
+A `--hud-style=graphic` flag swaps the `textoverlay name=hud0` for an
+`rsvgoverlay name=hud0`; `video-server.py`'s `buildHudSvg()` draws a roll/pitch
+artificial horizon + pitch ladder + corner readouts, fed live over the same stdin
+control channel (`{"cmd":"hud","hud":{…}}`). `videostream.ts` now also captures
+`ATTITUDE` (roll/pitch, radians→degrees) and, in graphic mode, pushes the raw
+fields instead of formatted text. The Video page gains a **HUD Style** select
+(Text / Graphic) shown when the HUD is enabled on a re-encodable source.
+Verified on real GStreamer (the SVG renders through an `rsvgoverlay` pipeline to
+PLAYING on both WSL and the Pi). Both suites stay 100/100/100/100.
 
 ## Verification — WSL-verified
 
