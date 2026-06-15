@@ -273,3 +273,13 @@ prompt). Add to the rpanion sudoers drop-in, e.g.:
 - [ ] About page → **Time Zone**: the select is populated and defaults to the box's current zone
 - [ ] Pick a different zone → **Set Time Zone** → success message; `timedatectl` (and log timestamps) reflect the new zone
 - [ ] Reboot → the zone persists (no password prompt was needed for the apply)
+
+## Feature #173: telemetry HUD overlay on the video stream
+
+The HUD is drawn on raw video before encoding (like the timestamp), so it needs a
+re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
+
+- [ ] Stream from a CSI/MJPEG camera with **Telemetry HUD** enabled + FC connected → the readout appears top-left and tracks altitude / speed / heading / battery / mode / GPS live (~5 Hz), and is present in a recording and in a dumb viewer (VLC), with acceptable CPU on the Pi
+- [ ] Flight-mode label matches the FC's actual mode (spot-check across copter / plane / rover if available — `hudOverlay.mavlinkModeName`)
+- [ ] Select a pre-compressed **H264** USB source → the HUD toggle is disabled with the "not available" note (overlay correctly absent)
+- [ ] Battery reads `--` when the FC reports unknown voltage/percent (0xFFFF / -1) rather than a bogus number

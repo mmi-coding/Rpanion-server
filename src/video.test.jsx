@@ -2441,5 +2441,52 @@ describe('#VideoPage()', function () {
     page.unmount()
   })
 
+  // -------------------------------------------------------------------------
+  // Telemetry HUD overlay (#173)
+  // -------------------------------------------------------------------------
+
+  function hudRow (page) {
+    return Array.from(page.container.querySelectorAll('.form-group.row'))
+      .find(r => r.textContent.includes('Telemetry HUD'))
+  }
+
+  test('HUD: disabled with an explanation on a pre-compressed H264 source', async function () {
+    // default device's first cap is video/x-h264 → overlay impossible
+    defaultFetch()
+    const { page, getRef } = renderVideo()
+    await page.flush()
+    expect(getRef().isH264NativeSource()).toBe(true)
+    const row = hudRow(page)
+    expect(row).toBeTruthy()
+    const checkbox = row.querySelector('input[type="checkbox"]')
+    expect(checkbox.disabled).toBe(true)
+    expect(row.textContent).toContain('Not available on a pre-compressed H264 source')
+    page.unmount()
+  })
+
+  test('HUD: enabled and toggleable on a re-encoded raw source', async function () {
+    defaultFetch()
+    const { page, getRef } = renderVideo()
+    await page.flush()
+    // switch to the raw (video/x-raw) cap, which the companion computer re-encodes
+    act(() => { getRef().handleVideoResChange({ target: { value: 'cap-yuv-1' } }) })
+    expect(getRef().isH264NativeSource()).toBe(false)
+    const row = hudRow(page)
+    const checkbox = row.querySelector('input[type="checkbox"]')
+    expect(checkbox.disabled).toBe(false)
+    expect(row.textContent).not.toContain('Not available on a pre-compressed H264 source')
+    act(() => { checkbox.click() })
+    expect(getRef().state.useHud).toBe(true)
+    page.unmount()
+  })
+
+  test('HUD: loads the saved selectedUseHud flag', async function () {
+    defaultFetch({ selectedUseHud: true })
+    const { page, getRef } = renderVideo()
+    await page.flush()
+    expect(getRef().state.useHud).toBe(true)
+    page.unmount()
+  })
+
 })
 

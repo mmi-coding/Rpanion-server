@@ -7,6 +7,7 @@ const settings = require('settings-store')
 const si = require('systeminformation')
 const logpaths = require('./paths')
 const VideoStream = require('./videostream')
+const { minimal: mavMinimal, common: mavCommon } = require('node-mavlink')
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -1021,6 +1022,26 @@ describe('Video Functions', function () {
       })
     }).timeout(5000)
 
+    it('streaming mode: with useHud flag passes --hud', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.cameraMode = 'streaming'
+      vManager.videoSettings = {
+        device: '/dev/video0', width: 1280, height: 720,
+        format: 'image/jpeg', rotation: 0, bitrate: 1100, fps: 30,
+        compression: 'H264', useUDP: false, useUDPIP: '127.0.0.1',
+        useUDPPort: 5600, useTimestamp: false, useHud: true, isRecording: false,
+        mavStreamSelected: '127.0.0.1', mediaDestination: ''
+      }
+      vManager.startCamera(function (err, result) {
+        try {
+          assert.equal(err, null)
+          streamChild = vManager.deviceStream
+          done()
+        } catch (e) { done(e) }
+      })
+    }).timeout(5000)
+
     it('streaming mode: with RTP/UDP transport', function (done) {
       settings.clear()
       const vManager = new VideoStream(settings)
@@ -1963,6 +1984,116 @@ describe('Video Functions', function () {
       }
       vManager.onMavPacket(packet, data)
       assert.equal(emitted, false)
+    })
+  })
+
+  describe('#updateHudFromPacket() — telemetry HUD overlay (#173)', function () {
+    function liveStreamingManager () {
+      // a manager wired so _sendStdinCommand will actually write
+      const vManager = new VideoStream(settings)
+      vManager.cameraMode = 'streaming'
+      const writes = []
+      vManager.deviceStream = { stdin: { writable: true, write: (d) => writes.push(d) } }
+      vManager._writes = writes
+      return vManager
+    }
+
+    it('does nothing when HUD is disabled', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: false }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.VfrHud.MSG_ID } }, { alt: 1, groundspeed: 2, heading: 3 })
+      assert.equal(vManager._writes.length, 0)
+    })
+
+    it('does nothing when videoSettings is null', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = null
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.VfrHud.MSG_ID } }, { alt: 1, groundspeed: 2, heading: 3 })
+      assert.equal(vManager._writes.length, 0)
+    })
+
+    it('does nothing when data is null', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.VfrHud.MSG_ID } }, null)
+      assert.equal(vManager._writes.length, 0)
+    })
+
+    it('captures VFR_HUD and pushes a throttled HUD line', function () {
+      settings.clear()
+      sinon.stub(Date, 'now').returns(10000)
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.VfrHud.MSG_ID } }, { alt: 124.4, groundspeed: 14.2, heading: 271 })
+      assert.equal(vManager.hudData.alt, 124.4)
+      assert.equal(vManager.hudData.spd, 14.2)
+      assert.equal(vManager.hudData.hdg, 271)
+      assert.equal(vManager._writes.length, 1)
+      const payload = JSON.parse(vManager._writes[0])
+      assert.equal(payload.cmd, 'hud')
+      assert.ok(payload.text.includes('ALT 124m'))
+    })
+
+    it('captures SYS_STATUS battery (valid values)', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 15840, batteryRemaining: 62 })
+      assert.equal(vManager.hudData.batV, 15.84)
+      assert.equal(vManager.hudData.batPct, 62)
+    })
+
+    it('treats unknown SYS_STATUS battery (0xFFFF / -1) as null', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 65535, batteryRemaining: -1 })
+      assert.equal(vManager.hudData.batV, null)
+      assert.equal(vManager.hudData.batPct, null)
+    })
+
+    it('captures GPS_RAW_INT fix and satellites', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.GpsRawInt.MSG_ID } }, { fixType: 3, satellitesVisible: 11 })
+      assert.equal(vManager.hudData.gpsFix, 3)
+      assert.equal(vManager.hudData.gpsSats, 11)
+    })
+
+    it('captures HEARTBEAT flight mode', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavMinimal.Heartbeat.MSG_ID } }, { type: 2, customMode: 3 })
+      assert.equal(vManager.hudData.mode, 'AUTO')
+    })
+
+    it('ignores a non-telemetry msgid without sending', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: 9999 } }, { foo: 1 })
+      assert.equal(vManager._writes.length, 0)
+    })
+
+    it('throttles updates to ~5 Hz', function () {
+      settings.clear()
+      const nowStub = sinon.stub(Date, 'now')
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      const pkt = { header: { msgid: mavCommon.VfrHud.MSG_ID } }
+      const data = { alt: 1, groundspeed: 2, heading: 3 }
+      nowStub.returns(1000)
+      vManager.updateHudFromPacket(pkt, data) // sends (1000 - 0 >= 200)
+      nowStub.returns(1100)
+      vManager.updateHudFromPacket(pkt, data) // skipped (1100 - 1000 < 200)
+      nowStub.returns(1400)
+      vManager.updateHudFromPacket(pkt, data) // sends (1400 - 1000 >= 200)
+      assert.equal(vManager._writes.length, 2)
     })
   })
 
