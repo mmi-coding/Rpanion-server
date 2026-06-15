@@ -65,12 +65,9 @@ jobs:
         - name: Vite build
           run: npm run build
 
-        - name: Remove dev dependencies (keeping node-deb for packaging)
-          run: |
-            NODE_DEB_VERSION=$(node -p "require('./package.json').devDependencies['node-deb']")
-            npm install -g "node-deb@${NODE_DEB_VERSION}"
-            npm prune --production
-
+        # NOTE: do NOT prune devDeps here. build-deb.sh compiles TypeScript (tsc
+        # needs @types/*) and runs node-deb from the intact node_modules.dev, then
+        # stages a separately-pruned production node_modules into the .deb itself.
         - name: Build package
           run: npm run package
 
