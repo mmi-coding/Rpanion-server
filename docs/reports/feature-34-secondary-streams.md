@@ -45,8 +45,21 @@ isolation — one bad camera can't take the others down.
   rejects a duplicate.
 - **CPU / encoder limits** — the page warns that two 1080p H264 streams can saturate a
   Pi 4 and will overwhelm a Pi Zero 2 W, so pick modest resolutions for extras.
-- **MAVLink camera protocol** still advertises only the primary stream (multi-stream
-  GCS discovery is a documented follow-up).
+- **MAVLink camera protocol** — multi-stream GCS discovery shipped as a follow-up
+  (see below).
+
+### Follow-up (shipped): multi-stream MAVLink discovery
+
+`videostream.ts`'s `VIDEO_STREAM_INFORMATION` response was generalised from a single
+hard-coded stream to a **list** — `getStreamDescriptors()` returns the primary
+(`videoSettings`) plus every secondary (`secondaryStreams.getStatus()`), and
+`sendVideoStreamInformation()` emits one message per stream with the correct `count`.
+A GCS that discovers streams over MAVLink (e.g. QGroundControl) now sees all streams,
+each with its own URI (secondary RTSP → `rtsp://<ip>:8555+slot/<mount>`, secondary
+RTP → its UDP port), encoding, resolution, fps and bitrate. A request for a specific
+`streamId` (the request's `_param2`) returns just that stream; `streamId 0` returns
+all. `index.ts` hands the secondary-stream manager to the video manager
+(`vManager.secondaryStreams`) for this. Both suites stay 100/100/100/100.
 
 ## Verification — WSL-verified
 

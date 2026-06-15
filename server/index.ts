@@ -73,6 +73,8 @@ settings.init({
 
 const vManager = new videoStream(settings)
 const secondaryStreams = new (require('./secondaryStreams'))(settings, vManager)
+// let the camera protocol (VIDEO_STREAM_INFORMATION) advertise the secondaries too
+vManager.secondaryStreams = secondaryStreams
 const fcManager = new fcManagerClass(settings)
 const logManager = new flightLogger()
 const ntripClient = new ntrip(settings)

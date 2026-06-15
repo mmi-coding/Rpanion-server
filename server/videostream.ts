@@ -29,9 +29,14 @@ class videoStream {
   videoDeviceScanTimeoutMs: number
   hudData: any
   lastHudSend: number
+  secondaryStreams: any
   settings: any
   constructor (settings: any) {
     this.settings = settings
+
+    // set by index.ts after construction; lets the camera protocol advertise the
+    // secondary streams too (#398 follow-up). null when running standalone / in tests
+    this.secondaryStreams = null
 
     // Latest telemetry for the HUD overlay (#173) + the last time it was pushed
     // to the video server, so MAVLink-rate updates are throttled to ~5 Hz.
@@ -1007,50 +1012,81 @@ class videoStream {
     this.eventEmitter.emit('camerasettings', msg, senderSysId, senderCompId, targetComponent)
   }
 
-  sendVideoStreamInformation(senderSysId: number | null, senderCompId: number, targetComponent: number | null) {
-    console.log('Responding to MAVLink request for VideoStreamInformation')
+  // The set of streams the camera protocol advertises: the primary (videoSettings)
+  // plus any secondary streams (#398 follow-up). Each entry is a flat descriptor.
+  getStreamDescriptors() {
+    const list: any[] = []
+    list.push({
+      useUDP: this.videoSettings.useUDP,
+      useUDPPort: this.videoSettings.useUDPPort,
+      compression: this.videoSettings.compression,
+      fps: this.videoSettings.fps,
+      width: this.videoSettings.width,
+      height: this.videoSettings.height,
+      bitrate: this.videoSettings.bitrate,
+      rotation: this.videoSettings.rotation,
+      name: this.videoSettings.device,
+      rtspUri: this.deviceAddresses.find((addr: string) => addr.includes(this.videoSettings.mavStreamSelected))
+    })
+    if (this.secondaryStreams) {
+      const ip = this.videoSettings.mavStreamSelected
+      for (const s of this.secondaryStreams.getStatus()) {
+        const c = s.config
+        const isRTP = c.transport === 'RTP'
+        list.push({
+          useUDP: isRTP,
+          useUDPPort: c.udpPort,
+          compression: c.compression,
+          fps: c.fps,
+          width: c.width,
+          height: c.height,
+          bitrate: c.bitrate,
+          rotation: c.rotation,
+          name: c.device,
+          rtspUri: 'rtsp://' + ip + ':' + (8555 + s.id) + '/' + c.device.replace(/[^a-zA-Z0-9]/g, '')
+        })
+      }
+    }
+    return list
+  }
 
-    // build a VIDEO_STREAM_INFORMATION packet
+  buildStreamInfoMsg(streamId: number, count: number, d: any) {
     const msg = new common.VideoStreamInformation()
-
-    // rpanion only supports a single stream, so streamId and count will always be 1
-    msg.streamId = 1
-    msg.count = 1
-
-    // msg.type and msg.uri need to be different depending on whether RTP or RTSP is selected
-    if (this.videoSettings && this.videoSettings.useUDP) {
-      // msg.type = 0 = VIDEO_STREAM_TYPE_RTSP
-      // msg.type = 1 = VIDEO_STREAM_TYPE_RTPUDP
+    msg.streamId = streamId
+    msg.count = count
+    // msg.type 0 = RTSP, 1 = RTPUDP
+    if (d.useUDP) {
       msg.type = 1
-      // For RTP, just send the destination UDP port instead of a full URI
-      msg.uri = this.videoSettings.useUDPPort.toString();
+      msg.uri = d.useUDPPort.toString()
     } else {
       msg.type = 0
-      msg.encoding = this.videoSettings.compression === 'H264' ? 1 : (this.videoSettings.compression === 'H265' ? 2 : 0);
-
-      // Find the address in the list that matches the selected MAVLink interface IP
-      // This uses the array populated in populateAddresses() to ensure 1:1 consistency with Web UI
-      const matchedAddress = this.deviceAddresses.find((addr: string) =>
-        addr.includes(this.videoSettings.mavStreamSelected)
-      );
-
-      msg.uri = matchedAddress || "";
-
+      msg.encoding = d.compression === 'H264' ? 1 : (d.compression === 'H265' ? 2 : 0)
+      msg.uri = d.rtspUri || ''
     }
-
     // 1 = VIDEO_STREAM_STATUS_FLAGS_RUNNING
-    msg.flags = 1;
-    msg.framerate = this.videoSettings.fps;
-    msg.resolutionH = this.videoSettings.width;
-    msg.resolutionV = this.videoSettings.height;
-    msg.bitrate = this.videoSettings.bitrate;
-    msg.rotation = this.videoSettings.rotation;
-    // Rpanion doesn't collect field of view values, so set to zero
-    msg.hfov = 0;
-    // Set the stream name (usually the device path)
-    msg.name = this.videoSettings.device;
+    msg.flags = 1
+    msg.framerate = d.fps
+    msg.resolutionH = d.width
+    msg.resolutionV = d.height
+    msg.bitrate = d.bitrate
+    msg.rotation = d.rotation
+    msg.hfov = 0
+    msg.name = d.name
+    return msg
+  }
 
-    this.eventEmitter.emit('videostreaminfo', msg, senderSysId, senderCompId, targetComponent)
+  // requestedStreamId: 0 (or omitted) = advertise every stream; N = just stream N
+  sendVideoStreamInformation(senderSysId: number | null, senderCompId: number, targetComponent: number | null, requestedStreamId = 0) {
+    console.log('Responding to MAVLink request for VideoStreamInformation')
+    const list = this.getStreamDescriptors()
+    for (let i = 0; i < list.length; i++) {
+      const streamId = i + 1
+      if (requestedStreamId !== 0 && requestedStreamId !== streamId) {
+        continue
+      }
+      const msg = this.buildStreamInfoMsg(streamId, list.length, list[i])
+      this.eventEmitter.emit('videostreaminfo', msg, senderSysId, senderCompId, targetComponent)
+    }
   }
 
   // Capture the telemetry fields the HUD overlay needs and push a throttled
@@ -1102,7 +1138,8 @@ class videoStream {
       }
       else if (data._param1 === common.VideoStreamInformation.MSG_ID && this.cameraMode === "streaming") {
         console.log('Responding to MAVLink request for VideoStreamInformation')
-        this.sendVideoStreamInformation(packet.header.sysid, minimal.MavComponent.CAMERA, packet.header.compid);
+        // _param2 = requested stream id (0 / undefined = advertise all streams)
+        this.sendVideoStreamInformation(packet.header.sysid, minimal.MavComponent.CAMERA, packet.header.compid, data._param2 || 0);
       }
       else if (data._param1 === common.CameraSettings.MSG_ID) {
         console.log('Responding to MAVLink request for CameraSettings')

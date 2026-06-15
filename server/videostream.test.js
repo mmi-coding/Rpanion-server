@@ -1836,6 +1836,65 @@ describe('Video Functions', function () {
       vManager.sendVideoStreamInformation(1, 1, 1)
     })
 
+    // #398 follow-up: advertise the secondary streams too
+    function withSecondaries (vManager) {
+      vManager.videoSettings = {
+        width: 1280, height: 720, fps: 30, bitrate: 2000, rotation: 0,
+        compression: 'H264', useUDP: false, useUDPPort: 5600,
+        mavStreamSelected: '10.0.0.5', device: '/dev/video0'
+      }
+      vManager.deviceAddresses = ['rtsp://10.0.0.5:8554/devvideo0']
+      vManager.secondaryStreams = {
+        getStatus: () => [
+          { id: 0, config: { device: '/dev/video2', transport: 'RTSP', compression: 'H264', fps: 25, width: 640, height: 480, bitrate: 1000, rotation: 0, udpPort: 0 } },
+          { id: 1, config: { device: '/dev/video4', transport: 'RTP', compression: 'H265', fps: 15, width: 320, height: 240, bitrate: 500, rotation: 90, udpPort: 5610 } }
+        ]
+      }
+    }
+
+    it('advertises every stream (primary + secondaries) with the right count', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      withSecondaries(vManager)
+      const msgs = []
+      vManager.eventEmitter.on('videostreaminfo', (msg) => {
+        msgs.push(msg)
+        if (msgs.length === 3) {
+          try {
+            assert.equal(msgs[0].streamId, 1)
+            assert.equal(msgs[0].count, 3)
+            // secondary RTSP at port 8555, mount = alnum(device)
+            assert.equal(msgs[1].streamId, 2)
+            assert.equal(msgs[1].type, 0)
+            assert.ok(msgs[1].uri.includes('rtsp://10.0.0.5:8555/devvideo2'))
+            // secondary RTP → type 1, uri = port
+            assert.equal(msgs[2].streamId, 3)
+            assert.equal(msgs[2].type, 1)
+            assert.equal(msgs[2].uri, '5610')
+            done()
+          } catch (e) { done(e) }
+        }
+      })
+      vManager.sendVideoStreamInformation(1, 1, 1, 0) // 0 = all
+    })
+
+    it('a request for a specific streamId advertises only that stream', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      withSecondaries(vManager)
+      const msgs = []
+      vManager.eventEmitter.on('videostreaminfo', (msg) => { msgs.push(msg) })
+      vManager.sendVideoStreamInformation(1, 1, 1, 2) // only stream 2
+      setTimeout(() => {
+        try {
+          assert.equal(msgs.length, 1)
+          assert.equal(msgs[0].streamId, 2)
+          assert.equal(msgs[0].count, 3)
+          done()
+        } catch (e) { done(e) }
+      }, 30)
+    })
+
     it('RTSP: encoding=0 for unknown compression', function (done) {
       settings.clear()
       const vManager = new VideoStream(settings)

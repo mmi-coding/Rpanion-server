@@ -312,3 +312,8 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] On the Video page, enable the HUD on a CSI/MJPEG source and set **HUD Style = Graphic** + a FC connected → an artificial-horizon overlay (roll/pitch horizon + ladder + corner readouts) appears and tracks attitude live in a recording / VLC; CPU acceptable on the Pi (rsvgoverlay redraw)
 - [ ] Switch back to **Text readout** → the corner text HUD returns
 - [ ] No new package needed (rsvgoverlay ships with gstreamer1.0-plugins-bad, already present)
+
+## Feature #398 follow-up: multi-stream MAVLink discovery
+
+- [ ] With a primary stream + a secondary stream running, connect QGroundControl (which uses the MAVLink camera protocol) → it discovers BOTH streams (count = 2) and can select either; each stream's URI / resolution / encoding is correct
+- [ ] A request for a specific streamId returns only that stream
