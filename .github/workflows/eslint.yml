@@ -3,9 +3,9 @@ name: ESLint
 
 on:
   pull_request:
-    branches: [master]
+    branches: [master, dev]
   push:
-    branches: [master]
+    branches: [master, dev]
 
 jobs:
   eslint-lint:

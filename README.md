@@ -1,5 +1,10 @@
 # Rpanion Server **Plus**
 
+[![Unit Tests](https://github.com/mmi-coding/Rpanion-server/actions/workflows/unitests.yml/badge.svg?branch=dev)](https://github.com/mmi-coding/Rpanion-server/actions/workflows/unitests.yml)
+[![ESLint](https://github.com/mmi-coding/Rpanion-server/actions/workflows/eslint.yml/badge.svg?branch=dev)](https://github.com/mmi-coding/Rpanion-server/actions/workflows/eslint.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](docs/TESTING.md)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+
 **A 4G/LTE-first companion-computer stack for ArduPilot drones — an extended, independent fork of [stephendade/Rpanion-server](https://github.com/stephendade/Rpanion-server).**
 
 > Built on the **excellent** [Rpanion-server](https://github.com/stephendade/Rpanion-server) by Stephen Dade and its contributors — all credit for the original platform (MAVLink telemetry routing, video streaming, network / NTRIP / logging, VPN, the web UI foundation) belongs to that project. This fork keeps `master` tracking upstream and layers a cellular-first feature set on top. It is an **unofficial** fork, **not affiliated with or endorsed by** the upstream project or rpanion.com. License: **GPL-3.0** (same as upstream).
