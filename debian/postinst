@@ -42,6 +42,7 @@ rpanion ALL=(ALL) NOPASSWD: \
   /usr/bin/tailscale up *, \
   /usr/bin/tailscale down, \
   /usr/sbin/shutdown *, \
+  /usr/bin/timedatectl set-timezone *, \
   /usr/bin/nmcli *, \
   /usr/sbin/pppd *, \
   /usr/bin/poff, \
