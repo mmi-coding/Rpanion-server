@@ -30,6 +30,8 @@ class videoStream {
   hudData: any
   lastHudSend: number
   hudLayout: any
+  hudTimer: any
+  lteModem: any
   homePos: any
   armTime: number | null
   secondaryStreams: any
@@ -48,6 +50,12 @@ class videoStream {
     // customizable graphic-HUD layout (#173 OSD editor); validateHudLayout(null)
     // returns the default layout
     this.hudLayout = hudOverlay.validateHudLayout(this.settings.value('camera.hudLayout', null));
+    // periodic graphic-HUD push timer (so modem GPS + a static OSD render without
+    // a flight controller); set by startVideoStreaming, cleared by stopCamera
+    this.hudTimer = null;
+    // the LTEModem instance, wired by index.ts after construction (null in tests /
+    // standalone). Its GNSS fix is folded into the HUD as the modem* fields.
+    this.lteModem = null;
     this.homePos = null; // {lat,lon} from HOME_POSITION, for distance/bearing-to-home
     this.armTime = null; // ms timestamp of the last arm, for the flight timer
 
@@ -542,6 +550,49 @@ class videoStream {
     return this.hudLayout
   }
 
+  // Fold the LTE modem's GNSS fix into the HUD field set. index.ts wires
+  // this.lteModem after construction; null in tests / standalone. modemFix is a
+  // short string ('OK' / 'NO') so the OSD can show fix state; lat/lon/alt are
+  // null without a fix (rendered as '--').
+  mergeModemGps() {
+    const h = this.hudData
+    const gps = this.lteModem && this.lteModem.status && this.lteModem.status.gps
+    if (gps) {
+      h.modemLat = gps.lat
+      h.modemLon = gps.lon
+      h.modemAlt = gps.alt
+      h.modemFix = 'OK'
+    } else {
+      h.modemLat = null
+      h.modemLon = null
+      h.modemAlt = null
+      h.modemFix = this.lteModem ? 'NO' : null
+    }
+  }
+
+  // Push the graphic HUD on a fixed cadence, independent of MAVLink, so the
+  // modem GPS (and a static layout) render even with no flight controller.
+  _pushHudPeriodic() {
+    this.mergeModemGps()
+    this._sendStdinCommand({ cmd: 'hud', hud: this.hudData })
+  }
+
+  startHudInterval() {
+    this.stopHudInterval()
+    this.hudTimer = setInterval(() => this._pushHudPeriodic(), 1000)
+    // never let the periodic push keep the process alive on its own
+    if (this.hudTimer.unref) {
+      this.hudTimer.unref()
+    }
+  }
+
+  stopHudInterval() {
+    if (this.hudTimer) {
+      clearInterval(this.hudTimer)
+      this.hudTimer = null
+    }
+  }
+
   // push the current OSD layout to the running video server (graphic HUD only)
   pushHudLayout() {
     return this._sendStdinCommand({ cmd: 'hudlayout', layout: this.hudLayout })
@@ -617,6 +668,7 @@ class videoStream {
     // before the first telemetry tick
     if (this.videoSettings.useHud && this.videoSettings.hudStyle === 'graphic') {
       this.pushHudLayout();
+      this.startHudInterval();
     }
 
     // Start MAVLink heartbeats if enabled
@@ -819,6 +871,7 @@ class videoStream {
 
     this.deviceStream.on('close', (code: number | null) => {
       clearTimeout(timeout);
+      this.stopHudInterval();
       console.log(`${modeName} exited with code ${code}`);
       this.active = false;
       // Clear the video recording flag (setRecordingFlag persists)
@@ -837,6 +890,7 @@ class videoStream {
       clearInterval(this.intervalObj);
       this.intervalObj = null;
     }
+    this.stopHudInterval();
 
     if (this.deviceStream) {
       this.deviceStream.kill('SIGTERM'); // Clean kill
@@ -1215,6 +1269,7 @@ class videoStream {
       this.lastHudSend = now
       if (this.videoSettings.hudStyle === 'graphic') {
         // graphic mode: send the raw fields; the SVG is built in the video server
+        this.mergeModemGps()
         this._sendStdinCommand({ cmd: 'hud', hud: this.hudData })
       } else {
         this._sendStdinCommand({ cmd: 'hud', text: hudOverlay.formatHudText(this.hudData) })

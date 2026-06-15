@@ -116,6 +116,25 @@ describe('LTE Modem Functions', function () {
     assert.equal(LTEModem.parseCGPADDR(['OK']), null)
   })
 
+  it('#parseCGPSINFO()', function () {
+    // a real fix: ddmm.mmmmmm N/S, dddmm.mmmmmm E/W, then date/UTC/alt/…
+    const fix = LTEModem.parseCGPSINFO(['+CGPSINFO: 3722.500000,N,12205.000000,W,200624,120000.0,42.0,0.0,0.0', 'OK'])
+    assert.ok(Math.abs(fix.lat - 37.375) < 1e-6)
+    assert.ok(Math.abs(fix.lon - (-122.083333)) < 1e-6)
+    assert.equal(fix.alt, 42)
+    // southern + eastern hemisphere (negative lat, positive lon) and an empty altitude
+    const south = LTEModem.parseCGPSINFO(['+CGPSINFO: 3348.000000,S,15112.000000,E,1,2,,0,0', 'OK'])
+    assert.ok(south.lat < 0 && south.lon > 0)
+    assert.equal(south.alt, null)
+    // no fix: empty lat, empty lon, too few fields, and no +CGPSINFO line at all
+    assert.equal(LTEModem.parseCGPSINFO(['+CGPSINFO: ,,,,,,,,', 'OK']), null)
+    assert.equal(LTEModem.parseCGPSINFO(['+CGPSINFO: 3722.5,N,,E,,,,', 'OK']), null)
+    assert.equal(LTEModem.parseCGPSINFO(['+CGPSINFO: 1,2', 'OK']), null)
+    // header present but nothing after the colon (split(':')[1] is empty)
+    assert.equal(LTEModem.parseCGPSINFO(['+CGPSINFO:', 'OK']), null)
+    assert.equal(LTEModem.parseCGPSINFO(['OK']), null)
+  })
+
   it('#parsePIN()', function () {
     assert.deepEqual(LTEModem.parsePIN(['+CPIN: READY', 'OK']),
       { ready: true, text: 'READY' })
@@ -601,6 +620,43 @@ describe('LTE Modem Functions', function () {
     // no APN configured - the CGDCONT step is skipped
     assert.deepEqual(sent, ['AT$QCRMCALL=1,1'])
     assert.equal(modem.status.reconnectCount, 1)
+  })
+
+  it('#doPollModemGps()', async function () {
+    settings.clear()
+    const modem = new LTEModem(settings)
+    modem.netStatsBase = '/nonexistent'
+    modem.portOpen = true
+    modem.port = {}
+    const sent = []
+    const fixtures = {
+      'AT+CSQ': ['+CSQ: 20,99', 'OK'],
+      'AT+CGPSINFO': ['+CGPSINFO: 3722.500000,N,12205.000000,W,200624,120000.0,42.0,0.0,0.0', 'OK']
+    }
+    modem.sendAT = async (cmd) => { sent.push(cmd); return fixtures[cmd] || ['OK'] }
+
+    // first poll: GNSS enabled once, then queried; the fix is stored
+    await modem.doPoll()
+    assert.ok(sent.includes('AT+CGPS=1'))
+    assert.ok(sent.includes('AT+CGPSINFO'))
+    assert.ok(Math.abs(modem.status.gps.lat - 37.375) < 1e-6)
+    assert.equal(modem.status.gps.alt, 42)
+    assert.equal(modem.gpsEnabled, true)
+
+    // second poll: GNSS is not re-enabled (the gate holds)
+    await modem.doPoll()
+    assert.equal(sent.filter(c => c === 'AT+CGPS=1').length, 1)
+
+    // a GNSS query failure leaves the fix null without breaking the rest of the poll
+    modem.sendAT = async (cmd) => {
+      if (cmd === 'AT+CGPSINFO') {
+        throw new Error('GNSS busy')
+      }
+      return ['OK']
+    }
+    await modem.doPoll()
+    assert.equal(modem.status.gps, null)
+    assert.equal(modem.status.available, true)
   })
 
   it('#doPollATTimeoutReopensPort()', async function () {

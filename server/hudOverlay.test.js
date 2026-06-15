@@ -52,6 +52,15 @@ describe('HUD overlay helpers (#173)', function () {
     })
   })
 
+  describe('#emptyHudData() modem GPS', function () {
+    it('includes the SIM7600 GNSS fields', function () {
+      const d = hud.emptyHudData()
+      for (const k of ['modemLat', 'modemLon', 'modemAlt', 'modemFix']) {
+        assert.ok(k in d, 'missing modem field ' + k)
+      }
+    })
+  })
+
   describe('OSD layout (#173 editor)', function () {
     it('#hudElements() lists the catalog with sections, labels + samples', function () {
       const els = hud.hudElements()
@@ -63,6 +72,27 @@ describe('HUD overlay helpers (#173)', function () {
       // sections present
       const sections = new Set(els.map(e => e.section))
       assert.ok(sections.has('Navigation') && sections.has('Link') && sections.has('Environment'))
+    })
+
+    it('#hudElements() carries mock values + the graphic flag + a Modem GPS section', function () {
+      const els = hud.hudElements()
+      // a numeric element shows its formatted mock value; a graphic one is flagged
+      assert.equal(els.find(e => e.type === 'alt').mock, 'ALT 124m')
+      assert.equal(els.find(e => e.type === 'alt').graphic, false)
+      const horizon = els.find(e => e.type === 'horizon')
+      assert.equal(horizon.graphic, true)
+      assert.equal(horizon.mock, '') // no text for a shape
+      assert.equal(els.find(e => e.type === 'homeDir').graphic, true)
+      // modem GPS catalog
+      const modemFix = els.find(e => e.type === 'modemFix')
+      assert.equal(modemFix.section, 'Modem GPS')
+      assert.equal(modemFix.mock, 'mGPS OK')
+      assert.ok(els.find(e => e.type === 'modemLat').mock.startsWith('mLAT '))
+    })
+
+    it('#hudFonts() lists the allowed (always-available) font families', function () {
+      const fonts = hud.hudFonts()
+      assert.deepEqual(fonts, ['monospace', 'sans-serif', 'serif'])
     })
 
     it('#defaultHudLayout() has one entry per catalog element', function () {
@@ -96,6 +126,42 @@ describe('HUD overlay helpers (#173)', function () {
       // a not-supplied element falls back to its default
       const gps = out.elements.find(e => e.type === 'gps')
       assert.equal(gps.enabled, true)
+    })
+
+    it('#defaultHudLayout() carries the default global text style', function () {
+      const g = hud.defaultHudLayout().global
+      assert.deepEqual(g, { font: 'monospace', size: 34, color: '#ffffff' })
+    })
+
+    it('#validateHudLayout() normalises the global text style', function () {
+      // valid values pass through
+      const ok = hud.validateHudLayout({ global: { font: 'serif', size: 50, color: '#0af' }, elements: [] })
+      assert.deepEqual(ok.global, { font: 'serif', size: 50, color: '#0af' })
+      // invalid font/colour fall back to defaults; size is clamped & rounded
+      const bad = hud.validateHudLayout({ global: { font: 'Comic Sans', size: 999, color: 'red' }, elements: [] })
+      assert.equal(bad.global.font, 'monospace')
+      assert.equal(bad.global.size, 120) // clamped to the 10..120 max
+      assert.equal(bad.global.color, '#ffffff')
+      // too-small + non-numeric size
+      assert.equal(hud.validateHudLayout({ global: { size: 2 } }).global.size, 10) // min
+      assert.equal(hud.validateHudLayout({ global: { size: 'big' } }).global.size, 34) // NaN → default
+    })
+
+    it('#validateHudLayout() keeps only valid per-element style overrides', function () {
+      const out = hud.validateHudLayout({ elements: [
+        { type: 'alt', enabled: true, x: 0.8, y: 0.1, icon: true, font: 'sans-serif', size: 44, color: '#ff0000' },
+        { type: 'spd', enabled: true, x: 0.1, y: 0.1, icon: false, font: 'Wingdings', size: null, color: 'bad' },
+        { type: 'hdg', enabled: true, x: 0.4, y: 0.1, icon: false, size: '300' } // string number, clamped
+      ] })
+      const alt = out.elements.find(e => e.type === 'alt')
+      assert.deepEqual({ font: alt.font, size: alt.size, color: alt.color }, { font: 'sans-serif', size: 44, color: '#ff0000' })
+      // spd's overrides are all invalid → none stored (inherits global)
+      const spd = out.elements.find(e => e.type === 'spd')
+      assert.ok(!('font' in spd) && !('size' in spd) && !('color' in spd))
+      // hdg's string size is clamped to the max and no other override is added
+      const hdg = out.elements.find(e => e.type === 'hdg')
+      assert.equal(hdg.size, 120)
+      assert.ok(!('font' in hdg) && !('color' in hdg))
     })
 
     it('#homeDistance() / #homeBearing() compute distance + bearing to home', function () {

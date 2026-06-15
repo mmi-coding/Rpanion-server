@@ -62,6 +62,7 @@ class LTEModem {
   parser: any
   port: any
   status: any
+  gpsEnabled: any
   lastRawStats: any
   usage: any
   qmiCid: any
@@ -110,11 +111,14 @@ class LTEModem {
       rat: '',
       band: '',
       ip: '',
+      gps: null, // {lat, lon, alt} from the SIM7600 GNSS, when it has a fix
       usage: this.usage,
       lastReconnect: null,
       reconnectCount: 0,
       lastUpdate: null
     }
+    // whether AT+CGPS=1 has been sent (enable the GNSS once)
+    this.gpsEnabled = false
 
     this.port = null
     this.parser = null
@@ -227,6 +231,34 @@ class LTEModem {
       const m = line.match(/\+CGPADDR:\s*\d+,\s*"?([0-9.]+)"?/)
       if (m && m[1] !== '0.0.0.0') {
         return m[1]
+      }
+    }
+    return null
+  }
+
+  // +CGPSINFO: <lat>,<N/S>,<lon>,<E/W>,<date>,<UTC>,<alt>,<speed>,<course>
+  // lat/lon are ddmm.mmmmmm / dddmm.mmmmmm. Empty fields = no fix.
+  static parseCGPSINFO (lines: string[]) {
+    for (const line of lines) {
+      if (line.indexOf('+CGPSINFO:') !== -1) {
+        const p = (line.split(':')[1] || '').split(',').map((s) => s.trim())
+        if (p.length < 7 || p[0] === '' || p[2] === '') {
+          return null // no fix yet
+        }
+        const dm2deg = (v: string, hemi: string) => {
+          const raw = parseFloat(v)
+          const deg = Math.floor(raw / 100)
+          let dec = deg + (raw - deg * 100) / 60
+          if (hemi === 'S' || hemi === 'W') {
+            dec = -dec
+          }
+          return +dec.toFixed(6)
+        }
+        return {
+          lat: dm2deg(p[0], p[1]),
+          lon: dm2deg(p[2], p[3]),
+          alt: p[6] === '' ? null : parseFloat(p[6])
+        }
       }
     }
     return null
@@ -498,6 +530,18 @@ class LTEModem {
         }
       }
       this.status.ip = LTEModem.parseCGPADDR(await this.sendAT('AT+CGPADDR=1')) || ''
+
+      // SIM7600 GNSS: enable once, then read the fix each poll. A modem with no
+      // GNSS antenna (or no fix yet) just leaves status.gps null - never fatal
+      try {
+        if (!this.gpsEnabled) {
+          await this.sendAT('AT+CGPS=1')
+          this.gpsEnabled = true
+        }
+        this.status.gps = LTEModem.parseCGPSINFO(await this.sendAT('AT+CGPSINFO'))
+      } catch (gpsErr) {
+        this.status.gps = null
+      }
 
       this.status.available = true
       this.status.error = ''

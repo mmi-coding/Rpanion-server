@@ -86,6 +86,8 @@ const pppConnectionManager = new pppConnection(settings)
 const camSwitcher = new CameraSwitcher(settings)
 const customPipelines = new CustomPipelines(settings)
 const lteModem = new LTEModem(settings)
+// let the graphic HUD overlay the modem's GNSS fix (#173 modem-GPS follow-up)
+vManager.lteModem = lteModem
 // cellular video tuning: ties the LTE modem's signal quality to the video
 // stream's encoder bitrate
 const cellularTuning = new CellularTuning(settings, {
