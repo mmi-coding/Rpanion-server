@@ -1235,6 +1235,7 @@ exit 0`)
       assert.equal(modem.qmiHandle, '12345')
       assert.equal(modem.qmiCid, '7')
       assert.ok(fake.calls('qmicli')[0].includes('--wds-start-network'))
+      assert.ok(fake.calls('qmicli')[0].includes('--device-open-proxy')) // shares cdc-wdm via qmi-proxy
       assert.ok(fake.calls('udhcpc').length >= 1)
     })
 
@@ -1254,6 +1255,7 @@ exit 0`)
       modem.qmiCid = '7'
       await modem._qmiStop()
       assert.ok(fake.calls('qmicli')[0].includes('--wds-stop-network=12345'))
+      assert.ok(fake.calls('qmicli')[0].includes('--device-open-proxy')) // matching proxy for the kept CID
       assert.equal(modem.qmiHandle, null)
     })
 

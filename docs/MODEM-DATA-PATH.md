@@ -23,7 +23,12 @@ usage accounting and the connection test watch the right interface.
 The Status section has **Connect** (uses the configured mode) and **Disconnect**:
 
 - RNDIS: `AT$QCRMCALL=1,1` / `AT$QCRMCALL=0,1`
-- QMI: `qmicli --wds-start-network` (handle/CID captured) / `--wds-stop-network`
+- QMI: `qmicli --device-open-proxy --wds-start-network` (handle/CID captured) /
+  `--wds-stop-network`. The **`--device-open-proxy`** flag routes every `qmicli`
+  call through the **qmi-proxy** so it shares the `cdc-wdm` device with the kernel
+  (and other calls) — without it a second opener gets a *CID-allocation timeout*,
+  and the kept `--client-no-release-cid` only survives between the start and stop
+  invocations when both go through the proxy.
 - PPP: `pppd … connect "chat … ATD*99#"` / `poff`
 
 Auto-reconnect (registered but no IP) uses the same mode-aware path.
