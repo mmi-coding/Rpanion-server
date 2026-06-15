@@ -39,22 +39,30 @@ describe('HUD overlay helpers (#173)', function () {
   })
 
   describe('#emptyHudData()', function () {
-    it('returns an all-null shape', function () {
-      assert.deepEqual(hud.emptyHudData(), {
-        alt: null, altRel: null, spd: null, airspeed: null, hdg: null, climb: null,
-        throttle: null, batV: null, batPct: null, current: null, mode: null, armed: null,
-        gpsFix: null, gpsSats: null, roll: null, pitch: null
-      })
+    it('returns an all-null shape covering every captured field', function () {
+      const d = hud.emptyHudData()
+      assert.ok(Object.values(d).every(v => v === null))
+      for (const k of ['alt', 'altRel', 'spd', 'airspeed', 'climb', 'throttle', 'rangefinder',
+        'lat', 'lon', 'hdop', 'gpsCourse', 'homeDist', 'homeDir', 'wpDist', 'wpNum', 'xtrack',
+        'altError', 'mah', 'battTemp', 'battTimeRemaining', 'cpuLoad', 'rcRssi', 'radioRssi',
+        'radioRemRssi', 'radioNoise', 'dropRate', 'windSpeed', 'windDir', 'baroTemp', 'pressure',
+        'turnRate', 'gload', 'timer', 'vibe', 'vibeClip', 'roll', 'pitch', 'hdg', 'mode', 'armed']) {
+        assert.ok(k in d, 'missing field ' + k)
+      }
     })
   })
 
   describe('OSD layout (#173 editor)', function () {
-    it('#hudElements() lists the catalog with labels + samples', function () {
+    it('#hudElements() lists the catalog with sections, labels + samples', function () {
       const els = hud.hudElements()
-      assert.ok(Array.isArray(els) && els.length > 10)
+      assert.ok(Array.isArray(els) && els.length > 40)
       const alt = els.find(e => e.type === 'alt')
       assert.equal(alt.label, 'Altitude (MSL)')
-      assert.ok(els.find(e => e.type === 'horizon'))
+      assert.equal(alt.section, 'Altitude & Speed')
+      assert.equal(els.find(e => e.type === 'horizon').section, 'Attitude')
+      // sections present
+      const sections = new Set(els.map(e => e.section))
+      assert.ok(sections.has('Navigation') && sections.has('Link') && sections.has('Environment'))
     })
 
     it('#defaultHudLayout() has one entry per catalog element', function () {
@@ -88,6 +96,17 @@ describe('HUD overlay helpers (#173)', function () {
       // a not-supplied element falls back to its default
       const gps = out.elements.find(e => e.type === 'gps')
       assert.equal(gps.enabled, true)
+    })
+
+    it('#homeDistance() / #homeBearing() compute distance + bearing to home', function () {
+      // ~1.11 km north of home (0.01° latitude)
+      assert.ok(Math.abs(hud.homeDistance(37.0, -122.0, 37.01, -122.0) - 1112) < 5)
+      // home is due north → bearing ~0
+      assert.equal(hud.homeBearing(37.0, -122.0, 37.01, -122.0), 0)
+      // home due east → bearing ~90
+      assert.ok(Math.abs(hud.homeBearing(37.0, -122.0, 37.0, -121.99) - 90) <= 1)
+      // same point → distance 0
+      assert.equal(hud.homeDistance(37.0, -122.0, 37.0, -122.0), 0)
     })
   })
 

@@ -54,74 +54,132 @@ function gpsFixName (fixType: number): string {
   return fixType in GPS_FIX_NAMES ? GPS_FIX_NAMES[fixType] : '?'
 }
 
+// every numeric/string telemetry value the OSD can show. `roll`/`pitch` feed the
+// artificial horizon; `hdg` feeds the compass; the rest are direct readouts.
 interface HudData {
-  alt: number | null
-  altRel: number | null
-  spd: number | null
-  airspeed: number | null
-  hdg: number | null
-  climb: number | null
-  throttle: number | null
-  batV: number | null
-  batPct: number | null
-  current: number | null
-  mode: string | null
-  armed: boolean | null
-  gpsFix: number | null
-  gpsSats: number | null
-  roll: number | null
-  pitch: number | null
+  [k: string]: number | string | boolean | null
 }
 
 function emptyHudData (): HudData {
-  return {
-    alt: null, altRel: null, spd: null, airspeed: null, hdg: null, climb: null,
-    throttle: null, batV: null, batPct: null, current: null, mode: null, armed: null,
-    gpsFix: null, gpsSats: null, roll: null, pitch: null
+  const keys = [
+    // attitude
+    'roll', 'pitch', 'turnRate', 'gload',
+    // altitude & speed
+    'alt', 'altRel', 'spd', 'airspeed', 'climb', 'throttle', 'rangefinder',
+    // position & gps
+    'gpsFix', 'gpsSats', 'lat', 'lon', 'hdop', 'gpsCourse', 'hdg',
+    // navigation
+    'homeDist', 'homeDir', 'wpDist', 'wpNum', 'xtrack', 'altError',
+    // battery & power
+    'batV', 'batPct', 'current', 'mah', 'battTemp', 'battTimeRemaining', 'cpuLoad',
+    // link
+    'rcRssi', 'radioRssi', 'radioRemRssi', 'radioNoise', 'dropRate',
+    // environment
+    'windSpeed', 'windDir', 'baroTemp', 'pressure',
+    // status
+    'mode', 'armed', 'timer',
+    // health
+    'vibe', 'vibeClip'
+  ]
+  const o: HudData = {}
+  for (const k of keys) {
+    o[k] = null
   }
+  return o
 }
 
-// The catalog of customizable OSD elements (#173 "professional HUD"). The editor
-// (frontend) reads this list (label + a sample value, for the draggable chips);
-// video-server.py has a matching renderer (label/unit/icon glyph) keyed on `type`.
+// The catalog of customizable OSD elements (#173 "professional HUD"), grouped into
+// sections. The editor (frontend) reads this list (section + label + a sample
+// value, for the draggable chips + grouped palette); video-server.py has a
+// matching renderer (value formatter + icon glyph) keyed on `type`. Each entry
+// also carries its default placement { enabled, x, y, icon } (x/y are 0..1 frame
+// fractions). Most are off by default to keep a clean default HUD.
 const HUD_ELEMENTS = [
-  { type: 'horizon', label: 'Artificial Horizon', sample: '' },
-  { type: 'alt', label: 'Altitude (MSL)', sample: '124m' },
-  { type: 'altRel', label: 'Altitude (AGL)', sample: '38m' },
-  { type: 'spd', label: 'Ground Speed', sample: '14.2m/s' },
-  { type: 'airspeed', label: 'Airspeed', sample: '15.1m/s' },
-  { type: 'hdg', label: 'Heading', sample: '271°' },
-  { type: 'climb', label: 'Climb Rate', sample: '0.5m/s' },
-  { type: 'throttle', label: 'Throttle', sample: '45%' },
-  { type: 'batV', label: 'Battery Voltage', sample: '15.8V' },
-  { type: 'batPct', label: 'Battery Remaining', sample: '62%' },
-  { type: 'current', label: 'Current', sample: '8.4A' },
-  { type: 'mode', label: 'Flight Mode', sample: 'AUTO' },
-  { type: 'armed', label: 'Arm State', sample: 'ARMED' },
-  { type: 'gps', label: 'GPS', sample: '3D/11' }
+  // ── Attitude ──
+  { type: 'horizon', section: 'Attitude', label: 'Artificial Horizon', sample: '', enabled: true, x: 0.5, y: 0.5, icon: false },
+  { type: 'compass', section: 'Attitude', label: 'Compass Tape', sample: '', enabled: false, x: 0.5, y: 0.12, icon: false },
+  { type: 'hdg', section: 'Attitude', label: 'Heading', sample: '271°', enabled: true, x: 0.46, y: 0.06, icon: false },
+  { type: 'turnRate', section: 'Attitude', label: 'Turn Rate', sample: '5°/s', enabled: false, x: 0.04, y: 0.40, icon: true },
+  { type: 'gload', section: 'Attitude', label: 'G-Load', sample: '1.0G', enabled: false, x: 0.04, y: 0.46, icon: true },
+  // ── Altitude & Speed ──
+  { type: 'alt', section: 'Altitude & Speed', label: 'Altitude (MSL)', sample: '124m', enabled: true, x: 0.86, y: 0.06, icon: true },
+  { type: 'altRel', section: 'Altitude & Speed', label: 'Altitude (AGL)', sample: '38m', enabled: false, x: 0.86, y: 0.12, icon: true },
+  { type: 'spd', section: 'Altitude & Speed', label: 'Ground Speed', sample: '14.2m/s', enabled: true, x: 0.04, y: 0.06, icon: true },
+  { type: 'airspeed', section: 'Altitude & Speed', label: 'Airspeed', sample: '15.1m/s', enabled: false, x: 0.04, y: 0.12, icon: true },
+  { type: 'climb', section: 'Altitude & Speed', label: 'Climb Rate', sample: '0.5m/s', enabled: false, x: 0.04, y: 0.18, icon: true },
+  { type: 'throttle', section: 'Altitude & Speed', label: 'Throttle', sample: '45%', enabled: false, x: 0.04, y: 0.24, icon: true },
+  { type: 'rangefinder', section: 'Altitude & Speed', label: 'Rangefinder', sample: '2.4m', enabled: false, x: 0.86, y: 0.18, icon: true },
+  // ── Position & GPS ──
+  { type: 'gps', section: 'Position & GPS', label: 'GPS Fix/Sats', sample: '3D/11', enabled: true, x: 0.46, y: 0.92, icon: true },
+  { type: 'lat', section: 'Position & GPS', label: 'Latitude', sample: '37.4220', enabled: false, x: 0.04, y: 0.52, icon: false },
+  { type: 'lon', section: 'Position & GPS', label: 'Longitude', sample: '-122.084', enabled: false, x: 0.04, y: 0.58, icon: false },
+  { type: 'hdop', section: 'Position & GPS', label: 'GPS HDOP', sample: '0.8', enabled: false, x: 0.04, y: 0.64, icon: true },
+  { type: 'gpsCourse', section: 'Position & GPS', label: 'GPS Course', sample: '270°', enabled: false, x: 0.04, y: 0.70, icon: true },
+  // ── Navigation ──
+  { type: 'homeDist', section: 'Navigation', label: 'Distance to Home', sample: '420m', enabled: false, x: 0.40, y: 0.86, icon: true },
+  { type: 'homeDir', section: 'Navigation', label: 'Direction to Home', sample: '', enabled: false, x: 0.55, y: 0.86, icon: false },
+  { type: 'wpDist', section: 'Navigation', label: 'Distance to WP', sample: '120m', enabled: false, x: 0.40, y: 0.80, icon: true },
+  { type: 'wpNum', section: 'Navigation', label: 'Current Waypoint', sample: 'WP 3', enabled: false, x: 0.40, y: 0.74, icon: false },
+  { type: 'xtrack', section: 'Navigation', label: 'Crosstrack Error', sample: '1.2m', enabled: false, x: 0.40, y: 0.68, icon: false },
+  { type: 'altError', section: 'Navigation', label: 'Altitude Error', sample: '0.5m', enabled: false, x: 0.40, y: 0.62, icon: false },
+  // ── Battery & Power ──
+  { type: 'batV', section: 'Battery & Power', label: 'Battery Voltage', sample: '15.8V', enabled: true, x: 0.78, y: 0.92, icon: true },
+  { type: 'batPct', section: 'Battery & Power', label: 'Battery Remaining', sample: '62%', enabled: false, x: 0.78, y: 0.86, icon: true },
+  { type: 'current', section: 'Battery & Power', label: 'Current', sample: '8.4A', enabled: false, x: 0.78, y: 0.80, icon: true },
+  { type: 'mah', section: 'Battery & Power', label: 'mAh Consumed', sample: '1240mAh', enabled: false, x: 0.78, y: 0.74, icon: true },
+  { type: 'battTemp', section: 'Battery & Power', label: 'Battery Temp', sample: '32°C', enabled: false, x: 0.78, y: 0.68, icon: true },
+  { type: 'battTimeRemaining', section: 'Battery & Power', label: 'Battery Time Left', sample: '12:30', enabled: false, x: 0.78, y: 0.62, icon: true },
+  { type: 'cpuLoad', section: 'Battery & Power', label: 'Autopilot Load', sample: '38%', enabled: false, x: 0.78, y: 0.56, icon: true },
+  // ── Link ──
+  { type: 'rcRssi', section: 'Link', label: 'RC RSSI', sample: '95%', enabled: false, x: 0.86, y: 0.30, icon: true },
+  { type: 'radioRssi', section: 'Link', label: 'Radio RSSI', sample: '180', enabled: false, x: 0.86, y: 0.36, icon: true },
+  { type: 'radioRemRssi', section: 'Link', label: 'Radio Remote RSSI', sample: '175', enabled: false, x: 0.86, y: 0.42, icon: true },
+  { type: 'radioNoise', section: 'Link', label: 'Radio Noise', sample: '40', enabled: false, x: 0.86, y: 0.48, icon: true },
+  { type: 'dropRate', section: 'Link', label: 'Comm Drop Rate', sample: '0%', enabled: false, x: 0.86, y: 0.54, icon: true },
+  // ── Environment ──
+  { type: 'windSpeed', section: 'Environment', label: 'Wind Speed', sample: '4.2m/s', enabled: false, x: 0.86, y: 0.60, icon: true },
+  { type: 'windDir', section: 'Environment', label: 'Wind Direction', sample: '210°', enabled: false, x: 0.86, y: 0.66, icon: true },
+  { type: 'baroTemp', section: 'Environment', label: 'Baro Temperature', sample: '24°C', enabled: false, x: 0.86, y: 0.72, icon: true },
+  { type: 'pressure', section: 'Environment', label: 'Baro Pressure', sample: '1013hPa', enabled: false, x: 0.86, y: 0.78, icon: true },
+  // ── Status ──
+  { type: 'mode', section: 'Status', label: 'Flight Mode', sample: 'AUTO', enabled: true, x: 0.04, y: 0.92, icon: false },
+  { type: 'armed', section: 'Status', label: 'Arm State', sample: 'ARMED', enabled: false, x: 0.04, y: 0.86, icon: true },
+  { type: 'timer', section: 'Status', label: 'Flight Timer', sample: '3:42', enabled: false, x: 0.04, y: 0.80, icon: true },
+  { type: 'clock', section: 'Status', label: 'Clock', sample: '14:05:32', enabled: false, x: 0.04, y: 0.74, icon: true },
+  // ── Health ──
+  { type: 'vibe', section: 'Health', label: 'Vibration', sample: '12', enabled: false, x: 0.46, y: 0.18, icon: true },
+  { type: 'vibeClip', section: 'Health', label: 'Vibration Clipping', sample: '0', enabled: false, x: 0.46, y: 0.24, icon: true }
 ]
 
-// element type → default { enabled, x, y, icon }. x/y are 0..1 fractions of the
-// frame. Defaults roughly mirror the original fixed graphic HUD.
-const DEFAULT_PLACEMENT: { [k: string]: { enabled: boolean; x: number; y: number; icon: boolean } } = {
-  horizon: { enabled: true, x: 0.5, y: 0.5, icon: false },
-  alt: { enabled: true, x: 0.86, y: 0.06, icon: true },
-  altRel: { enabled: false, x: 0.86, y: 0.12, icon: true },
-  spd: { enabled: true, x: 0.04, y: 0.06, icon: true },
-  airspeed: { enabled: false, x: 0.04, y: 0.12, icon: true },
-  hdg: { enabled: true, x: 0.46, y: 0.06, icon: false },
-  climb: { enabled: false, x: 0.04, y: 0.18, icon: true },
-  throttle: { enabled: false, x: 0.04, y: 0.24, icon: true },
-  batV: { enabled: true, x: 0.78, y: 0.92, icon: true },
-  batPct: { enabled: false, x: 0.78, y: 0.86, icon: true },
-  current: { enabled: false, x: 0.78, y: 0.80, icon: true },
-  mode: { enabled: true, x: 0.04, y: 0.92, icon: false },
-  armed: { enabled: false, x: 0.04, y: 0.86, icon: true },
-  gps: { enabled: true, x: 0.46, y: 0.92, icon: true }
+// element type → default { enabled, x, y, icon }, derived from the catalog above.
+const DEFAULT_PLACEMENT: { [k: string]: { enabled: boolean; x: number; y: number; icon: boolean } } = {}
+for (const e of HUD_ELEMENTS) {
+  DEFAULT_PLACEMENT[e.type] = { enabled: e.enabled, x: e.x, y: e.y, icon: e.icon }
 }
 
 function hudElements () {
-  return HUD_ELEMENTS
+  // catalog metadata the editor needs (placement comes from the saved layout)
+  return HUD_ELEMENTS.map((e) => ({ type: e.type, section: e.section, label: e.label, sample: e.sample }))
+}
+
+// great-circle distance (m) between two lat/lon points (degrees)
+function homeDistance (lat: number, lon: number, homeLat: number, homeLon: number): number {
+  const R = 6371000
+  const dLat = (homeLat - lat) * Math.PI / 180
+  const dLon = (homeLon - lon) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat * Math.PI / 180) * Math.cos(homeLat * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)))
+}
+
+// initial bearing (deg, 0..360) from the current point to home
+function homeBearing (lat: number, lon: number, homeLat: number, homeLon: number): number {
+  const φ1 = lat * Math.PI / 180
+  const φ2 = homeLat * Math.PI / 180
+  const dλ = (homeLon - lon) * Math.PI / 180
+  const y = Math.sin(dλ) * Math.cos(φ2)
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dλ)
+  return Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360)
 }
 
 function defaultHudLayout () {
@@ -166,18 +224,18 @@ function validateHudLayout (layout: any) {
   return { elements }
 }
 
-function num (v: number | null, digits: number, suffix: string): string {
-  return v === null ? '--' : v.toFixed(digits) + suffix
+function num (v: any, digits: number, suffix: string): string {
+  return (v === null || v === undefined) ? '--' : v.toFixed(digits) + suffix
 }
 
 function formatHudText (hud: HudData): string {
   const line1 = 'ALT ' + num(hud.alt, 0, 'm') + '  SPD ' + num(hud.spd, 1, 'm/s')
-  const line2 = 'HDG ' + (hud.hdg === null ? '--' : Math.round(hud.hdg) + '°') +
+  const line2 = 'HDG ' + (hud.hdg === null ? '--' : Math.round(hud.hdg as number) + '°') +
                 '  BAT ' + num(hud.batV, 1, 'V') + ' ' + (hud.batPct === null ? '--' : hud.batPct + '%')
-  const gps = (hud.gpsFix === null ? '--' : gpsFixName(hud.gpsFix)) + '/' +
+  const gps = (hud.gpsFix === null ? '--' : gpsFixName(hud.gpsFix as number)) + '/' +
               (hud.gpsSats === null ? '--' : hud.gpsSats)
   const line3 = (hud.mode === null ? 'MODE --' : hud.mode) + '  GPS ' + gps
   return line1 + '\n' + line2 + '\n' + line3
 }
 
-export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, defaultHudLayout, validateHudLayout }
+export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }
