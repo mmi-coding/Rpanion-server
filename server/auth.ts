@@ -41,11 +41,13 @@ export = function authModule ({ userMgmt }: { userMgmt: any }) {
       return res.status(statusCode).json({ message })
     }
 
-    // Extract token
+    // Extract token. Normally from the Authorization header, but also accept a
+    // ?token= query param so browser-loaded resources that can't set headers
+    // (e.g. an <img> MJPEG preview, EventSource) can authenticate.
     let token;
     try {
       const authHeader = req.headers['authorization']
-      token = authHeader && authHeader.split(' ')[1]
+      token = (authHeader && authHeader.split(' ')[1]) || (typeof req.query.token === 'string' ? req.query.token : undefined)
     } catch (err) /* istanbul ignore next -- header property access cannot throw in express */ {
       return sendError(401, 'Access denied. No token provided.')
     }

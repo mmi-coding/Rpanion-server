@@ -362,6 +362,13 @@ describe('Auth and user routes', function () {
       assert.equal(res.status, 200)
     })
 
+    it('200 — token in the ?token= query param grants access (for <img>/EventSource)', async function () {
+      process.env.NODE_ENV = 'production'
+      // no Authorization header — the token rides in the query string
+      const res = await request('GET', '/api/users?token=' + encodeURIComponent(validToken))
+      assert.equal(res.status, 200)
+    })
+
     it('401 — blacklisted token is rejected', async function () {
       // Blacklist the designated token (in dev mode — no auth needed for logout)
       await request('POST', '/api/logout', { token: blacklistToken })

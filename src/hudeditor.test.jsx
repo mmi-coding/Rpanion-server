@@ -39,10 +39,18 @@ const fontList = {
   ]
 }
 
+const videoDevices = {
+  devices: [
+    { value: '/base/soc/i2c0mux/imx708@1a', label: 'IMX708 (CSI)', caps: [{ value: '1280x720xx-raw', width: 1280, height: 720, format: 'video/x-raw' }] },
+    { value: '/dev/video2', caps: [{ width: 1920, height: 1080, format: 'video/x-h264' }, { width: 640, height: 480, format: 'image/jpeg' }] } // no label → shows its value
+  ]
+}
+
 function fetchWith (extra = {}) {
   return mockFetch({
     '/api/hudlayout': { layout: { global, elements }, elements: catalog },
     '/api/hudfonts': fontList,
+    '/api/videodevices': videoDevices,
     ...extra
   })
 }
@@ -386,6 +394,85 @@ describe('#HudEditorPage()', function () {
     mockFetch({ 'DELETE /api/hudfonts/My_Upload.ttf': () => { throw new Error('net') } })
     await act(async () => { getRef().removeFont('My_Upload.ttf') })
     expect(getRef().state.error).toContain('Could not remove font')
+    page.unmount()
+  })
+
+  test('the element palette is split into two columns', async function () {
+    const { page } = renderEd(() => fetchWith())
+    await page.flush()
+    expect(page.container.querySelectorAll('.row .col-md-6 table').length).toBe(2)
+    page.unmount()
+  })
+
+  test('loads cameras and defaults the selection to the first', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    expect(getRef().state.cameras.length).toBe(2)
+    expect(getRef().state.selectedCamera).toBe('/base/soc/i2c0mux/imx708@1a')
+    page.unmount()
+  })
+
+  test('toggling the camera feed shows a tokened MJPEG backdrop; img error is handled', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    expect(page.container.querySelector('[data-testid="camera-feed"]')).toBeFalsy() // off by default
+    act(() => { page.container.querySelector('[data-testid="show-camera"]').click() })
+    const img = page.container.querySelector('[data-testid="camera-feed"]')
+    expect(img).toBeTruthy()
+    const src = img.getAttribute('src')
+    expect(src).toContain('/api/camera/preview?')
+    expect(src).toContain('device=')
+    expect(src).toContain('token=')
+    expect(src).toContain('format=video') // CSI cap is video/x-raw
+    // a failed load is surfaced
+    act(() => { img.dispatchEvent(new Event('error')) })
+    expect(getRef().state.cameraError).toBe(true)
+    page.unmount()
+  })
+
+  test('selecting a different camera picks a non-compressed cap for the preview', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    act(() => { page.container.querySelector('[data-testid="show-camera"]').click() })
+    const sel = page.container.querySelector('[data-testid="camera-select"]')
+    act(() => {
+      Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set.call(sel, '/dev/video2')
+      sel.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(getRef().state.selectedCamera).toBe('/dev/video2')
+    // the USB cam's first cap is H264 (not previewable) → previewSrc skips to its jpeg cap
+    expect(page.container.querySelector('[data-testid="camera-feed"]').getAttribute('src')).toContain('format=image%2Fjpeg')
+    page.unmount()
+  })
+
+  test('previewSrc falls back gracefully for an unknown/capless camera', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    act(() => { getRef().setState({ selectedCamera: 'does-not-exist' }) })
+    expect(getRef().previewSrc()).toBe('') // no matching device
+    act(() => { getRef().setState({ cameras: [{ value: 'x', label: 'X', caps: [] }], selectedCamera: 'x' }) })
+    expect(getRef().previewSrc()).toContain('width=1280') // default resolution when capless
+    // a camera with no caps property at all → defaults
+    act(() => { getRef().setState({ cameras: [{ value: 'nc' }], selectedCamera: 'nc' }) })
+    expect(getRef().previewSrc()).toContain('width=1280')
+    // a camera whose only cap is compressed (H265) → falls back to that cap (caps[0])
+    act(() => { getRef().setState({ cameras: [{ value: 'h', caps: [{ width: 800, height: 600, format: 'video/x-h265' }] }], selectedCamera: 'h' }) })
+    expect(getRef().previewSrc()).toContain('width=800')
+    page.unmount()
+  })
+
+  test('with no cameras the toggle is disabled and the select says so', async function () {
+    const { page } = renderEd(() => fetchWith({ '/api/videodevices': {} }))
+    await page.flush()
+    expect(page.container.textContent).toContain('No cameras found')
+    expect(page.container.querySelector('[data-testid="show-camera"]').disabled).toBe(true)
+    page.unmount()
+  })
+
+  test('tolerates a videodevices fetch failure', async function () {
+    const { page, getRef } = renderEd(() => fetchWith({ '/api/videodevices': () => { throw new Error('net') } }))
+    await page.flush()
+    expect(getRef().state.cameras).toEqual([])
     page.unmount()
   })
 })

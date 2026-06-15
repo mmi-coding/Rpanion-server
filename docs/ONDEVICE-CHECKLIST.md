@@ -347,3 +347,11 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] Run **Scan for modem** → the responding AT port shows a **GNSS fix** badge with the position (the scan asks each responder for `AT+CGPSINFO`), so GPS can be confirmed before enabling the monitor
 - [ ] Cold start: the row reads **No fix · acquiring…** until the antenna gets a lock (can take a minute outdoors), then flips to the fix
 - [ ] The same fix feeds the video HUD's **Modem GPS** elements (modemFix/lat/lon/alt) on a graphic stream
+
+## Feature #173 follow-up: HUD editor camera backdrop + two-column palette
+
+- [ ] In the HUD Editor, the element palette is laid out in **two columns** (grouped by section)
+- [ ] With the camera **idle** (no stream running), toggle **Show camera feed behind the HUD** and pick the IMX708 → a live MJPEG preview appears behind the OSD chips, so you can position elements over the real picture. Confirm acceptable CPU (`jpegenc` at preview rate) and that the `<img>` keeps streaming
+- [ ] Pick a USB camera (if attached) → preview works for raw/MJPEG caps; a pre-compressed (H264) cap shows "Camera unavailable" (preview not supported), matching the burned-in HUD constraint
+- [ ] Start the main video stream while the preview is open → the preview **stops** (frees the camera) and the stream starts; trying to open the preview **while streaming** shows "Camera unavailable (busy)"
+- [ ] Turning the toggle off / leaving the page stops `mjpeg-preview.py` (no orphaned GStreamer process: `pgrep -f mjpeg-preview`)

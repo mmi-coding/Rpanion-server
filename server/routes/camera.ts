@@ -66,6 +66,13 @@ export = function cameraRoutes ({ authenticateToken, toBool, vManager, fcManager
     });
   });
 
+  // Live MJPEG preview of a camera (multipart/x-mixed-replace), for the HUD
+  // editor backdrop. Auth accepts ?token= (an <img> can't set headers). Only
+  // works when the camera is idle - vManager streams the preview to the response.
+  router.get('/api/camera/preview', authenticateToken, (req: Request, res: Response) => {
+    vManager.startCameraPreview(req.query, res)
+  })
+
   // GET Still Camera Device information
   router.get('/api/camera/still_devices', authenticateToken, (req: Request, res: Response) => {
     vManager.getStillDevices((err: any, stillData: any) => {

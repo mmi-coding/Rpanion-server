@@ -33,6 +33,7 @@ class videoStream {
   hudTimer: any
   lteModem: any
   hudFonts: any
+  previewStream: any
   homePos: any
   armTime: number | null
   secondaryStreams: any
@@ -60,6 +61,8 @@ class videoStream {
     // the HudFonts manager, wired by index.ts (null in tests / standalone). Its
     // dataHome is passed to video-server.py as XDG_DATA_HOME for custom OSD fonts.
     this.hudFonts = null;
+    // the running MJPEG camera-preview child (HUD editor backdrop), or null
+    this.previewStream = null;
     this.homePos = null; // {lat,lon} from HOME_POSITION, for distance/bearing-to-home
     this.armTime = null; // ms timestamp of the last arm, for the flight timer
 
@@ -588,6 +591,62 @@ class videoStream {
     return this.hudFonts ? { ...process.env, XDG_DATA_HOME: this.hudFonts.dataHome } : process.env
   }
 
+  // ---- live MJPEG camera preview (HUD editor backdrop) ----
+
+  // Build the mjpeg-preview.py spawn args from a device + caps, or null if the
+  // source is pre-compressed (H264/H265) and so can't be previewed.
+  _previewArgs(opts: any) {
+    const format = opts.format || 'video/x-raw'
+    if (format === 'video/x-h264' || format === 'video/x-h265') {
+      return null
+    }
+    return [
+      '-u', './python/mjpeg-preview.py',
+      '--device=' + opts.device,
+      '--width=' + (parseInt(opts.width, 10) || 1280),
+      '--height=' + (parseInt(opts.height, 10) || 720),
+      '--format=' + format,
+      '--rotation=' + (parseInt(opts.rotation, 10) || 0)
+    ]
+  }
+
+  // Start an MJPEG preview of a camera and pipe it to the HTTP response as a
+  // multipart/x-mixed-replace stream (the HUD editor shows it behind the OSD via
+  // an <img>). Only works when the camera is idle - a running stream owns the
+  // single CSI device.
+  startCameraPreview(opts: any, res: any) {
+    this.stopCameraPreview()
+    if (this.active && this.cameraMode === 'streaming' && this.deviceStream !== null) {
+      return res.status(409).json({ error: 'Camera is busy - stop the video stream to preview it' })
+    }
+    if (!opts || !opts.device) {
+      return res.status(422).json({ error: 'No camera device specified' })
+    }
+    const args = this._previewArgs(opts)
+    if (args === null) {
+      return res.status(422).json({ error: 'Live preview is not available for a pre-compressed (H264/H265) source' })
+    }
+    const child = spawn(logpaths.getPythonPath(), args, { env: this._spawnEnv() })
+    this.previewStream = child
+    res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=rpanionpreviewframe')
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    child.stdout.pipe(res)
+    child.stderr.on('data', (d: Buffer) => console.log('camera preview: ' + d.toString().trim()))
+    child.on('error', (err: Error) => { console.log('camera preview spawn error: ' + err.message); res.end() })
+    child.on('close', () => { if (this.previewStream === child) { this.previewStream = null } res.end() })
+    // stop the preview when the browser disconnects the <img>
+    res.on('close', () => this.stopCameraPreview())
+  }
+
+  stopCameraPreview() {
+    if (this.previewStream) {
+      try {
+        this.previewStream.kill('SIGTERM')
+      } catch (err) { /* already gone */ }
+      this.previewStream = null
+    }
+  }
+
   startHudInterval() {
     this.stopHudInterval()
     this.hudTimer = setInterval(() => this._pushHudPeriodic(), 1000)
@@ -623,6 +682,8 @@ class videoStream {
 
   async startVideoStreaming(callback: any) {
     if (!this.videoSettings) return callback(new Error('No video settings provided'));
+    // free the camera if a HUD-editor preview is using it
+    this.stopCameraPreview();
 
     let device = this.videoSettings.device;
     let format = this.videoSettings.format;
@@ -902,6 +963,7 @@ class videoStream {
       this.intervalObj = null;
     }
     this.stopHudInterval();
+    this.stopCameraPreview();
 
     if (this.deviceStream) {
       this.deviceStream.kill('SIGTERM'); // Clean kill

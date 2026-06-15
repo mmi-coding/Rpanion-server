@@ -25,6 +25,10 @@ class HudEditorPage extends basePage {
       // curated + imported; each non-generic font is @font-face'd for an exact preview
       fontList: { generics: ['monospace', 'sans-serif', 'serif'], fonts: [] },
       importing: false,
+      cameras: [],          // [{ value, label, caps:[{width,height,format}] }]
+      selectedCamera: '',   // device value of the camera shown behind the HUD
+      showCamera: false,    // toggle the live camera backdrop
+      cameraError: false,   // the preview <img> failed to load (busy / no signal)
       selectedType: null, // element whose style is being edited
       dragType: null,
       message: null,
@@ -37,18 +41,46 @@ class HudEditorPage extends basePage {
     const headers = { Authorization: `Bearer ${this.state.token}` };
     Promise.all([
       fetch('/api/hudlayout', { headers }).then(r => r.json()),
-      fetch('/api/hudfonts', { headers }).then(r => r.json())
-    ]).then(([data, fontList]) => {
+      fetch('/api/hudfonts', { headers }).then(r => r.json()),
+      // the camera list (for the "feed behind the HUD" backdrop); tolerate failure
+      fetch('/api/videodevices', { headers }).then(r => r.json()).catch(() => ({}))
+    ]).then(([data, fontList, vid]) => {
       const layout = data.layout || {};
+      const cameras = (vid && vid.devices) || [];
       this.setState({
         catalog: data.elements || [],
         elements: layout.elements || [],
         global: layout.global || this.state.global,
-        fontList: (fontList && fontList.generics) ? fontList : this.state.fontList
+        fontList: (fontList && fontList.generics) ? fontList : this.state.fontList,
+        cameras,
+        selectedCamera: cameras.length > 0 ? cameras[0].value : ''
       });
       this.loadDone();
     });
   }
+
+  // MJPEG preview URL for the selected camera (token in the query so the <img>
+  // can authenticate); picks a non-compressed cap so it can be JPEG-previewed
+  previewSrc() {
+    const dev = this.state.cameras.find(c => c.value === this.state.selectedCamera);
+    if (!dev) {
+      return '';
+    }
+    const caps = dev.caps || [];
+    const cap = caps.find(c => c.format !== 'video/x-h264' && c.format !== 'video/x-h265') || caps[0] || {};
+    const q = new URLSearchParams({
+      device: dev.value,
+      width: cap.width || 1280,
+      height: cap.height || 720,
+      format: cap.format || 'video/x-raw',
+      rotation: 0,
+      token: this.state.token || ''
+    });
+    return '/api/camera/preview?' + q.toString();
+  }
+
+  toggleCamera = () => this.setState({ showCamera: !this.state.showCamera, cameraError: false })
+  selectCamera = (value) => this.setState({ selectedCamera: value, cameraError: false })
 
   // the editor's font <select> options: generics + curated + imported
   fontOptions() {
@@ -333,10 +365,64 @@ class HudEditorPage extends basePage {
     );
   }
 
+  // one palette row (a telemetry element with Show / Icon toggles)
+  renderPaletteRow(c) {
+    const e = this.getEl(c.type) || { enabled: false, icon: false };
+    return (
+      <tr key={c.type} className={this.state.selectedType === c.type ? 'table-active' : ''} onClick={() => this.setState({ selectedType: c.type })} style={{ cursor: 'pointer' }}>
+        <td>{c.label}</td>
+        <td><span style={{ fontFamily: 'monospace', color: '#9fe6cf' }}>{c.graphic ? '⊕ shape' : c.mock}</span></td>
+        <td><Form.Check type="checkbox" checked={e.enabled} onChange={() => this.toggleEnabled(c.type)} onClick={ev => ev.stopPropagation()} /></td>
+        <td>{c.graphic ? <span>—</span> : <Form.Check type="checkbox" checked={e.icon} onChange={() => this.toggleIcon(c.type)} onClick={ev => ev.stopPropagation()} />}</td>
+      </tr>
+    );
+  }
+
+  // the element palette, grouped by section and split into two balanced columns
+  renderPalette() {
+    const groups = [];
+    this.state.catalog.forEach(c => {
+      let g = groups[groups.length - 1];
+      if (!g || g.section !== c.section) {
+        g = { section: c.section, items: [] };
+        groups.push(g);
+      }
+      g.items.push(c);
+    });
+    const colA = [];
+    const colB = [];
+    let count = 0;
+    const half = this.state.catalog.length / 2;
+    groups.forEach(g => {
+      (count < half ? colA : colB).push(g);
+      count += g.items.length;
+    });
+    const head = <thead><tr><th>Element</th><th>Preview</th><th>Show<HelpTip text="Include this stat in the HUD." /></th><th>Icon<HelpTip text="Draw the element's icon next to its value." /></th></tr></thead>;
+    const renderCol = (cols) => (
+      <Table striped bordered hover size="sm" className="mb-0">
+        {head}
+        <tbody>
+          {cols.map(g => (
+            <React.Fragment key={g.section}>
+              <tr className="table-secondary"><td colSpan="4"><b>{g.section}</b></td></tr>
+              {g.items.map(c => this.renderPaletteRow(c))}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </Table>
+    );
+    return (
+      <div className="row g-2">
+        <div className="col-12 col-md-6">{renderCol(colA)}</div>
+        <div className="col-12 col-md-6">{renderCol(colB)}</div>
+      </div>
+    );
+  }
+
   renderContent() {
     const importedFonts = (this.state.fontList.fonts || []).filter(f => f.kind === 'imported');
     return (
-      <div style={{ maxWidth: 760 }}>
+      <div style={{ maxWidth: 920 }}>
         <p><i>Arrange the graphic HUD: drag elements on the screen, pick which stats and icons to show, and style the text — each chip shows the value exactly as it will appear on the video.</i></p>
         <HelpSection title="About the HUD editor">
           <p>This configures the <b>Graphic</b> Telemetry HUD (enable it on the Photo &amp; Video page, HUD Style = Graphic). The black area below represents your video frame, drawn with <b>mock data</b> so you see real-looking values. Drag an element to position it; tick <b>Show</b> to include a stat and <b>Icon</b> to draw its icon. Click an element to change its <b>font, size and colour</b> — or set those globally below. Press <b>Save</b> to apply — a running graphic stream updates live.</p>
@@ -370,6 +456,17 @@ class HudEditorPage extends basePage {
           </div>
         </div>
 
+        <div className="d-flex flex-wrap align-items-center mb-2" style={{ gap: 12, border: '1px solid #2a3340', borderRadius: 4, padding: '8px 12px' }}>
+          <Form.Check type="switch" id="hud-show-camera" label="Show camera feed behind the HUD" checked={this.state.showCamera} onChange={this.toggleCamera} disabled={this.state.cameras.length === 0} data-testid="show-camera" />
+          <HelpTip text="Live MJPEG preview of a camera as the editor backdrop, so you can position the HUD over the real picture. Only works when that camera isn't already streaming." />
+          <Form.Select size="sm" style={{ width: 'auto', maxWidth: 340 }} value={this.state.selectedCamera} onChange={ev => this.selectCamera(ev.target.value)} disabled={!this.state.showCamera || this.state.cameras.length === 0} data-testid="camera-select">
+            {this.state.cameras.length === 0
+              ? <option value="">No cameras found</option>
+              : this.state.cameras.map(c => <option key={c.value} value={c.value}>{c.label || c.value}</option>)}
+          </Form.Select>
+          {this.state.cameraError && <span className="text-warning"><small>Camera unavailable (busy, or no signal)</small></span>}
+        </div>
+
         {importedFonts.length > 0 &&
           <div className="mb-2"><small className="text-muted">Imported fonts: </small>
             {importedFonts.map(f => (
@@ -390,6 +487,9 @@ class HudEditorPage extends basePage {
           onMouseLeave={this.endDrag}
           style={{ position: 'relative', width: '100%', aspectRatio: '16 / 9', background: '#0a0d12', border: '1px solid #2a3340', borderRadius: 4, overflow: 'hidden', userSelect: 'none', marginBottom: 12, containerType: 'inline-size' }}
         >
+          {this.state.showCamera && this.state.selectedCamera &&
+            <img key={this.previewSrc()} src={this.previewSrc()} alt="" onError={() => this.setState({ cameraError: true })}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', zIndex: 0 }} data-testid="camera-feed" />}
           {this.state.elements.filter(e => e.enabled).map(e => this.renderChip(e))}
         </div>
 
@@ -398,26 +498,7 @@ class HudEditorPage extends basePage {
         {this.state.message && <div className="alert alert-success" role="alert">{this.state.message}</div>}
         {this.state.error && <div className="alert alert-warning" role="alert">{this.state.error}</div>}
 
-        <Table striped bordered hover size="sm">
-          <thead><tr><th>Element</th><th>Preview</th><th>Show<HelpTip text="Include this stat in the HUD." /></th><th>Icon<HelpTip text="Draw the element's icon next to its value." /></th></tr></thead>
-          <tbody>
-            {this.state.catalog.map((c, i) => {
-              const e = this.getEl(c.type) || { enabled: false, icon: false };
-              const newSection = i === 0 || c.section !== this.state.catalog[i - 1].section;
-              return (
-                <React.Fragment key={c.type}>
-                  {newSection && <tr className="table-secondary"><td colSpan="4"><b>{c.section}</b></td></tr>}
-                  <tr className={this.state.selectedType === c.type ? 'table-active' : ''} onClick={() => this.setState({ selectedType: c.type })} style={{ cursor: 'pointer' }}>
-                    <td>{c.label}</td>
-                    <td><span style={{ fontFamily: 'monospace', color: '#9fe6cf' }}>{c.graphic ? '⊕ shape' : c.mock}</span></td>
-                    <td><Form.Check type="checkbox" checked={e.enabled} onChange={() => this.toggleEnabled(c.type)} onClick={ev => ev.stopPropagation()} /></td>
-                    <td>{c.graphic ? <span>—</span> : <Form.Check type="checkbox" checked={e.icon} onChange={() => this.toggleIcon(c.type)} onClick={ev => ev.stopPropagation()} />}</td>
-                  </tr>
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </Table>
+        {this.renderPalette()}
 
         <Button onClick={this.save}>Save Layout</Button>{' '}
         <Button variant="secondary" onClick={this.resetDefault}>Reset to Defaults</Button>
