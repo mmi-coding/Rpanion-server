@@ -57,6 +57,30 @@ function getLiveStats (callback: (...args: any[]) => void) {
   })
 }
 
+function getTimezone (callback: (...args: any[]) => void) {
+  // current zone + the full IANA list, straight from Node's Intl (no shell-out)
+  return callback({
+    current: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    zones: Intl.supportedValuesOf('timeZone')
+  })
+}
+
+function setTimezone (timezone: string, callback: (err: any) => void) {
+  // Validate against the known IANA list — the value is interpolated into a
+  // shell command, so only allow exact known zones.
+  if (!Intl.supportedValuesOf('timeZone').includes(timezone)) {
+    return callback('Invalid timezone')
+  }
+  exec('sudo timedatectl set-timezone ' + timezone, (error: Error | null, stdout: string, stderr: string) => {
+    const failure = error || stderr
+    if (failure) {
+      console.log('Error setting timezone:', failure)
+      return callback(failure.toString())
+    }
+    return callback(null)
+  })
+}
+
 /*function rebootCC () {
   // reboot the companion computer
   console.log('Reboot now')
@@ -158,4 +182,4 @@ function getsystemctllog(callback: (log: string) => void) {
   })
 }
 
-export = { getSoftwareInfo, getHardwareInfo, getDiskInfo, getLiveStats, shutdownCC, getsystemctllog }
+export = { getSoftwareInfo, getHardwareInfo, getDiskInfo, getLiveStats, getTimezone, setTimezone, shutdownCC, getsystemctllog }
