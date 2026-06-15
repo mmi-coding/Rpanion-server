@@ -49,13 +49,20 @@ lists every IANA zone, shows the current one, and applies a new selection.
 - `getTimezone` reads real values in WSL; `setTimezone`'s `timedatectl` path is the
   only part that needs the Pi (and a sudoers grant).
 
+## Sudoers (shipped)
+
+`sudo timedatectl set-timezone` must run **non-interactively** for the service
+user. `debian/postinst` now grants `/usr/bin/timedatectl set-timezone *` in the
+rpanion sudoers drop-in (alongside the existing `shutdown`/networking grants), so
+a fresh install / redeploy has it automatically — no manual step. (The original
+deploy lacked this, so an on-device redeploy is required to pick it up.)
+
 ## Needs on-device
 
-- [ ] `sudo timedatectl set-timezone` must be runnable **non-interactively** by the
-  service user — add it to the rpanion sudoers drop-in (alongside the existing
-  `shutdown`/networking grants) so the POST doesn't hang on a password prompt.
-- [ ] On the Pi: pick a new zone on the About page → **Set Time Zone** → confirm
-  `timedatectl` reflects it and log timestamps shift; reboot → zone persists.
+- [ ] After redeploy, confirm the sudoers drop-in includes the
+  `timedatectl set-timezone` grant, then on the About page pick a new zone →
+  **Set Time Zone** → `timedatectl` reflects it (no password prompt); reboot →
+  zone persists.
 
 ## Related: upstream #228 (camera parameter control)
 

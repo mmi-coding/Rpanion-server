@@ -270,6 +270,9 @@ needs a password-less sudoers grant for it (the page will otherwise hang on a
 prompt). Add to the rpanion sudoers drop-in, e.g.:
 `rpanion ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *`
 
+The `timedatectl set-timezone` sudoers grant is now shipped by `debian/postinst`
+(no manual step) — redeploy/reinstall the `.deb` so the drop-in is regenerated.
+
 - [ ] About page → **Time Zone**: the select is populated and defaults to the box's current zone
 - [ ] Pick a different zone → **Set Time Zone** → success message; `timedatectl` (and log timestamps) reflect the new zone
 - [ ] Reboot → the zone persists (no password prompt was needed for the apply)
