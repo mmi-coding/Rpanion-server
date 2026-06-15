@@ -2341,6 +2341,76 @@ describe('Video Functions', function () {
       assert.equal(env.PATH, process.env.PATH) // still inherits the rest
     })
 
+    it('#_previewArgs() builds mjpeg-preview args; null for a pre-compressed source', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      const args = vManager._previewArgs({ device: '/dev/video0', format: 'video/x-raw', width: 1280, height: 720, rotation: 90 })
+      assert.ok(args.includes('./python/mjpeg-preview.py'))
+      assert.ok(args.includes('--device=/dev/video0'))
+      assert.ok(args.includes('--width=1280') && args.includes('--height=720') && args.includes('--rotation=90'))
+      // defaults applied for missing fields
+      const def = vManager._previewArgs({ device: 'x' })
+      assert.ok(def.includes('--width=1280') && def.includes('--height=720') && def.includes('--format=video/x-raw') && def.includes('--rotation=0'))
+      // pre-compressed sources can't be JPEG-previewed
+      assert.equal(vManager._previewArgs({ device: 'x', format: 'video/x-h264' }), null)
+      assert.equal(vManager._previewArgs({ device: 'x', format: 'video/x-h265' }), null)
+    })
+
+    it('#startCameraPreview() rejects busy / no-device / pre-compressed', function () {
+      settings.clear()
+      const mkRes = () => ({ setHeader: sinon.spy(), status: sinon.stub().returnsThis(), json: sinon.spy(), on: sinon.spy() })
+      // busy: a stream owns the camera → 409
+      const busy = new VideoStream(settings)
+      busy.active = true; busy.cameraMode = 'streaming'; busy.deviceStream = {}
+      let res = mkRes(); busy.startCameraPreview({ device: 'x' }, res)
+      assert.ok(res.status.calledWith(409)); assert.equal(busy.previewStream, null)
+      // no device → 422
+      const vManager = new VideoStream(settings)
+      res = mkRes(); vManager.startCameraPreview({}, res); assert.ok(res.status.calledWith(422))
+      // pre-compressed → 422
+      res = mkRes(); vManager.startCameraPreview({ device: 'x', format: 'video/x-h264' }, res); assert.ok(res.status.calledWith(422))
+    })
+
+    it('#startCameraPreview() spawns the MJPEG stream and cleans up on close / disconnect', function () {
+      settings.clear()
+      const { PassThrough } = require('stream')
+      const vManager = new VideoStream(settings)
+      const res = new PassThrough()
+      res.setHeader = sinon.spy()
+      res.end = sinon.spy()
+      vManager.startCameraPreview({ device: '/dev/video0', format: 'video/x-raw', width: 640, height: 480 }, res)
+      assert.ok(vManager.previewStream) // spawned the preview child
+      assert.ok(res.setHeader.calledWith('Content-Type', sinon.match(/multipart\/x-mixed-replace/)))
+      const child = vManager.previewStream
+      // a spawn error ends the response
+      child.emit('error', new Error('boom'))
+      assert.ok(res.end.called)
+      // the browser disconnecting (<img> removed) stops the preview
+      res.emit('close')
+      assert.equal(vManager.previewStream, null)
+      try { child.kill('SIGKILL') } catch (e) { /* already gone */ }
+    })
+
+    it('#startCameraPreview() nulls previewStream when the child closes', function () {
+      settings.clear()
+      const { PassThrough } = require('stream')
+      const vManager = new VideoStream(settings)
+      const res = new PassThrough(); res.setHeader = sinon.spy(); res.end = sinon.spy()
+      vManager.startCameraPreview({ device: '/dev/video0', format: 'video/x-raw' }, res)
+      const child = vManager.previewStream
+      child.emit('close')
+      assert.equal(vManager.previewStream, null)
+      assert.ok(res.end.called)
+      try { child.kill('SIGKILL') } catch (e) { /* already gone */ }
+    })
+
+    it('#stopCameraPreview() is a no-op when nothing is running', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.stopCameraPreview()
+      assert.equal(vManager.previewStream, null)
+    })
+
     it('#mergeModemGps() folds the SIM7600 GNSS fix into the HUD fields', function () {
       settings.clear()
       const vManager = liveStreamingManager()

@@ -871,6 +871,25 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   })
 
   // =========================================================================
+  // Camera MJPEG preview route (HUD editor backdrop)
+  // =========================================================================
+  describe('GET /api/camera/preview', function () {
+    it('delegates to vManager.startCameraPreview with the query + response', function (done) {
+      var stub = sinon.stub(hooks.vManager, 'startCameraPreview').callsFake(function (q, res) {
+        res.status(200).json({ ok: true, device: q.device })
+      })
+      request('GET', '/api/camera/preview?device=%2Fdev%2Fvideo0&format=video%2Fx-raw').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(stub.calledOnce)
+          assert.equal(stub.firstCall.args[0].device, '/dev/video0')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
   // /api/FCReboot (UPSTREAM BUG: no res param, request hangs; fire-and-forget)
   // =========================================================================
   describe('POST /api/FCReboot', function () {
