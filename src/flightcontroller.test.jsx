@@ -1,619 +1,257 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react'
-import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest'
+import { describe, test, expect, afterEach, beforeEach } from 'vitest'
 
 import { renderPage, mockFetch } from '../test/ui.jsx'
 import { lastSocket } from '../test/socketMock.js'
 import FCPage from './flightcontroller.jsx'
+import { vi } from 'vitest'
 
 vi.mock('socket.io-client', () => import('../test/socketMock.js'))
 
-// Default API responses
 const fcDetails = {
-  selInputType: 'UART',
-  inputTypes: [
-    { value: 'UART', label: 'UART' },
-    { value: 'UDP', label: 'UDP' }
-  ],
-  serialPorts: [
-    { value: '/dev/ttyUSB0', label: '/dev/ttyUSB0' }
-  ],
-  baudRates: [
-    { value: 57600, label: '57600' },
-    { value: 115200, label: '115200' }
-  ],
-  mavVersions: [
-    { value: '1', label: 'MAVLink 1' },
-    { value: '2', label: 'MAVLink 2' }
-  ],
-  serialPortSelected: '/dev/ttyUSB0',
-  baudRateSelected: 57600,
-  mavVersionSelected: '1'
+  inputTypes: [{ value: 'UART', label: 'UART' }, { value: 'UDP', label: 'UDP Server' }],
+  serialPorts: [{ value: '/dev/ttyUSB0', label: '/dev/ttyUSB0' }],
+  baudRates: [{ value: 57600, label: '57600' }, { value: 115200, label: '115200' }],
+  mavVersions: [{ value: 1, label: '1.0' }, { value: 2, label: '2.0' }],
+  links: [{ id: 0, inputType: 'UART', label: '/dev/ttyUSB0 @ 57600' }],
+  enableHeartbeat: false, enableTCP: false, enableUDPB: false, UDPBPort: 14550,
+  enableDSRequest: false, doLogging: false
 }
-
-const fcOutputs = {
-  UDPoutputs: [],
-  enableHeartbeat: false,
-  enableTCP: false,
-  enableUDPB: false,
-  UDPBPort: 14550,
-  doLogging: false,
-  enableDSRequest: false,
-  loadDone: true
-}
+const fcOutputs = { UDPoutputs: [] }
 
 function defaultFetch (overrides = {}) {
-  return mockFetch({
-    '/api/FCDetails': fcDetails,
-    '/api/FCOutputs': fcOutputs,
-    ...overrides
-  })
+  return mockFetch({ '/api/FCDetails': fcDetails, '/api/FCOutputs': fcOutputs, ...overrides })
 }
 
-describe('#FCPage()', function () {
-  beforeEach(() => {
-    localStorage.clear()
-  })
+function renderFC () {
+  let ref = null
+  const page = renderPage(<FCPage ref={(r) => { ref = r }} />)
+  return { page, getRef: () => ref }
+}
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    localStorage.clear()
-  })
+function findButton (page, text) {
+  return [...page.container.querySelectorAll('button')].find(b => b.textContent.includes(text))
+}
 
-  // -------------------------------------------------------------------------
-  // Basic render / initial state
-  // -------------------------------------------------------------------------
+describe('#FCPage() multi-link', function () {
+  beforeEach(() => { localStorage.clear() })
+  afterEach(() => { vi.unstubAllGlobals(); localStorage.clear() })
 
-  test('renders title "Flight Controller"', async function () {
+  test('renders title and a link card from FCDetails', async function () {
     defaultFetch()
-    const page = renderPage(<FCPage />)
+    const { page } = renderFC()
     await page.flush()
     expect(page.container.textContent).toContain('Flight Controller')
+    expect(page.container.textContent).toContain('/dev/ttyUSB0 @ 57600')
     page.unmount()
   })
 
-  test('renders FCDetails after mount', async function () {
+  test('seeds the add-form serial default from the available ports', async function () {
     defaultFetch()
-    const page = renderPage(<FCPage />)
+    const { page, getRef } = renderFC()
     await page.flush()
-    expect(page.container.textContent).toContain('/dev/ttyUSB0')
+    expect(getRef().state.addSerial).toBe('/dev/ttyUSB0')
     page.unmount()
   })
 
-  // -------------------------------------------------------------------------
-  // UART branch: selInputType === 'UART' shows serial/baud fields
-  // -------------------------------------------------------------------------
+  test('with no serial ports, Add is disabled and serial stays null', async function () {
+    defaultFetch({ '/api/FCDetails': { ...fcDetails, serialPorts: [], links: [] } })
+    const { page, getRef } = renderFC()
+    await page.flush()
+    expect(getRef().state.addSerial).toBe(null)
+    expect(findButton(page, 'Add Link').disabled).toBe(true)
+    page.unmount()
+  })
 
-  test('UART input type shows Serial Device and Baud Rate selects', async function () {
+  test('switching input type to UDP shows the UDP port input', async function () {
     defaultFetch()
-    const page = renderPage(<FCPage />)
+    const { page, getRef } = renderFC()
     await page.flush()
-    expect(page.container.textContent).toContain('Serial Device')
-    expect(page.container.textContent).toContain('Baud Rate')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // Non-UART branch: selInputType !== 'UART' shows UDP port field
-  // -------------------------------------------------------------------------
-
-  test('UDP input type shows UDP Input Port field (non-UART branch)', async function () {
-    defaultFetch({
-      '/api/FCDetails': { ...fcDetails, selInputType: 'UDP' }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
+    act(() => { getRef().handleAddInputType({ target: { value: 'UDP' } }) })
     expect(page.container.textContent).toContain('UDP Input Port')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // selInputType === null branch: also renders serial/baud (null || UART)
-  // -------------------------------------------------------------------------
-
-  test('selInputType null shows serial fields (null || UART branch)', async function () {
-    defaultFetch({
-      '/api/FCDetails': { ...fcDetails, selInputType: null }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
+    // back to UART
+    act(() => { getRef().handleAddInputType({ target: { value: 'UART' } }) })
     expect(page.container.textContent).toContain('Serial Device')
     page.unmount()
   })
 
-  // -------------------------------------------------------------------------
-  // handleInputTypeChange — change select to UDP
-  // -------------------------------------------------------------------------
+  test('addLink success updates the links list', async function () {
+    const fetch = defaultFetch({ 'POST /api/FCAddLink': { links: [{ id: 0, inputType: 'UART', label: '/dev/ttyUSB0 @ 57600' }, { id: 1, inputType: 'UDP', label: 'UDP :14551' }], error: null } })
+    const { page, getRef } = renderFC()
+    await page.flush()
+    act(() => { findButton(page, 'Add Link').click() })
+    await page.flush()
+    expect(fetch).toHaveBeenCalledWith('/api/FCAddLink', expect.objectContaining({ method: 'POST' }))
+    expect(getRef().state.links.length).toBe(2)
+    page.unmount()
+  })
 
-  test('handleInputTypeChange: switching to UDP shows UDP port input', async function () {
+  test('addLink error shows the warning', async function () {
+    defaultFetch({ 'POST /api/FCAddLink': { links: [], error: 'A link on that input already exists' } })
+    const { page } = renderFC()
+    await page.flush()
+    act(() => { findButton(page, 'Add Link').click() })
+    await page.flush()
+    expect(page.container.textContent).toContain('already exists')
+    page.unmount()
+  })
+
+  test('addLink fetch failure is caught', async function () {
+    defaultFetch({ 'POST /api/FCAddLink': () => { throw new Error('net') } })
+    const { page } = renderFC()
+    await page.flush()
+    act(() => { findButton(page, 'Add Link').click() })
+    await page.flush()
+    expect(page.container.textContent).toContain('Could not add link')
+    page.unmount()
+  })
+
+  test('removeLink success updates the links list', async function () {
+    const fetch = defaultFetch({ 'POST /api/FCRemoveLink': { links: [], error: null } })
+    const { page, getRef } = renderFC()
+    await page.flush()
+    act(() => { findButton(page, 'Remove').click() })
+    await page.flush()
+    expect(fetch).toHaveBeenCalledWith('/api/FCRemoveLink', expect.objectContaining({ method: 'POST' }))
+    expect(getRef().state.links.length).toBe(0)
+    page.unmount()
+  })
+
+  test('removeLink fetch failure is caught', async function () {
+    defaultFetch({ 'POST /api/FCRemoveLink': () => { throw new Error('net') } })
+    const { page } = renderFC()
+    await page.flush()
+    act(() => { findButton(page, 'Remove').click() })
+    await page.flush()
+    expect(page.container.textContent).toContain('Could not remove link')
+    page.unmount()
+  })
+
+  test('FCStatus populates the matching link card with live status + position', async function () {
     defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const selects = page.container.querySelectorAll('select')
-    const inputTypeSelect = selects[0]
-    act(() => {
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype, 'value'
-      ).set
-      nativeSetter.call(inputTypeSelect, 'UDP')
-      inputTypeSelect.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    expect(page.container.textContent).toContain('UDP Input Port')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // handleUDPInputPortChange
-  // -------------------------------------------------------------------------
-
-  test('handleUDPInputPortChange: updates udpInputPort state', async function () {
-    defaultFetch({
-      '/api/FCDetails': { ...fcDetails, selInputType: 'UDP' }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const udpInput = page.container.querySelector('input[type="number"]')
-    page.setValue(udpInput, '14600')
-    expect(udpInput.value).toBe('14600')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // handleSerialPortChange
-  // -------------------------------------------------------------------------
-
-  test('handleSerialPortChange: updates serialPortSelected', async function () {
-    defaultFetch({
-      '/api/FCDetails': {
-        ...fcDetails,
-        serialPorts: [
-          { value: '/dev/ttyUSB0', label: '/dev/ttyUSB0' },
-          { value: '/dev/ttyUSB1', label: '/dev/ttyUSB1' }
-        ]
-      }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const selects = page.container.querySelectorAll('select')
-    const serialSelect = selects[1] // 0=inputType, 1=serialPort
-    act(() => {
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype, 'value'
-      ).set
-      nativeSetter.call(serialSelect, '/dev/ttyUSB1')
-      serialSelect.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    // No crash; selection changed
-    expect(page.container.textContent).toContain('Serial Device')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // handleBaudRateChange
-  // -------------------------------------------------------------------------
-
-  test('handleBaudRateChange: updates baudRateSelected', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const selects = page.container.querySelectorAll('select')
-    const baudSelect = selects[2] // 0=inputType, 1=serialPort, 2=baudRate
-    act(() => {
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype, 'value'
-      ).set
-      nativeSetter.call(baudSelect, '115200')
-      baudSelect.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    expect(page.container.textContent).toContain('Baud Rate')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // handleMavVersionChange
-  // -------------------------------------------------------------------------
-
-  test('handleMavVersionChange: updates mavVersionSelected', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const selects = page.container.querySelectorAll('select')
-    const mavSelect = selects[3] // 0=inputType, 1=serialPort, 2=baudRate, 3=mavVersion
-    act(() => {
-      const nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype, 'value'
-      ).set
-      nativeSetter.call(mavSelect, '2')
-      mavSelect.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    expect(page.container.textContent).toContain('MAVLink Version')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // handleUseHeartbeatChange, handleUseTCPChange, handleLoggingChange,
-  // handleDSRequest, handleUseUDPBChange, changeUDPBPort
-  // -------------------------------------------------------------------------
-
-  test('handleUseHeartbeatChange: toggling heartbeat checkbox', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const checkboxes = page.container.querySelectorAll('input[type="checkbox"]')
-    // enableUDPB=0, enableTCP=1, enableDSRequest=2, enableHeartbeat=3, doLogging=4
-    // Actually order: enableUDPB, enableTCP, enableDSRequest, enableHeartbeat, doLogging
-    // Let's find by traversal — just click each and verify no crash
-    act(() => { checkboxes[0].click() }) // enableUDPB
-    act(() => { checkboxes[1].click() }) // enableTCP
-    act(() => { checkboxes[2].click() }) // enableDSRequest
-    act(() => { checkboxes[3].click() }) // enableHeartbeat
-    act(() => { checkboxes[4].click() }) // doLogging
-    expect(page.container.textContent).toContain('Flight Controller')
-    page.unmount()
-  })
-
-  test('changeUDPBPort: updates UDPBPort when UDPB enabled', async function () {
-    defaultFetch({
-      '/api/FCOutputs': { ...fcOutputs, enableUDPB: true }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const udpbPortInput = page.container.querySelector('input[type="number"][min="1000"][max="20000"]')
-    page.setValue(udpbPortInput, '14551')
-    expect(udpbPortInput.value).toBe('14551')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // handleSubmit — POST /api/FCModify
-  // -------------------------------------------------------------------------
-
-  test('handleSubmit POSTs to /api/FCModify', async function () {
-    let postedBody = null
-    defaultFetch({
-      'POST /api/FCModify': (url, opts) => {
-        postedBody = JSON.parse(opts.body)
-        return { ...fcDetails, ...fcOutputs }
-      }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    // Button is enabled: selInputType is 'UART', serialPorts has entries
-    // Use trim() to avoid matching "Telemetry Destinations" accordion button
-    const btn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent.trim() === 'Start Telemetry' || b.textContent.trim() === 'Stop Telemetry'
-    )
-    expect(btn.disabled).toBe(false)
-    page.click(btn)
-    await page.flush()
-    expect(postedBody).not.toBeNull()
-    expect(postedBody.inputType).toBe('UART')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // Button disabled when selInputType === null
-  // -------------------------------------------------------------------------
-
-  test('Start Telemetry button disabled when selInputType is null', async function () {
-    defaultFetch({
-      '/api/FCDetails': { ...fcDetails, selInputType: null, inputTypes: [], serialPorts: [], baudRates: [], mavVersions: [] }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const btn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent.trim() === 'Start Telemetry' || b.textContent.trim() === 'Stop Telemetry'
-    )
-    expect(btn.disabled).toBe(true)
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // Button disabled when serialPorts empty and UART
-  // -------------------------------------------------------------------------
-
-  test('Start Telemetry button disabled when serialPorts empty and UART', async function () {
-    defaultFetch({
-      '/api/FCDetails': { ...fcDetails, selInputType: 'UART', serialPorts: [] }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const btn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent.trim() === 'Start Telemetry' || b.textContent.trim() === 'Stop Telemetry'
-    )
-    expect(btn.disabled).toBe(true)
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // handleFCReboot — POST /api/FCReboot (fire-and-forget)
-  // -------------------------------------------------------------------------
-
-  test('handleFCReboot POSTs to /api/FCReboot when telemetryStatus=true', async function () {
-    let rebootCalled = false
-    defaultFetch({
-      'POST /api/FCReboot': () => { rebootCalled = true; return {} }
-    })
-    const page = renderPage(<FCPage telemetryStatus={true} />)
-    await page.flush()
-    const rebootBtn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent.trim() === 'Reboot Flight Controller'
-    )
-    expect(rebootBtn.disabled).toBe(false)
-    page.click(rebootBtn)
-    await page.flush()
-    expect(rebootCalled).toBe(true)
-    page.unmount()
-  })
-
-  test('Reboot button disabled when telemetryStatus=false (default)', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const rebootBtn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent.trim() === 'Reboot Flight Controller'
-    )
-    expect(rebootBtn.disabled).toBe(true)
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // addUdpOutput — POST /api/addudpoutput
-  // -------------------------------------------------------------------------
-
-  test('addUdpOutput: changeaddrow + Add button POSTs to /api/addudpoutput', async function () {
-    let addedBody = null
-    defaultFetch({
-      'POST /api/addudpoutput': (url, opts) => {
-        addedBody = JSON.parse(opts.body)
-        return { UDPoutputs: [{ IPPort: '192.168.1.10:14550' }] }
-      }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    // Set addrow input value
-    const addInput = page.container.querySelector('input[type="text"]')
-    page.setValue(addInput, '192.168.1.10:14550')
-    await page.flush()
-    // Click Add button
-    const addBtn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent === 'Add'
-    )
-    page.click(addBtn)
-    await page.flush()
-    expect(addedBody).not.toBeNull()
-    expect(addedBody.newoutputIP).toBe('192.168.1.10')
-    expect(addedBody.newoutputPort).toBe('14550')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // removeUdpOutput — POST /api/removeudpoutput
-  // -------------------------------------------------------------------------
-
-  test('removeUdpOutput: Delete button POSTs to /api/removeudpoutput', async function () {
-    let removedBody = null
-    defaultFetch({
-      '/api/FCOutputs': {
-        ...fcOutputs,
-        UDPoutputs: [{ IPPort: '10.0.0.1:14550' }]
-      },
-      'POST /api/removeudpoutput': (url, opts) => {
-        removedBody = JSON.parse(opts.body)
-        return { UDPoutputs: [] }
-      }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    const deleteBtn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent === 'Delete'
-    )
-    expect(deleteBtn).toBeDefined()
-    page.click(deleteBtn)
-    await page.flush()
-    expect(removedBody).not.toBeNull()
-    expect(removedBody.removeoutputIP).toBe('10.0.0.1')
-    expect(removedBody.removeoutputPort).toBe('14550')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // renderUDPTableData — renders table rows for UDPoutputs
-  // -------------------------------------------------------------------------
-
-  test('renderUDPTableData renders IP:port rows in table', async function () {
-    defaultFetch({
-      '/api/FCOutputs': {
-        ...fcOutputs,
-        UDPoutputs: [
-          { IPPort: '10.0.0.1:14550' },
-          { IPPort: '10.0.0.2:14551' }
-        ]
-      }
-    })
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    expect(page.container.textContent).toContain('10.0.0.1:14550')
-    expect(page.container.textContent).toContain('10.0.0.2:14551')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // FCStatus socket event
-  // -------------------------------------------------------------------------
-
-  test('FCStatus socket updates status fields', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
+    const { page } = renderFC()
     await page.flush()
     act(() => {
       lastSocket().fire('FCStatus', {
-        numpackets: 99,
-        byteRate: 2048,
-        conStatus: 'Connected',
-        vehType: 'Quadrotor',
-        FW: 'ArduCopter',
-        fcVersion: '4.5.0',
-        statusText: 'EKF OK'
+        conStatus: 'Connected', numpackets: 99, byteRate: 2048,
+        links: [{ id: 0, conStatus: 'Connected', numpackets: 99, byteRate: 2048, vehType: 'Quadrotor', FW: 'ArduCopter', fcVersion: '4.5.0', vehiclePosition: { lat: 51.5074123, lon: -0.1278456, alt: 100.5, relAlt: 50.25, hdg: 270 } }]
       })
     })
-    expect(page.container.textContent).toContain('99')
-    expect(page.container.textContent).toContain('2048')
-    expect(page.container.textContent).toContain('Quadrotor')
+    expect(page.container.textContent).toContain('Connected')
+    expect(page.container.textContent).toContain('99 packets')
     expect(page.container.textContent).toContain('ArduCopter')
     expect(page.container.textContent).toContain('4.5.0')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // FCStatus with vehiclePosition (conditional block)
-  // -------------------------------------------------------------------------
-
-  test('FCStatus with vehiclePosition renders lat/lon/alt/heading', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    act(() => {
-      lastSocket().fire('FCStatus', {
-        numpackets: 10,
-        byteRate: 100,
-        conStatus: 'Connected',
-        vehType: 'Plane',
-        FW: 'ArduPlane',
-        fcVersion: '',
-        statusText: '',
-        vehiclePosition: {
-          lat: 51.5074123,
-          lon: -0.1278456,
-          alt: 100.5,
-          relAlt: 50.25,
-          hdg: 270.0
-        }
-      })
-    })
     expect(page.container.textContent).toContain('51.5074123')
-    expect(page.container.textContent).toContain('-0.1278456')
-    expect(page.container.textContent).toContain('100.50')
-    expect(page.container.textContent).toContain('50.25')
     expect(page.container.textContent).toContain('270')
     page.unmount()
   })
 
-  // -------------------------------------------------------------------------
-  // FCStatus without vehiclePosition (null/undefined — conditional false branch)
-  // -------------------------------------------------------------------------
-
-  test('FCStatus without vehiclePosition does not render position block', async function () {
+  test('FCStatus with a zero position does not render the position line', async function () {
     defaultFetch()
-    const page = renderPage(<FCPage />)
+    const { page } = renderFC()
     await page.flush()
     act(() => {
       lastSocket().fire('FCStatus', {
-        numpackets: 5,
-        byteRate: 50,
-        conStatus: 'Disconnected',
-        vehType: '',
-        FW: '',
-        fcVersion: '',
-        statusText: '',
-        vehiclePosition: null
+        conStatus: 'Waiting', links: [{ id: 0, conStatus: 'Waiting', numpackets: 0, byteRate: 0, vehType: '', FW: '', fcVersion: '', vehiclePosition: { lat: 0, lon: 0, alt: 0, relAlt: 0, hdg: 0 } }]
       })
     })
     expect(page.container.textContent).not.toContain('Position:')
     page.unmount()
   })
 
-  // -------------------------------------------------------------------------
-  // FCStatus fcVersion empty string vs non-empty (ternary branch)
-  // -------------------------------------------------------------------------
-
-  test('FCStatus with empty fcVersion shows no version suffix', async function () {
+  test('reconnect re-fetches details', async function () {
     defaultFetch()
-    const page = renderPage(<FCPage />)
+    const { page, getRef } = renderFC()
     await page.flush()
-    act(() => {
-      lastSocket().fire('FCStatus', {
-        numpackets: 0,
-        byteRate: 0,
-        conStatus: '',
-        vehType: '',
-        FW: 'ArduCopter',
-        fcVersion: '',
-        statusText: ''
-      })
-    })
-    expect(page.container.textContent).toContain('ArduCopter')
-    expect(page.container.textContent).not.toContain('Version:')
-    page.unmount()
-  })
-
-  test('FCStatus with non-empty fcVersion shows version suffix', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
-    act(() => {
-      lastSocket().fire('FCStatus', {
-        numpackets: 0,
-        byteRate: 0,
-        conStatus: '',
-        vehType: '',
-        FW: 'ArduCopter',
-        fcVersion: '4.3.2',
-        statusText: ''
-      })
-    })
-    expect(page.container.textContent).toContain('Version: 4.3.2')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // reconnect socket event re-calls componentDidMount
-  // -------------------------------------------------------------------------
-
-  test('reconnect socket event re-fetches details', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage />)
-    await page.flush()
+    const spy = vi.spyOn(getRef(), 'componentDidMount')
     act(() => { lastSocket().fire('reconnect') })
-    await page.flush()
-    expect(page.container.textContent).toContain('Flight Controller')
+    expect(spy).toHaveBeenCalled()
     page.unmount()
   })
 
-  // -------------------------------------------------------------------------
-  // showLogin path
-  // -------------------------------------------------------------------------
-
-  test('showLogin=true renders login form', async function () {
+  test('shared option toggles + UDPB port update state', async function () {
     defaultFetch()
-    const page = renderPage(<FCPage showLogin={true} />)
-    expect(page.container.textContent).toContain('Please Log In')
-    page.unmount()
-  })
-
-  // -------------------------------------------------------------------------
-  // telemetryStatus prop disables controls
-  // -------------------------------------------------------------------------
-
-  test('telemetryStatus=true disables input type select', async function () {
-    defaultFetch({
-      '/api/FCDetails': { ...fcDetails, selInputType: 'UART' }
+    const { page, getRef } = renderFC()
+    await page.flush()
+    act(() => {
+      getRef().handleUseHeartbeatChange({ target: { checked: true } })
+      getRef().handleUseTCPChange({ target: { checked: true } })
+      getRef().handleUseUDPBChange({ target: { checked: true } })
+      getRef().handleDSRequest({ target: { checked: true } })
+      getRef().handleLoggingChange({ target: { checked: true } })
+      getRef().changeUDPBPort({ target: { value: '14555' } })
+      getRef().handleAddBaud({ target: { value: '115200' } })
+      getRef().handleAddMavVersion({ target: { value: '1' } })
+      getRef().handleAddUdpPort({ target: { value: '14999' } })
+      getRef().handleAddSerial({ target: { value: '/dev/ttyUSB0' } })
     })
-    const page = renderPage(<FCPage telemetryStatus={true} />)
-    await page.flush()
-    const selects = page.container.querySelectorAll('select')
-    expect(selects[0].disabled).toBe(true)
+    expect(getRef().state.enableHeartbeat).toBe(true)
+    expect(getRef().state.enableTCP).toBe(true)
+    expect(getRef().state.enableUDPB).toBe(true)
+    expect(getRef().state.enableDSRequest).toBe(true)
+    expect(getRef().state.doLogging).toBe(true)
+    expect(getRef().state.UDPBPort).toBe(14555)
+    expect(getRef().state.addBaud).toBe(115200)
+    expect(getRef().state.addUdpPort).toBe(14999)
     page.unmount()
   })
 
-  test('telemetryStatus=true shows "Stop Telemetry" button text', async function () {
-    defaultFetch()
-    const page = renderPage(<FCPage telemetryStatus={true} />)
+  test('applyOptions POSTs the shared options', async function () {
+    const fetch = defaultFetch({ 'POST /api/FCOptions': { error: null } })
+    const { page } = renderFC()
     await page.flush()
-    const btn = [...page.container.querySelectorAll('button')].find(
-      b => b.textContent.trim() === 'Stop Telemetry'
-    )
-    expect(btn).toBeDefined()
+    act(() => { findButton(page, 'Apply Shared Options').click() })
+    await page.flush()
+    expect(fetch).toHaveBeenCalledWith('/api/FCOptions', expect.objectContaining({ method: 'POST' }))
+    page.unmount()
+  })
+
+  test('add / remove a UDP output destination', async function () {
+    const fetch = defaultFetch({
+      'POST /api/addudpoutput': { UDPoutputs: [{ IPPort: '10.0.0.2:14550' }] },
+      'POST /api/removeudpoutput': { UDPoutputs: [] }
+    })
+    const { page, getRef } = renderFC()
+    await page.flush()
+    act(() => { getRef().changeaddrow({ target: { value: '10.0.0.2:14550' } }) })
+    const udpAddBtn = [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Add')
+    act(() => { udpAddBtn.click() })
+    await page.flush()
+    expect(getRef().state.UDPoutputs.length).toBe(1)
+    expect(page.container.textContent).toContain('10.0.0.2:14550')
+    act(() => { findButton(page, 'Delete').click() })
+    await page.flush()
+    expect(getRef().state.UDPoutputs.length).toBe(0)
+    expect(fetch).toHaveBeenCalledWith('/api/removeudpoutput', expect.objectContaining({ method: 'POST' }))
+    page.unmount()
+  })
+
+  test('Reboot button is disabled with no links and POSTs when links exist', async function () {
+    const fetch = defaultFetch({ '/api/FCDetails': { ...fcDetails, links: [] }, 'POST /api/FCReboot': {} })
+    const { page } = renderFC()
+    await page.flush()
+    expect(findButton(page, 'Reboot Flight Controller').disabled).toBe(true)
+    page.unmount()
+
+    const f2 = defaultFetch({ 'POST /api/FCReboot': {} })
+    const { page: p2 } = renderFC()
+    await p2.flush()
+    const rb = findButton(p2, 'Reboot Flight Controller')
+    expect(rb.disabled).toBe(false)
+    act(() => { rb.click() })
+    await p2.flush()
+    expect(f2).toHaveBeenCalledWith('/api/FCReboot', expect.objectContaining({ method: 'POST' }))
+    p2.unmount()
+  })
+
+  test('at the link maximum, Add Link is disabled with a note', async function () {
+    const fourLinks = [0, 1, 2, 3].map(i => ({ id: i, inputType: 'UART', label: '/dev/ttyUSB' + i + ' @ 57600' }))
+    defaultFetch({ '/api/FCDetails': { ...fcDetails, links: fourLinks } })
+    const { page } = renderFC()
+    await page.flush()
+    expect(findButton(page, 'Add Link').disabled).toBe(true)
+    expect(page.container.textContent).toContain('Maximum of 4 links')
     page.unmount()
   })
 })

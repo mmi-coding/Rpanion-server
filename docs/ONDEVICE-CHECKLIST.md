@@ -290,3 +290,11 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] Flight-mode label matches the FC's actual mode (spot-check across copter / plane / rover if available — `hudOverlay.mavlinkModeName`)
 - [ ] Select a pre-compressed **H264** USB source → the HUD toggle is disabled with the "not available" note (overlay correctly absent)
 - [ ] Battery reads `--` when the FC reports unknown voltage/percent (0xFFFF / -1) rather than a bogus number
+
+## Feature #311: multiple serial telemetry links
+
+- [ ] Add two links at once (e.g. FC on `/dev/serial0` + a second MAVLink device on USB, or a UDP server link) → both show as separate cards with independent live status, and both vehicles appear in Mission Planner via a UDP-client destination (distinct system IDs)
+- [ ] Unplug one link's cable → only that card goes "Not connected" and auto-reconnects on replug; the other link keeps streaming (fault isolation)
+- [ ] The UDP-Server (broadcast) / TCP-Server outputs carry the first link; an explicit UDP-client destination carries every vehicle
+- [ ] An existing single-link config still works after upgrade (migrated to a one-element links list)
+- [ ] Removing a link stops its router/monitor and frees its slot for a new link

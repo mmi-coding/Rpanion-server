@@ -60,35 +60,24 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   // Event cross-wiring: ntripClient.rtcmpacket
   // =========================================================================
   describe('ntripClient rtcmpacket event', function () {
-    it('forwards RTCM packet to fcManager.m.sendRTCMMessage when m is set', function () {
-      const fakeSend = sinon.stub()
-      hooks.fcManager.m = { sendRTCMMessage: fakeSend }
-      try {
-        hooks.ntripClient.eventEmitter.emit('rtcmpacket', { buf: Buffer.from('test') }, 1)
-        assert.ok(fakeSend.calledOnce)
-      } finally {
-        hooks.fcManager.m = null
-      }
+    it('forwards RTCM packet to fcManager.sendRTCMMessage (fan-out)', function () {
+      const stub = sinon.stub(hooks.fcManager, 'sendRTCMMessage')
+      hooks.ntripClient.eventEmitter.emit('rtcmpacket', { buf: Buffer.from('test') }, 1)
+      assert.ok(stub.calledOnce)
     })
 
-    it('does not throw when fcManager.m is null', function () {
-      hooks.fcManager.m = null
+    it('does not throw with no links', function () {
+      hooks.fcManager.links = []
       assert.doesNotThrow(function () {
         hooks.ntripClient.eventEmitter.emit('rtcmpacket', { buf: Buffer.from('x') }, 0)
       })
     })
 
     it('catches error when sendRTCMMessage throws', function () {
-      hooks.fcManager.m = {
-        sendRTCMMessage: function () { throw new Error('rtcm error') }
-      }
-      try {
-        assert.doesNotThrow(function () {
-          hooks.ntripClient.eventEmitter.emit('rtcmpacket', { buf: Buffer.from('x') }, 0)
-        })
-      } finally {
-        hooks.fcManager.m = null
-      }
+      sinon.stub(hooks.fcManager, 'sendRTCMMessage').throws(new Error('rtcm error'))
+      assert.doesNotThrow(function () {
+        hooks.ntripClient.eventEmitter.emit('rtcmpacket', { buf: Buffer.from('x') }, 0)
+      })
     })
   })
 
@@ -96,210 +85,102 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   // Event cross-wiring: vManager events
   // =========================================================================
   describe('vManager digicamcontrol event', function () {
-    it('calls sendCommandAck when fcManager.m is set', function () {
-      const fakeSend = sinon.stub()
-      hooks.fcManager.m = { sendCommandAck: fakeSend }
-      try {
-        hooks.vManager.eventEmitter.emit('digicamcontrol', 1, 2, 3)
-        assert.ok(fakeSend.calledOnce)
-        assert.equal(fakeSend.args[0][0], 203)
-      } finally {
-        hooks.fcManager.m = null
-      }
-    })
-
-    it('does not throw when fcManager.m is null', function () {
-      hooks.fcManager.m = null
-      assert.doesNotThrow(function () {
-        hooks.vManager.eventEmitter.emit('digicamcontrol', 1, 2, 3)
-      })
+    it('calls sendCommandAck (fan-out)', function () {
+      const stub = sinon.stub(hooks.fcManager, 'sendCommandAck')
+      hooks.vManager.eventEmitter.emit('digicamcontrol', 1, 2, 3)
+      assert.ok(stub.calledOnce)
+      assert.equal(stub.args[0][0], 203)
     })
 
     it('catches error when sendCommandAck throws', function () {
-      hooks.fcManager.m = {
-        sendCommandAck: function () { throw new Error('ack error') }
-      }
-      try {
-        assert.doesNotThrow(function () {
-          hooks.vManager.eventEmitter.emit('digicamcontrol', 1, 2, 3)
-        })
-      } finally {
-        hooks.fcManager.m = null
-      }
+      sinon.stub(hooks.fcManager, 'sendCommandAck').throws(new Error('ack error'))
+      assert.doesNotThrow(function () {
+        hooks.vManager.eventEmitter.emit('digicamcontrol', 1, 2, 3)
+      })
     })
   })
 
   describe('vManager cameraheartbeat event', function () {
-    it('calls sendHeartbeat when fcManager.m is set', function () {
-      const fakeHb = sinon.stub()
-      hooks.fcManager.m = { sendHeartbeat: fakeHb }
-      try {
-        hooks.vManager.eventEmitter.emit('cameraheartbeat', 'mavtype', 'autopilot', 'comp')
-        assert.ok(fakeHb.calledOnce)
-      } finally {
-        hooks.fcManager.m = null
-      }
-    })
-
-    it('does not throw when fcManager.m is null', function () {
-      hooks.fcManager.m = null
-      assert.doesNotThrow(function () {
-        hooks.vManager.eventEmitter.emit('cameraheartbeat', 'mavtype', 'autopilot', 'comp')
-      })
+    it('calls sendHeartbeat (fan-out)', function () {
+      const stub = sinon.stub(hooks.fcManager, 'sendHeartbeat')
+      hooks.vManager.eventEmitter.emit('cameraheartbeat', 'mavtype', 'autopilot', 'comp')
+      assert.ok(stub.calledOnce)
     })
 
     it('catches error when sendHeartbeat throws', function () {
-      hooks.fcManager.m = {
-        sendHeartbeat: function () { throw new Error('hb error') }
-      }
-      try {
-        assert.doesNotThrow(function () {
-          hooks.vManager.eventEmitter.emit('cameraheartbeat', 'mavtype', 'autopilot', 'comp')
-        })
-      } finally {
-        hooks.fcManager.m = null
-      }
+      sinon.stub(hooks.fcManager, 'sendHeartbeat').throws(new Error('hb error'))
+      assert.doesNotThrow(function () {
+        hooks.vManager.eventEmitter.emit('cameraheartbeat', 'mavtype', 'autopilot', 'comp')
+      })
     })
   })
 
   describe('vManager camerainfo event', function () {
-    it('calls sendCommandAck and sendData when fcManager.m is set', function () {
-      const fakeAck = sinon.stub()
-      const fakeSend = sinon.stub()
-      hooks.fcManager.m = { sendCommandAck: fakeAck, sendData: fakeSend }
-      try {
-        hooks.vManager.eventEmitter.emit('camerainfo', { msg: true }, 1, 2, 3)
-        assert.ok(fakeAck.calledOnce)
-        assert.ok(fakeSend.calledOnce)
-      } finally {
-        hooks.fcManager.m = null
-      }
+    it('calls sendCommandAck and sendData (fan-out)', function () {
+      const ack = sinon.stub(hooks.fcManager, 'sendCommandAck')
+      const data = sinon.stub(hooks.fcManager, 'sendData')
+      hooks.vManager.eventEmitter.emit('camerainfo', { msg: true }, 1, 2, 3)
+      assert.ok(ack.calledOnce)
+      assert.ok(data.calledOnce)
     })
 
-    it('does not throw when fcManager.m is null', function () {
-      hooks.fcManager.m = null
+    it('catches error when sendCommandAck throws', function () {
+      sinon.stub(hooks.fcManager, 'sendCommandAck').throws(new Error('cam info error'))
+      sinon.stub(hooks.fcManager, 'sendData')
       assert.doesNotThrow(function () {
         hooks.vManager.eventEmitter.emit('camerainfo', {}, 1, 2, 3)
       })
     })
-
-    it('catches error when sendCommandAck throws', function () {
-      hooks.fcManager.m = {
-        sendCommandAck: function () { throw new Error('cam info error') },
-        sendData: sinon.stub()
-      }
-      try {
-        assert.doesNotThrow(function () {
-          hooks.vManager.eventEmitter.emit('camerainfo', {}, 1, 2, 3)
-        })
-      } finally {
-        hooks.fcManager.m = null
-      }
-    })
   })
 
   describe('vManager videostreaminfo event', function () {
-    it('calls sendCommandAck and sendData when fcManager.m is set', function () {
-      const fakeAck = sinon.stub()
-      const fakeSend = sinon.stub()
-      hooks.fcManager.m = { sendCommandAck: fakeAck, sendData: fakeSend }
-      try {
-        hooks.vManager.eventEmitter.emit('videostreaminfo', { msg: true }, 1, 2, 3)
-        assert.ok(fakeAck.calledOnce)
-        assert.ok(fakeSend.calledOnce)
-      } finally {
-        hooks.fcManager.m = null
-      }
+    it('calls sendCommandAck and sendData (fan-out)', function () {
+      const ack = sinon.stub(hooks.fcManager, 'sendCommandAck')
+      const data = sinon.stub(hooks.fcManager, 'sendData')
+      hooks.vManager.eventEmitter.emit('videostreaminfo', { msg: true }, 1, 2, 3)
+      assert.ok(ack.calledOnce)
+      assert.ok(data.calledOnce)
     })
 
-    it('does not throw when fcManager.m is null', function () {
-      hooks.fcManager.m = null
+    it('catches error when sendCommandAck throws', function () {
+      sinon.stub(hooks.fcManager, 'sendCommandAck').throws(new Error('vsi error'))
+      sinon.stub(hooks.fcManager, 'sendData')
       assert.doesNotThrow(function () {
         hooks.vManager.eventEmitter.emit('videostreaminfo', {}, 1, 2, 3)
       })
     })
-
-    it('catches error when sendCommandAck throws', function () {
-      hooks.fcManager.m = {
-        sendCommandAck: function () { throw new Error('vsi error') },
-        sendData: sinon.stub()
-      }
-      try {
-        assert.doesNotThrow(function () {
-          hooks.vManager.eventEmitter.emit('videostreaminfo', {}, 1, 2, 3)
-        })
-      } finally {
-        hooks.fcManager.m = null
-      }
-    })
   })
 
   describe('vManager camerasettings event', function () {
-    it('calls sendCommandAck and sendData when fcManager.m is set', function () {
-      const fakeAck = sinon.stub()
-      const fakeSend = sinon.stub()
-      hooks.fcManager.m = { sendCommandAck: fakeAck, sendData: fakeSend }
-      try {
-        hooks.vManager.eventEmitter.emit('camerasettings', { msg: true }, 1, 2, 3)
-        assert.ok(fakeAck.calledOnce)
-        assert.ok(fakeSend.calledOnce)
-      } finally {
-        hooks.fcManager.m = null
-      }
+    it('calls sendCommandAck and sendData (fan-out)', function () {
+      const ack = sinon.stub(hooks.fcManager, 'sendCommandAck')
+      const data = sinon.stub(hooks.fcManager, 'sendData')
+      hooks.vManager.eventEmitter.emit('camerasettings', { msg: true }, 1, 2, 3)
+      assert.ok(ack.calledOnce)
+      assert.ok(data.calledOnce)
     })
 
-    it('does not throw when fcManager.m is null', function () {
-      hooks.fcManager.m = null
+    it('catches error when sendCommandAck throws', function () {
+      sinon.stub(hooks.fcManager, 'sendCommandAck').throws(new Error('cs error'))
+      sinon.stub(hooks.fcManager, 'sendData')
       assert.doesNotThrow(function () {
         hooks.vManager.eventEmitter.emit('camerasettings', {}, 1, 2, 3)
       })
     })
-
-    it('catches error when sendCommandAck throws', function () {
-      hooks.fcManager.m = {
-        sendCommandAck: function () { throw new Error('cs error') },
-        sendData: sinon.stub()
-      }
-      try {
-        assert.doesNotThrow(function () {
-          hooks.vManager.eventEmitter.emit('camerasettings', {}, 1, 2, 3)
-        })
-      } finally {
-        hooks.fcManager.m = null
-      }
-    })
   })
 
   describe('vManager cameratrigger event', function () {
-    it('calls sendData when fcManager.m is set', function () {
-      const fakeSend = sinon.stub()
-      hooks.fcManager.m = { sendData: fakeSend }
-      try {
-        hooks.vManager.eventEmitter.emit('cameratrigger', { msg: true }, 5)
-        assert.ok(fakeSend.calledOnce)
-      } finally {
-        hooks.fcManager.m = null
-      }
-    })
-
-    it('does not throw when fcManager.m is null', function () {
-      hooks.fcManager.m = null
-      assert.doesNotThrow(function () {
-        hooks.vManager.eventEmitter.emit('cameratrigger', {}, 5)
-      })
+    it('calls sendData (fan-out)', function () {
+      const stub = sinon.stub(hooks.fcManager, 'sendData')
+      hooks.vManager.eventEmitter.emit('cameratrigger', { msg: true }, 5)
+      assert.ok(stub.calledOnce)
     })
 
     it('catches error when sendData throws', function () {
-      hooks.fcManager.m = {
-        sendData: function () { throw new Error('ct error') }
-      }
-      try {
-        assert.doesNotThrow(function () {
-          hooks.vManager.eventEmitter.emit('cameratrigger', {}, 5)
-        })
-      } finally {
-        hooks.fcManager.m = null
-      }
+      sinon.stub(hooks.fcManager, 'sendData').throws(new Error('ct error'))
+      assert.doesNotThrow(function () {
+        hooks.vManager.eventEmitter.emit('cameratrigger', {}, 5)
+      })
     })
   })
 
@@ -331,33 +212,25 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
       const fakeNtrip = sinon.stub(hooks.ntripClient, 'onMavPacket')
       const fakeVideo = sinon.stub(hooks.vManager, 'onMavPacket')
       const fakeCam = sinon.stub(hooks.camSwitcher, 'onMavPacket')
-      hooks.fcManager.m = null
-      try {
-        hooks.fcManager.eventEmitter.emit('gotMessage', { packet: true }, { data: true })
-        assert.ok(fakeNtrip.calledOnce)
-        assert.ok(fakeVideo.calledOnce)
-        assert.ok(fakeCam.calledOnce)
-      } finally {
-        hooks.fcManager.m = null
-      }
+      hooks.fcManager.eventEmitter.emit('gotMessage', { packet: true }, { data: true })
+      assert.ok(fakeNtrip.calledOnce)
+      assert.ok(fakeVideo.calledOnce)
+      assert.ok(fakeCam.calledOnce)
     })
 
-    it('requests RC_CHANNELS stream when camSwitcher is enabled and m is present', function () {
+    it('requests RC_CHANNELS stream from the link when camSwitcher is enabled', function () {
       const fakeSendInterval = sinon.stub()
-      hooks.fcManager.m = { targetSystem: 1, sendSetMessageInterval: fakeSendInterval }
-      // enable the switcher
-      const origSettings = hooks.camSwitcher.getSettings()
+      const link = { m: { targetSystem: 1, sendSetMessageInterval: fakeSendInterval } }
       sinon.stub(hooks.camSwitcher, 'getSettings').returns({ enabled: true })
       hooks.camSwitcher.streamRequested = false
       sinon.stub(hooks.ntripClient, 'onMavPacket')
       sinon.stub(hooks.vManager, 'onMavPacket')
       sinon.stub(hooks.camSwitcher, 'onMavPacket')
       try {
-        hooks.fcManager.eventEmitter.emit('gotMessage', {}, {})
+        hooks.fcManager.eventEmitter.emit('gotMessage', {}, {}, link)
         assert.ok(fakeSendInterval.calledOnce)
         assert.strictEqual(hooks.camSwitcher.streamRequested, true)
       } finally {
-        hooks.fcManager.m = null
         hooks.camSwitcher.streamRequested = false
       }
     })
@@ -366,7 +239,6 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
       sinon.stub(hooks.ntripClient, 'onMavPacket').throws(new Error('ntrip mav error'))
       sinon.stub(hooks.vManager, 'onMavPacket')
       sinon.stub(hooks.camSwitcher, 'onMavPacket')
-      hooks.fcManager.m = null
       assert.doesNotThrow(function () {
         hooks.fcManager.eventEmitter.emit('gotMessage', {}, {})
       })
@@ -705,25 +577,31 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   // /api/FCDetails
   // =========================================================================
   describe('GET /api/FCDetails', function () {
-    it('200 — success path returns telemetry settings', function (done) {
-      sinon.stub(FlightController.prototype, 'getDeviceSettings').callsFake(function (cb) {
-        cb(null, [], ['9600', '115200'], '/dev/ttyUSB0', '115200',
-          [{ value: 2 }], 2, false, false, false, false, 14550, false, false, 9000, 'UART', [])
-      })
+    var fcData = {
+      serialPorts: [{ value: '/dev/ttyUSB0', label: '/dev/ttyUSB0' }],
+      baudRates: [{ value: 115200, label: '115200' }],
+      mavVersions: [{ value: 2, label: '2.0' }],
+      inputTypes: [{ value: 'UART', label: 'UART' }],
+      links: [{ id: 0, inputType: 'UART', label: '/dev/ttyUSB0 @ 115200' }],
+      enableHeartbeat: false, enableTCP: false, enableUDPB: true, UDPBPort: 14550,
+      enableDSRequest: false, doLogging: false
+    }
+
+    it('200 — returns ports, options and the links list', function (done) {
+      sinon.stub(FlightController.prototype, 'getDeviceSettings').callsFake(function (cb) { cb(null, fcData) })
       request('GET', '/api/FCDetails').then(function (res) {
         try {
           assert.equal(res.status, 200)
-          assert.ok('telemetryStatus' in res.body)
+          assert.ok(Array.isArray(res.body.links))
+          assert.equal(res.body.links.length, 1)
+          assert.equal(res.body.error, null)
           done()
         } catch (e) { done(e) }
       }).catch(done)
     })
 
     it('200 — error path propagates error field', function (done) {
-      sinon.stub(FlightController.prototype, 'getDeviceSettings').callsFake(function (cb) {
-        cb(new Error('device error'), [], ['9600'], '/dev/ttyUSB0', '115200',
-          [{ value: 2 }], 2, false, false, false, false, 14550, false, false, 9000, 'UART', [])
-      })
+      sinon.stub(FlightController.prototype, 'getDeviceSettings').callsFake(function (cb) { cb(new Error('device error'), fcData) })
       request('GET', '/api/FCDetails').then(function (res) {
         try {
           assert.equal(res.status, 200)
@@ -735,57 +613,72 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   })
 
   // =========================================================================
-  // /api/FCModify
+  // /api/FCAddLink, /api/FCRemoveLink, /api/FCOptions
   // =========================================================================
-  describe('POST /api/FCModify', function () {
-    var validFCBody = {
-      device: '/dev/ttyUSB0',
-      baud: 115200,
-      mavversion: 2,
-      enableHeartbeat: false,
-      enableTCP: false,
-      enableUDPB: false,
-      UDPBPort: 14550,
-      enableDSRequest: false,
-      doLogging: false,
-      inputType: 'UART',
-      udpInputPort: 9000
-    }
+  describe('POST /api/FCAddLink', function () {
+    var validBody = { inputType: 'UART', device: '/dev/ttyUSB0', baud: 115200, mavversion: 2, udpInputPort: 9000 }
 
     it('422 — missing required fields', function (done) {
-      request('POST', '/api/FCModify', { body: { device: 'x' } }).then(function (res) {
-        try {
-          assert.equal(res.status, 422)
-          done()
-        } catch (e) { done(e) }
+      request('POST', '/api/FCAddLink', { body: { device: 'x' } }).then(function (res) {
+        try { assert.equal(res.status, 422); done() } catch (e) { done(e) }
       }).catch(done)
     })
 
-    it('200 — success path', function (done) {
-      sinon.stub(FlightController.prototype, 'startStopTelemetry').callsFake(
-        function (device, baud, mav, hb, tcp, udpb, udpbPort, ds, log, inputType, udpPort, cb) {
-          cb(null, true)
-        })
-      request('POST', '/api/FCModify', { body: validFCBody }).then(function (res) {
+    it('200 — success returns the links list', function (done) {
+      sinon.stub(FlightController.prototype, 'addLink').callsFake(function (it, dev, baud, mav, udp, cb) { cb(null, [{ id: 0 }]) })
+      request('POST', '/api/FCAddLink', { body: validBody }).then(function (res) {
         try {
           assert.equal(res.status, 200)
-          assert.strictEqual(res.body.telemetryStatus, true)
+          assert.equal(res.body.links.length, 1)
+          assert.equal(res.body.error, null)
           done()
         } catch (e) { done(e) }
       }).catch(done)
     })
 
     it('200 — error path returns error field', function (done) {
-      sinon.stub(FlightController.prototype, 'startStopTelemetry').callsFake(
-        function (device, baud, mav, hb, tcp, udpb, udpbPort, ds, log, inputType, udpPort, cb) {
-          cb('fc modify error', false)
-        })
-      request('POST', '/api/FCModify', { body: validFCBody }).then(function (res) {
-        try {
-          assert.equal(res.status, 200)
-          assert.ok(res.body.error)
-          done()
-        } catch (e) { done(e) }
+      sinon.stub(FlightController.prototype, 'addLink').callsFake(function (it, dev, baud, mav, udp, cb) { cb(new Error('add error'), []) })
+      request('POST', '/api/FCAddLink', { body: validBody }).then(function (res) {
+        try { assert.equal(res.status, 200); assert.ok(res.body.error); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/FCRemoveLink', function () {
+    it('422 — missing id', function (done) {
+      request('POST', '/api/FCRemoveLink', { body: {} }).then(function (res) {
+        try { assert.equal(res.status, 422); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — success returns the links list', function (done) {
+      sinon.stub(FlightController.prototype, 'removeLink').callsFake(function (id, cb) { cb(null, []) })
+      request('POST', '/api/FCRemoveLink', { body: { id: 0 } }).then(function (res) {
+        try { assert.equal(res.status, 200); assert.equal(res.body.error, null); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — error path returns error field', function (done) {
+      sinon.stub(FlightController.prototype, 'removeLink').callsFake(function (id, cb) { cb(new Error('no such'), []) })
+      request('POST', '/api/FCRemoveLink', { body: { id: 5 } }).then(function (res) {
+        try { assert.equal(res.status, 200); assert.ok(res.body.error); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/FCOptions', function () {
+    var validOpts = { enableHeartbeat: false, enableTCP: false, enableUDPB: true, UDPBPort: 14550, enableDSRequest: false, doLogging: false }
+
+    it('422 — bad fields', function (done) {
+      request('POST', '/api/FCOptions', { body: { enableHeartbeat: 'nope' } }).then(function (res) {
+        try { assert.equal(res.status, 422); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — applies options', function (done) {
+      sinon.stub(FlightController.prototype, 'setGlobalOptions').callsFake(function (hb, tcp, udpb, port, ds, log, cb) { cb() })
+      request('POST', '/api/FCOptions', { body: validOpts }).then(function (res) {
+        try { assert.equal(res.status, 200); assert.equal(res.body.error, null); done() } catch (e) { done(e) }
       }).catch(done)
     })
   })
