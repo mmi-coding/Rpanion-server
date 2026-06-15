@@ -891,6 +891,15 @@ class videoStream {
     this.deviceStream.kill('SIGUSR1');
   }
 
+  // Drive recording to an explicit state for the MAVLink VIDEO_START/STOP_CAPTURE
+  // commands (#396), toggling only when it differs from the current state.
+  setVideoRecording(record: boolean) {
+    const isRecording = !!(this.videoSettings && this.videoSettings.isRecording);
+    if (record !== isRecording) {
+      this.toggleVideoRecording();
+    }
+  }
+
   // Helper to set the isRecording flag by replacing the object
   // instead of mutating the property
   setRecordingFlag(val: boolean) {
@@ -1051,6 +1060,21 @@ class videoStream {
       else if (data.command === 203) {
         console.log('Received DoDigicamControl command')
         this.captureStillPhoto(packet.header.sysid, minimal.MavComponent.CAMERA, packet.header.compid)
+      }
+      // 2000 = MAV_CMD_IMAGE_START_CAPTURE
+      else if (data.command === 2000) {
+        console.log('Received ImageStartCapture command')
+        this.captureStillPhoto(packet.header.sysid, minimal.MavComponent.CAMERA, packet.header.compid)
+      }
+      // 2500 = MAV_CMD_VIDEO_START_CAPTURE
+      else if (data.command === 2500) {
+        console.log('Received VideoStartCapture command')
+        this.setVideoRecording(true)
+      }
+      // 2501 = MAV_CMD_VIDEO_STOP_CAPTURE
+      else if (data.command === 2501) {
+        console.log('Received VideoStopCapture command')
+        this.setVideoRecording(false)
       }
     }
   }
