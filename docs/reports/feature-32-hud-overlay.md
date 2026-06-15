@@ -107,6 +107,35 @@ toggleable, positionable element.
   elements (e.g. AGL + GPS + horizon, with the disabled ALT omitted) and the
   `rsvgoverlay` pipeline stays PLAYING. Both suites stay 100/100/100/100.
 
+### Follow-up (shipped): full element set, grouped in sections
+
+The catalog was expanded from 14 to ~45 elements, each tagged with a **section**
+(Attitude, Altitude & Speed, Position & GPS, Navigation, Battery & Power, Link,
+Environment, Status, Health). New elements include two more **graphic** ones (a
+compass tape and a home-direction arrow) alongside many numeric readouts:
+turn rate, G-load, rangefinder, lat/lon, GPS HDOP/course, distance & bearing to
+home, distance/number to the next waypoint, crosstrack & altitude error, mAh
+consumed, battery temp & time-remaining, autopilot load, RC RSSI, radio
+RSSI/remote/noise, comm drop rate, wind speed/direction, baro temp & pressure,
+vibration & clipping, a flight timer (time since arm) and a clock.
+
+- `server/hudOverlay.ts`: the catalog carries `section`; pure `homeDistance()` /
+  `homeBearing()` helpers (haversine + initial bearing).
+- `server/videostream.ts`: `updateHudFromPacket` now also reads `BATTERY_STATUS`,
+  `NAV_CONTROLLER_OUTPUT`, `MISSION_CURRENT`, `RC_CHANNELS`, `RADIO_STATUS`,
+  `WIND`, `SCALED_PRESSURE`, `RANGEFINDER`, `SCALED_IMU`, `VIBRATION` and
+  `HOME_POSITION` (the last stored to compute distance/bearing to home on each
+  `GLOBAL_POSITION_INT`); a disarmed→armed transition starts the flight timer.
+- `python/video-server.py`: a value formatter + icon glyph per element, the
+  graphic compass tape + home arrow, and a clock from local time.
+- `src/hudeditor.jsx`: the palette is grouped by section; graphic elements
+  (horizon/compass/home arrow) have no icon toggle.
+
+Deliberately omitted (unreliable / multi-message on ArduPilot): per-cell voltage,
+ESC telemetry, EKF variances, a 2nd-GPS readout. Verified on real GStreamer: a
+layout with all ~45 elements enabled renders and the `rsvgoverlay` pipeline stays
+PLAYING. Both suites stay 100/100/100/100.
+
 ## Verification — WSL-verified
 
 - `lint` 0 · `typecheck` 0 · `covback` **100/100/100/100** (997 passing) ·

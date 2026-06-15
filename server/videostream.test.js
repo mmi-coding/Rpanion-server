@@ -7,7 +7,7 @@ const settings = require('settings-store')
 const si = require('systeminformation')
 const logpaths = require('./paths')
 const VideoStream = require('./videostream')
-const { minimal: mavMinimal, common: mavCommon } = require('node-mavlink')
+const { minimal: mavMinimal, common: mavCommon, ardupilotmega: mavArdupilot } = require('node-mavlink')
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -2123,10 +2123,12 @@ describe('Video Functions', function () {
       settings.clear()
       const vManager = liveStreamingManager()
       vManager.videoSettings = { useHud: true }
-      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 15840, batteryRemaining: 62, currentBattery: 840 })
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.SysStatus.MSG_ID } }, { voltageBattery: 15840, batteryRemaining: 62, currentBattery: 840, load: 380, dropRateComm: 0 })
       assert.equal(vManager.hudData.batV, 15.84)
       assert.equal(vManager.hudData.batPct, 62)
       assert.equal(vManager.hudData.current, 8.4)
+      assert.equal(vManager.hudData.cpuLoad, 38)
+      assert.equal(vManager.hudData.dropRate, 0)
     })
 
     it('treats unknown SYS_STATUS battery (0xFFFF / -1) as null', function () {
@@ -2151,9 +2153,15 @@ describe('Video Functions', function () {
       settings.clear()
       const vManager = liveStreamingManager()
       vManager.videoSettings = { useHud: true }
-      vManager.updateHudFromPacket({ header: { msgid: mavCommon.GpsRawInt.MSG_ID } }, { fixType: 3, satellitesVisible: 11 })
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.GpsRawInt.MSG_ID } }, { fixType: 3, satellitesVisible: 11, eph: 80, cog: 27000 })
       assert.equal(vManager.hudData.gpsFix, 3)
       assert.equal(vManager.hudData.gpsSats, 11)
+      assert.equal(vManager.hudData.hdop, 0.8)
+      assert.equal(vManager.hudData.gpsCourse, 270)
+      // unknown eph/cog → null
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.GpsRawInt.MSG_ID } }, { fixType: 3, satellitesVisible: 11, eph: 65535, cog: 65535 })
+      assert.equal(vManager.hudData.hdop, null)
+      assert.equal(vManager.hudData.gpsCourse, null)
     })
 
     it('captures HEARTBEAT flight mode', function () {
@@ -2169,9 +2177,98 @@ describe('Video Functions', function () {
       settings.clear()
       const vManager = liveStreamingManager()
       vManager.videoSettings = { useHud: true }
-      vManager.updateHudFromPacket({ header: { msgid: mavCommon.Attitude.MSG_ID } }, { roll: Math.PI / 6, pitch: -Math.PI / 12 })
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.Attitude.MSG_ID } }, { roll: Math.PI / 6, pitch: -Math.PI / 12, yawspeed: Math.PI / 18 })
       assert.ok(Math.abs(vManager.hudData.roll - 30) < 0.001)
       assert.ok(Math.abs(vManager.hudData.pitch - (-15)) < 0.001)
+      assert.ok(Math.abs(vManager.hudData.turnRate - 10) < 0.001)
+    })
+
+    it('HOME_POSITION + GLOBAL_POSITION_INT compute distance/bearing to home', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.HomePosition.MSG_ID } }, { latitude: 370000000, longitude: -1220000000 })
+      assert.deepEqual(vManager.homePos, { lat: 37, lon: -122 })
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.GlobalPositionInt.MSG_ID } }, { relativeAlt: 38000, lat: 370100000, lon: -1220000000 })
+      assert.equal(vManager.hudData.lat, 37.01)
+      assert.equal(vManager.hudData.lon, -122)
+      assert.ok(vManager.hudData.homeDist > 1000 && vManager.hudData.homeDist < 1200)
+      assert.equal(vManager.hudData.homeDir, 180) // home is due south of current
+    })
+
+    it('captures BATTERY_STATUS (valid + unknown values)', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.BatteryStatus.MSG_ID } }, { currentConsumed: 1240, temperature: 3200, timeRemaining: 750 })
+      assert.equal(vManager.hudData.mah, 1240)
+      assert.equal(vManager.hudData.battTemp, 32)
+      assert.equal(vManager.hudData.battTimeRemaining, 750)
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.BatteryStatus.MSG_ID } }, { currentConsumed: -1, temperature: 32767, timeRemaining: 0 })
+      assert.equal(vManager.hudData.mah, null)
+      assert.equal(vManager.hudData.battTemp, null)
+      assert.equal(vManager.hudData.battTimeRemaining, null)
+    })
+
+    it('captures NAV_CONTROLLER_OUTPUT and MISSION_CURRENT', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.NavControllerOutput.MSG_ID } }, { wpDist: 120, xtrackError: 1.2, altError: 0.5 })
+      assert.equal(vManager.hudData.wpDist, 120)
+      assert.equal(vManager.hudData.xtrack, 1.2)
+      assert.equal(vManager.hudData.altError, 0.5)
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.MissionCurrent.MSG_ID } }, { seq: 3 })
+      assert.equal(vManager.hudData.wpNum, 3)
+    })
+
+    it('captures RC_CHANNELS rssi (valid + invalid)', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.RcChannels.MSG_ID } }, { rssi: 127 })
+      assert.equal(vManager.hudData.rcRssi, 50)
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.RcChannels.MSG_ID } }, { rssi: 255 })
+      assert.equal(vManager.hudData.rcRssi, null)
+    })
+
+    it('captures RADIO_STATUS, WIND, SCALED_PRESSURE, RANGEFINDER, VIBRATION, SCALED_IMU', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.RadioStatus.MSG_ID } }, { rssi: 180, remrssi: 175, noise: 40 })
+      assert.equal(vManager.hudData.radioRssi, 180)
+      assert.equal(vManager.hudData.radioRemRssi, 175)
+      assert.equal(vManager.hudData.radioNoise, 40)
+      vManager.updateHudFromPacket({ header: { msgid: mavArdupilot.Wind.MSG_ID } }, { speed: 4.2, direction: 210 })
+      assert.equal(vManager.hudData.windSpeed, 4.2)
+      assert.equal(vManager.hudData.windDir, 210)
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.ScaledPressure.MSG_ID } }, { temperature: 2400, pressAbs: 1013 })
+      assert.equal(vManager.hudData.baroTemp, 24)
+      assert.equal(vManager.hudData.pressure, 1013)
+      vManager.updateHudFromPacket({ header: { msgid: mavArdupilot.RangeFinder.MSG_ID } }, { distance: 2.4 })
+      assert.equal(vManager.hudData.rangefinder, 2.4)
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.Vibration.MSG_ID } }, { vibrationX: 8, vibrationY: 12, vibrationZ: 5, clipping0: 0 })
+      assert.equal(vManager.hudData.vibe, 12)
+      assert.equal(vManager.hudData.vibeClip, 0)
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.ScaledImu.MSG_ID } }, { xacc: 0, yacc: 0, zacc: 1000 })
+      assert.equal(vManager.hudData.gload, 1)
+    })
+
+    it('flight timer starts on arm, holds across heartbeats, freezes on disarm', function () {
+      settings.clear()
+      const nowStub = sinon.stub(Date, 'now')
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true }
+      const hb = (armed, t) => { nowStub.returns(t); vManager.updateHudFromPacket({ header: { msgid: mavMinimal.Heartbeat.MSG_ID } }, { type: 2, customMode: 3, baseMode: armed ? 128 : 0 }) }
+      hb(true, 10000)   // arm → armTime = 10000
+      assert.equal(vManager.armTime, 10000)
+      assert.equal(vManager.hudData.timer, 0)
+      hb(true, 15000)   // still armed → timer counts, armTime unchanged
+      assert.equal(vManager.armTime, 10000)
+      assert.equal(vManager.hudData.timer, 5)
+      hb(false, 20000)  // disarm → timer frozen
+      assert.equal(vManager.hudData.timer, 5)
     })
 
     it('graphic HUD style pushes the raw fields, not formatted text', function () {

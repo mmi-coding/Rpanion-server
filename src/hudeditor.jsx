@@ -41,6 +41,11 @@ class HudEditorPage extends basePage {
     return c ? c.label : type;
   }
 
+  // graphic elements have no value text / icon toggle (drawn as shapes)
+  isGraphicEl(type) {
+    return type === 'horizon' || type === 'compass' || type === 'homeDir';
+  }
+
   updateEl(type, patch) {
     this.setState({ elements: this.state.elements.map(e => e.type === type ? { ...e, ...patch } : e) });
   }
@@ -122,13 +127,13 @@ class HudEditorPage extends basePage {
                 transform: 'translate(-50%, -50%)', cursor: 'move', whiteSpace: 'nowrap',
                 padding: '2px 6px', borderRadius: 3,
                 background: this.state.dragType === e.type ? 'rgba(255,207,64,0.25)' : 'rgba(0,0,0,0.35)',
-                color: e.type === 'horizon' ? '#00e0a0' : '#ffffff',
-                border: '1px solid ' + (e.type === 'horizon' ? '#00e0a0' : 'rgba(255,255,255,0.4)'),
+                color: this.isGraphicEl(e.type) ? '#00e0a0' : '#ffffff',
+                border: '1px solid ' + (this.isGraphicEl(e.type) ? '#00e0a0' : 'rgba(255,255,255,0.4)'),
                 fontFamily: 'monospace', fontSize: 13
               }}
               data-eltype={e.type}
             >
-              {e.icon && e.type !== 'horizon' ? '◈ ' : ''}{e.type === 'horizon' ? '⊕ horizon' : this.sampleFor(e.type)}
+              {this.isGraphicEl(e.type) ? ('⊕ ' + e.type) : ((e.icon ? '◈ ' : '') + this.sampleFor(e.type))}
             </div>
           ))}
         </div>
@@ -139,14 +144,18 @@ class HudEditorPage extends basePage {
         <Table striped bordered hover size="sm">
           <thead><tr><th>Element</th><th>Show<HelpTip text="Include this stat in the HUD." /></th><th>Icon<HelpTip text="Draw the element's icon next to its value." /></th></tr></thead>
           <tbody>
-            {this.state.catalog.map(c => {
+            {this.state.catalog.map((c, i) => {
               const e = this.getEl(c.type) || { enabled: false, icon: false };
+              const newSection = i === 0 || c.section !== this.state.catalog[i - 1].section;
               return (
-                <tr key={c.type}>
-                  <td>{c.label}</td>
-                  <td><Form.Check type="checkbox" checked={e.enabled} onChange={() => this.toggleEnabled(c.type)} /></td>
-                  <td>{c.type === 'horizon' ? <span>—</span> : <Form.Check type="checkbox" checked={e.icon} onChange={() => this.toggleIcon(c.type)} />}</td>
-                </tr>
+                <React.Fragment key={c.type}>
+                  {newSection && <tr className="table-secondary"><td colSpan="3"><b>{c.section}</b></td></tr>}
+                  <tr>
+                    <td>{c.label}</td>
+                    <td><Form.Check type="checkbox" checked={e.enabled} onChange={() => this.toggleEnabled(c.type)} /></td>
+                    <td>{(c.type === 'horizon' || c.type === 'compass' || c.type === 'homeDir') ? <span>—</span> : <Form.Check type="checkbox" checked={e.icon} onChange={() => this.toggleIcon(c.type)} />}</td>
+                  </tr>
+                </React.Fragment>
               );
             })}
           </tbody>

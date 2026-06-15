@@ -10,13 +10,15 @@ vi.mock('socket.io-client', () => import('../test/socketMock.js'))
 // catalog has 'extracat' with no matching element; elements has 'extrael' not in
 // the catalog and a disabled 'gps' — exercises the fallback branches.
 const catalog = [
-  { type: 'horizon', label: 'Artificial Horizon', sample: '' },
-  { type: 'alt', label: 'Altitude (MSL)', sample: '124m' },
-  { type: 'gps', label: 'GPS', sample: '3D/11' },
-  { type: 'extracat', label: 'Extra Cat', sample: '' }
+  { type: 'horizon', section: 'Attitude', label: 'Artificial Horizon', sample: '' },
+  { type: 'compass', section: 'Attitude', label: 'Compass Tape', sample: '' },
+  { type: 'alt', section: 'Altitude & Speed', label: 'Altitude (MSL)', sample: '124m' },
+  { type: 'gps', section: 'Position & GPS', label: 'GPS', sample: '3D/11' },
+  { type: 'extracat', section: 'Position & GPS', label: 'Extra Cat', sample: '' }
 ]
 const elements = [
   { type: 'horizon', enabled: true, x: 0.5, y: 0.5, icon: false },
+  { type: 'compass', enabled: true, x: 0.5, y: 0.1, icon: false },
   { type: 'alt', enabled: true, x: 0.8, y: 0.1, icon: true },
   { type: 'gps', enabled: false, x: 0.1, y: 0.9, icon: true },
   { type: 'extrael', enabled: true, x: 0.2, y: 0.2, icon: false }
@@ -45,11 +47,14 @@ describe('#HudEditorPage()', function () {
     const { page } = renderEd(() => fetchWith())
     await page.flush()
     expect(page.container.textContent).toContain('HUD Editor')
-    // enabled chips: horizon, alt, extrael — gps is disabled so no chip
+    // enabled chips: horizon, compass, alt, extrael — gps is disabled so no chip
     expect(page.container.textContent).toContain('⊕ horizon')
+    expect(page.container.textContent).toContain('⊕ compass') // graphic element chip
     expect(page.container.textContent).toContain('◈ Altitude (MSL)') // alt has icon → ◈ prefix + catalog label
     expect(page.container.textContent).toContain('extrael') // sampleFor fallback (type, not in catalog)
-    // palette rows from the catalog (including the horizon '—' icon cell + extracat fallback)
+    // palette grouped into sections, with rows from the catalog
+    expect(page.container.textContent).toContain('Attitude')
+    expect(page.container.textContent).toContain('Position & GPS')
     expect(page.container.textContent).toContain('Extra Cat')
     expect(page.container.textContent).toContain('Artificial Horizon')
     page.unmount()
@@ -58,7 +63,8 @@ describe('#HudEditorPage()', function () {
   test('toggling Show and Icon via the palette checkboxes updates the element', async function () {
     const { page, getRef } = renderEd(() => fetchWith())
     await page.flush()
-    const rows = [...page.container.querySelectorAll('tbody tr')]
+    // rows with a checkbox are element rows (section headers have none)
+    const rows = [...page.container.querySelectorAll('tbody tr')].filter(r => r.querySelector('input[type="checkbox"]'))
     const gpsRow = rows.find(r => r.textContent.includes('GPS'))
     act(() => { gpsRow.querySelectorAll('input[type="checkbox"]')[0].click() }) // Show
     expect(getRef().getEl('gps').enabled).toBe(true)

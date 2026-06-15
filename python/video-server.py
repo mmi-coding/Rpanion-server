@@ -7,6 +7,7 @@
 import argparse
 import json
 import os
+from datetime import datetime
 import platform
 import ipaddress
 import sys
@@ -80,6 +81,19 @@ def _hud_num(v, suffix, digits=0):
     return ("{0:.%df}" % digits).format(v) + suffix
 
 
+def _hud_int(v, prefix="", suffix=""):
+    if v is None:
+        return prefix + "--"
+    return prefix + str(int(round(v))) + suffix
+
+
+def _hud_mmss(v):
+    if v is None:
+        return "--:--"
+    v = int(v)
+    return "{0}:{1:02d}".format(v // 60, v % 60)
+
+
 _GPS_FIX = {0: "NO", 1: "NO", 2: "2D", 3: "3D", 4: "DGPS", 5: "RTKf", 6: "RTKx", 7: "STAT", 8: "PPP"}
 
 
@@ -118,6 +132,73 @@ def hudElementText(t, f):
         fix = f.get("gpsFix")
         sats = f.get("gpsSats")
         return "GPS " + ("--" if fix is None else _GPS_FIX.get(fix, "?")) + "/" + ("--" if sats is None else str(sats))
+    # ── attitude ──
+    if t == "turnRate":
+        return "TRN " + _hud_int(f.get("turnRate"), suffix="°/s")
+    if t == "gload":
+        return _hud_num(f.get("gload"), "G", 1)
+    # ── altitude & speed ──
+    if t == "rangefinder":
+        return "RNG " + _hud_num(f.get("rangefinder"), "m", 1)
+    # ── position & gps ──
+    if t == "lat":
+        return "LAT " + _hud_num(f.get("lat"), "", 5)
+    if t == "lon":
+        return "LON " + _hud_num(f.get("lon"), "", 5)
+    if t == "hdop":
+        return "HDOP " + _hud_num(f.get("hdop"), "", 1)
+    if t == "gpsCourse":
+        return "CRS " + _hud_int(f.get("gpsCourse"), suffix="°")
+    # ── navigation ──
+    if t == "homeDist":
+        return "HOME " + _hud_int(f.get("homeDist"), suffix="m")
+    if t == "wpDist":
+        return "WP " + _hud_int(f.get("wpDist"), suffix="m")
+    if t == "wpNum":
+        return _hud_int(f.get("wpNum"), prefix="WP#")
+    if t == "xtrack":
+        return "XTK " + _hud_num(f.get("xtrack"), "m", 1)
+    if t == "altError":
+        return "AERR " + _hud_num(f.get("altError"), "m", 1)
+    # ── battery & power ──
+    if t == "mah":
+        return _hud_int(f.get("mah"), suffix="mAh")
+    if t == "battTemp":
+        return "BT " + _hud_int(f.get("battTemp"), suffix="°C")
+    if t == "battTimeRemaining":
+        return "BTL " + _hud_mmss(f.get("battTimeRemaining"))
+    if t == "cpuLoad":
+        return "CPU " + _hud_int(f.get("cpuLoad"), suffix="%")
+    # ── link ──
+    if t == "rcRssi":
+        return "RC " + _hud_int(f.get("rcRssi"), suffix="%")
+    if t == "radioRssi":
+        return "RSSI " + _hud_int(f.get("radioRssi"))
+    if t == "radioRemRssi":
+        return "RRSSI " + _hud_int(f.get("radioRemRssi"))
+    if t == "radioNoise":
+        return "NOISE " + _hud_int(f.get("radioNoise"))
+    if t == "dropRate":
+        return "DROP " + _hud_num(f.get("dropRate"), "%", 0)
+    # ── environment ──
+    if t == "windSpeed":
+        return "WND " + _hud_num(f.get("windSpeed"), "m/s", 1)
+    if t == "windDir":
+        return "WDIR " + _hud_int(f.get("windDir"), suffix="°")
+    if t == "baroTemp":
+        return "TMP " + _hud_int(f.get("baroTemp"), suffix="°C")
+    if t == "pressure":
+        return "PRS " + _hud_int(f.get("pressure"), suffix="hPa")
+    # ── status ──
+    if t == "timer":
+        return _hud_mmss(f.get("timer"))
+    if t == "clock":
+        return datetime.now().strftime("%H:%M:%S")
+    # ── health ──
+    if t == "vibe":
+        return "VIB " + _hud_int(f.get("vibe"))
+    if t == "vibeClip":
+        return "CLIP " + _hud_int(f.get("vibeClip"))
     return ""
 
 
@@ -125,24 +206,31 @@ def _hud_icon(t, x, y):
     # a small (~30px) glyph for an OSD element, drawn just left of its value.
     # Several element types share a concept (battery, gauge), so map to a glyph.
     col = "#7fe9c8"
-    if t in ("batV", "batPct", "current"):
+    if t in ("batV", "batPct", "current", "mah", "battTemp", "battTimeRemaining"):
         return ('<g stroke="{0}" stroke-width="3" fill="none">'
                 '<rect x="{1}" y="{2}" width="26" height="16" rx="2"/>'
                 '<rect x="{3}" y="{4}" width="3" height="8" fill="{0}"/></g>').format(col, x, y - 8, x + 26, y - 4)
-    if t in ("alt", "altRel"):
+    if t in ("alt", "altRel", "rangefinder"):
         return '<path d="M {1} {2} l 12 -22 l 12 22 Z" fill="{0}"/>'.format(col, x, y + 2)
-    if t in ("climb",):
+    if t in ("climb", "gload", "turnRate"):
         return '<path d="M {1} {2} l 12 -20 l 12 20" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
-    if t in ("spd", "airspeed", "throttle"):
+    if t in ("spd", "airspeed", "throttle", "cpuLoad", "dropRate"):
         return '<path d="M {1} {2} a 14 14 0 0 1 28 0" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
-    if t == "hdg":
+    if t in ("rcRssi", "radioRssi", "radioRemRssi", "radioNoise"):
+        return ('<g stroke="{0}" stroke-width="2" fill="none"><line x1="{1}" y1="{2}" x2="{1}" y2="{3}"/>'
+                '<path d="M {4} {3} a 10 10 0 0 1 14 0"/></g>').format(col, x + 9, y - 16, y, x + 2)
+    if t in ("windSpeed", "windDir", "baroTemp", "pressure", "vibe", "vibeClip"):
+        return '<path d="M {1} {2} q 8 -10 16 0 t 16 0" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 4)
+    if t in ("homeDist", "wpDist", "xtrack", "altError"):
+        return '<path d="M {1} {2} l 9 -12 l 9 12 v 10 h -18 Z" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 2)
+    if t in ("hdg", "gpsCourse"):
         return ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="13"/>'
                 '<path d="M {1} {3} l 4 8 l -8 0 Z" fill="{0}" stroke="none"/></g>').format(col, x + 13, y - 4, y - 14)
-    if t == "gps":
+    if t in ("mode", "timer", "clock", "wpNum"):
+        return '<circle cx="{1}" cy="{2}" r="12" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x + 13, y - 4)
+    if t in ("gps", "hdop", "lat", "lon"):
         return ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="4" fill="{0}"/>'
                 '<path d="M {3} {4} a 10 10 0 0 1 16 0"/></g>').format(col, x + 13, y - 4, x + 5, y - 4)
-    if t == "mode":
-        return '<circle cx="{1}" cy="{2}" r="12" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x + 13, y - 4)
     if t == "armed":
         return '<path d="M {1} {2} l 13 -6 l 13 6 v 10 l -13 8 l -13 -8 Z" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 14)
     return '<circle cx="{1}" cy="{2}" r="3" fill="{0}"/>'.format(col, x + 10, y - 4)
@@ -163,6 +251,34 @@ def _horizon_svg(cx, cy, f):
     marker = ('<path d="M {0} {1} l -70 0 l 20 22 M {0} {1} l 70 0 l -20 22" '
               'stroke="#ffcf40" stroke-width="5" fill="none"/>').format(cx, cy)
     return horizon + marker
+
+
+def _compass_svg(cx, cy, f):
+    # a horizontal heading tape centred at cx,cy with a fixed pointer
+    hdg = f.get("hdg")
+    if hdg is None:
+        hdg = 0
+    ppd = 6  # px per degree
+    base = int(round(hdg / 10.0)) * 10
+    ticks = []
+    for d in range(base - 60, base + 70, 10):
+        hx = cx + (d - hdg) * ppd
+        deg = d % 360
+        ticks.append('<line x1="{0}" y1="{1}" x2="{0}" y2="{2}" stroke="#00e0a0" stroke-width="2"/>'.format(hx, cy - 10, cy))
+        lbl = {0: "N", 90: "E", 180: "S", 270: "W"}.get(deg, str(deg))
+        ticks.append('<text x="{0}" y="{1}" fill="#00e0a0" font-size="22" font-family="monospace" text-anchor="middle">{2}</text>'.format(hx, cy - 16, lbl))
+    pointer = '<path d="M {0} {1} l -8 -12 l 16 0 Z" fill="#ffcf40"/>'.format(cx, cy + 12)
+    return '<g>' + "".join(ticks) + pointer + '</g>'
+
+
+def _homedir_svg(cx, cy, f):
+    # an arrow pointing toward home, relative to the current heading
+    homeDir = f.get("homeDir")
+    hdg = f.get("hdg") or 0
+    rel = 0 if homeDir is None else (homeDir - hdg)
+    return ('<g transform="rotate({0} {1} {2})">'
+            '<path d="M {1} {3} L {4} {5} L {6} {5} Z" fill="#ffcf40"/></g>').format(
+        rel, cx, cy, cy - 22, cx - 14, cy + 14, cx + 14)
 
 
 # fallback layout if none has been pushed yet (mirrors hudOverlay.defaultHudLayout)
@@ -193,6 +309,12 @@ def buildHudSvg(layout, fields):
         y = (el.get("y") or 0) * 900
         if t == "horizon":
             parts.append(_horizon_svg(x, y, fields))
+            continue
+        if t == "compass":
+            parts.append(_compass_svg(x, y, fields))
+            continue
+        if t == "homeDir":
+            parts.append(_homedir_svg(x, y, fields))
             continue
         tx = x
         if el.get("icon"):

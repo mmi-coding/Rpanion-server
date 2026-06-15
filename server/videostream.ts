@@ -2,7 +2,7 @@ const { exec, execSync, spawn } = require('child_process')
 const path = require('path')
 const si = require('systeminformation')
 const events = require('events')
-const { minimal, common } = require('node-mavlink')
+const { minimal, common, ardupilotmega } = require('node-mavlink')
 const logpaths = require('./paths')
 const fs = require('fs')
 const vsHelpers = require('./videostreamHelpers')
@@ -30,6 +30,8 @@ class videoStream {
   hudData: any
   lastHudSend: number
   hudLayout: any
+  homePos: any
+  armTime: number | null
   secondaryStreams: any
   settings: any
   constructor (settings: any) {
@@ -46,6 +48,8 @@ class videoStream {
     // customizable graphic-HUD layout (#173 OSD editor); validateHudLayout(null)
     // returns the default layout
     this.hudLayout = hudOverlay.validateHudLayout(this.settings.value('camera.hudLayout', null));
+    this.homePos = null; // {lat,lon} from HOME_POSITION, for distance/bearing-to-home
+    this.armTime = null; // ms timestamp of the last arm, for the flight timer
 
     // Properties used in all modes
     this.active = false
@@ -1129,29 +1133,80 @@ class videoStream {
       return
     }
     const id = packet.header.msgid
+    const h = this.hudData
     if (id === common.VfrHud.MSG_ID) {
-      this.hudData.alt = data.alt
-      this.hudData.spd = data.groundspeed
-      this.hudData.airspeed = data.airspeed
-      this.hudData.hdg = data.heading
-      this.hudData.climb = data.climb
-      this.hudData.throttle = data.throttle
+      h.alt = data.alt
+      h.spd = data.groundspeed
+      h.airspeed = data.airspeed
+      h.hdg = data.heading
+      h.climb = data.climb
+      h.throttle = data.throttle
     } else if (id === common.GlobalPositionInt.MSG_ID) {
-      this.hudData.altRel = data.relativeAlt / 1000 // mm → m
+      h.altRel = data.relativeAlt / 1000 // mm → m
+      h.lat = data.lat / 1e7
+      h.lon = data.lon / 1e7
+      if (this.homePos) {
+        h.homeDist = hudOverlay.homeDistance(h.lat, h.lon, this.homePos.lat, this.homePos.lon)
+        h.homeDir = hudOverlay.homeBearing(h.lat, h.lon, this.homePos.lat, this.homePos.lon)
+      }
+    } else if (id === common.HomePosition.MSG_ID) {
+      this.homePos = { lat: data.latitude / 1e7, lon: data.longitude / 1e7 }
     } else if (id === common.SysStatus.MSG_ID) {
-      this.hudData.batV = data.voltageBattery === 65535 ? null : data.voltageBattery / 1000
-      this.hudData.batPct = data.batteryRemaining < 0 ? null : data.batteryRemaining
-      this.hudData.current = data.currentBattery < 0 ? null : data.currentBattery / 100 // cA → A
+      h.batV = data.voltageBattery === 65535 ? null : data.voltageBattery / 1000
+      h.batPct = data.batteryRemaining < 0 ? null : data.batteryRemaining
+      h.current = data.currentBattery < 0 ? null : data.currentBattery / 100 // cA → A
+      h.cpuLoad = Math.round(data.load / 10) // 0.1% → %
+      h.dropRate = data.dropRateComm / 100 // c% → %
+    } else if (id === common.BatteryStatus.MSG_ID) {
+      h.mah = data.currentConsumed < 0 ? null : data.currentConsumed
+      h.battTemp = data.temperature === 32767 ? null : data.temperature / 100 // cdegC → °C
+      h.battTimeRemaining = data.timeRemaining > 0 ? data.timeRemaining : null
     } else if (id === common.GpsRawInt.MSG_ID) {
-      this.hudData.gpsFix = data.fixType
-      this.hudData.gpsSats = data.satellitesVisible
+      h.gpsFix = data.fixType
+      h.gpsSats = data.satellitesVisible
+      h.hdop = data.eph === 65535 ? null : data.eph / 100
+      h.gpsCourse = data.cog === 65535 ? null : data.cog / 100 // cdeg → deg
+    } else if (id === common.NavControllerOutput.MSG_ID) {
+      h.wpDist = data.wpDist
+      h.xtrack = data.xtrackError
+      h.altError = data.altError
+    } else if (id === common.MissionCurrent.MSG_ID) {
+      h.wpNum = data.seq
+    } else if (id === common.RcChannels.MSG_ID) {
+      h.rcRssi = data.rssi >= 255 ? null : Math.round(data.rssi / 254 * 100)
+    } else if (id === common.RadioStatus.MSG_ID) {
+      h.radioRssi = data.rssi
+      h.radioRemRssi = data.remrssi
+      h.radioNoise = data.noise
+    } else if (id === ardupilotmega.Wind.MSG_ID) {
+      h.windSpeed = data.speed
+      h.windDir = data.direction
+    } else if (id === common.ScaledPressure.MSG_ID) {
+      h.baroTemp = data.temperature / 100 // cdegC → °C
+      h.pressure = data.pressAbs // hPa
+    } else if (id === ardupilotmega.RangeFinder.MSG_ID) {
+      h.rangefinder = data.distance
+    } else if (id === common.Vibration.MSG_ID) {
+      h.vibe = Math.round(Math.max(data.vibrationX, data.vibrationY, data.vibrationZ))
+      h.vibeClip = data.clipping0
+    } else if (id === common.ScaledImu.MSG_ID) {
+      // accel magnitude in g (mG → g)
+      h.gload = +(Math.sqrt(data.xacc ** 2 + data.yacc ** 2 + data.zacc ** 2) / 1000).toFixed(2)
     } else if (id === minimal.Heartbeat.MSG_ID) {
-      this.hudData.mode = hudOverlay.mavlinkModeName(data.type, data.customMode)
-      this.hudData.armed = (data.baseMode & 128) !== 0 // MAV_MODE_FLAG_SAFETY_ARMED
+      h.mode = hudOverlay.mavlinkModeName(data.type, data.customMode)
+      const armed = (data.baseMode & 128) !== 0 // MAV_MODE_FLAG_SAFETY_ARMED
+      if (armed && !h.armed) {
+        this.armTime = Date.now() // disarmed → armed transition starts the flight timer
+      }
+      h.armed = armed
+      if (armed && this.armTime !== null) {
+        h.timer = Math.round((Date.now() - this.armTime) / 1000)
+      }
     } else if (id === common.Attitude.MSG_ID) {
       // radians → degrees, for the graphic artificial-horizon HUD
-      this.hudData.roll = data.roll * 180 / Math.PI
-      this.hudData.pitch = data.pitch * 180 / Math.PI
+      h.roll = data.roll * 180 / Math.PI
+      h.pitch = data.pitch * 180 / Math.PI
+      h.turnRate = data.yawspeed * 180 / Math.PI
     } else {
       return
     }
