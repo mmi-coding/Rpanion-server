@@ -244,3 +244,12 @@ bug. After reproducing (stop service → `shutdown` → power on), capture:
 ## Bug #221: new USB-WiFi AP not active until reboot
 
 - [ ] Add an AP on a second (USB) Wi-Fi adapter → the page now prompts to **Activate** it; click Activate on the new connection in the list → the hotspot moves to the USB card without a reboot
+
+## Bug #364: Pi 5 serial telemetry (out-of-target board)
+
+The fork targets Pi 4 (primary) / Zero 2 W. On a Pi 5 the GPIO UART differs and must
+be enabled before serial telemetry to the FC works:
+
+- [ ] Enable the GPIO UART: `enable_uart=1` in `/boot/firmware/config.txt` (and free the serial console / Bluetooth as needed); the GPIO serial on Pi 5 enumerates as `/dev/ttyAMA0`
+- [ ] Loopback test (jumper TX↔RX): `stty -F /dev/ttyAMA0 57600 && (cat /dev/ttyAMA0 &) && echo hello > /dev/ttyAMA0` → should echo back
+- [ ] Point the Flight Controller page at the correct `/dev/ttyAMA0` device
