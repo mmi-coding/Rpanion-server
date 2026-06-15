@@ -199,6 +199,16 @@ def hudElementText(t, f):
         return "VIB " + _hud_int(f.get("vibe"))
     if t == "vibeClip":
         return "CLIP " + _hud_int(f.get("vibeClip"))
+    # ── modem GPS (SIM7600) ──
+    if t == "modemFix":
+        v = f.get("modemFix")
+        return "mGPS " + ("--" if v is None else str(v))
+    if t == "modemLat":
+        return "mLAT " + _hud_num(f.get("modemLat"), "", 5)
+    if t == "modemLon":
+        return "mLON " + _hud_num(f.get("modemLon"), "", 5)
+    if t == "modemAlt":
+        return "mALT " + _hud_int(f.get("modemAlt"), suffix="m")
     return ""
 
 
@@ -228,7 +238,7 @@ def _hud_icon(t, x, y):
                 '<path d="M {1} {3} l 4 8 l -8 0 Z" fill="{0}" stroke="none"/></g>').format(col, x + 13, y - 4, y - 14)
     if t in ("mode", "timer", "clock", "wpNum"):
         return '<circle cx="{1}" cy="{2}" r="12" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x + 13, y - 4)
-    if t in ("gps", "hdop", "lat", "lon"):
+    if t in ("gps", "hdop", "lat", "lon", "modemFix", "modemLat", "modemLon", "modemAlt"):
         return ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="4" fill="{0}"/>'
                 '<path d="M {3} {4} a 10 10 0 0 1 16 0"/></g>').format(col, x + 13, y - 4, x + 5, y - 4)
     if t == "armed":
@@ -295,9 +305,16 @@ _DEFAULT_HUD_ELEMENTS = [
 
 def buildHudSvg(layout, fields):
     # a customizable OSD as an SVG string (16:9 viewBox; rsvgoverlay fit-to-frame
-    # scales it onto the video). layout = {elements:[{type,enabled,x,y,icon}]}.
+    # scales it onto the video). layout = {global:{font,size,color},
+    # elements:[{type,enabled,x,y,icon, font?,size?,color?}]}. A per-element
+    # font/size/color overrides the global text style.
     fields = fields or {}
-    elements = (layout or {}).get("elements") if layout else None
+    layout = layout or {}
+    g = layout.get("global") or {}
+    g_font = g.get("font") or "monospace"
+    g_size = g.get("size") or 34
+    g_color = g.get("color") or "#ffffff"
+    elements = layout.get("elements")
     if not elements:
         elements = _DEFAULT_HUD_ELEMENTS
     parts = []
@@ -316,12 +333,15 @@ def buildHudSvg(layout, fields):
         if t == "homeDir":
             parts.append(_homedir_svg(x, y, fields))
             continue
+        font = el.get("font") or g_font
+        size = int(el.get("size") or g_size)
+        color = el.get("color") or g_color
         tx = x
         if el.get("icon"):
             parts.append(_hud_icon(t, x, y))
             tx = x + 42
-        parts.append('<text x="{0}" y="{1}" fill="#ffffff" font-size="34" font-family="monospace">{2}</text>'.format(
-            tx, y + 10, _hud_escape(hudElementText(t, fields))))
+        parts.append('<text x="{0}" y="{1:.0f}" fill="{2}" font-size="{3}" font-family="{4}">{5}</text>'.format(
+            tx, y + size * 0.3, color, size, _hud_escape(font), _hud_escape(hudElementText(t, fields))))
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">' + "".join(parts) + '</svg>'
 
 

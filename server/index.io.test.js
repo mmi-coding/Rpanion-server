@@ -746,7 +746,9 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
         try {
           assert.equal(res.status, 200)
           assert.ok(res.body.layout && Array.isArray(res.body.layout.elements))
+          assert.ok(res.body.layout.global && typeof res.body.layout.global.font === 'string')
           assert.ok(Array.isArray(res.body.elements) && res.body.elements.length > 10)
+          assert.ok(Array.isArray(res.body.fonts) && res.body.fonts.includes('monospace'))
           done()
         } catch (e) { done(e) }
       }).catch(done)

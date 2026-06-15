@@ -136,6 +136,58 @@ ESC telemetry, EKF variances, a 2nd-GPS readout. Verified on real GStreamer: a
 layout with all ~45 elements enabled renders and the `rsvgoverlay` pipeline stays
 PLAYING. Both suites stay 100/100/100/100.
 
+### Follow-up (shipped): modem GPS, WYSIWYG mock data, dynamic home arrow, text styling
+
+Four refinements driven by "make the editor show what the user will actually see,
+add the modem's own GPS, and let the user style the text":
+
+- **LTE modem GPS (works with no flight controller).** The SIM7600 has its own
+  GNSS. `ltemodem.ts` enables it once (`AT+CGPS=1`, guarded by a `gpsEnabled`
+  flag) and reads `AT+CGPSINFO` each poll; the new pure `parseCGPSINFO()` converts
+  the `ddmm.mmmmmm,N/S` / `dddmm.mmmmmm,E/W` fields to signed decimal degrees and
+  returns `{lat,lon,alt}` (or `null` when there's no fix — every field empty), in
+  its own `try/catch` so a GNSS-less modem never breaks the status poll. `index.ts`
+  wires the modem into the video manager (`vManager.lteModem = lteModem`);
+  `videostream.ts`'s `mergeModemGps()` folds the fix into the HUD as `modemFix`
+  (`OK`/`NO`), `modemLat`, `modemLon`, `modemAlt` (a new *Modem GPS* catalog
+  section). Because the HUD push was MAVLink-driven, a flight-controller-less drone
+  would never push it — so a **periodic 1 Hz graphic-HUD push** (`startHudInterval`,
+  `unref`'d, stopped on stream close / `stopCamera`) now drives the overlay
+  independently, merging the modem GPS each tick.
+- **Mock data on the editor canvas (WYSIWYG).** Each catalog entry carries a
+  `mock` string (the value as the burned-in HUD renders it, e.g. `ALT 124m`,
+  `mGPS OK`); the editor chips show that instead of the element label, so the
+  black canvas previews real-looking values. Graphic elements expose a `graphic`
+  flag instead.
+- **Dynamic home arrow.** The home-direction element renders in the editor as an
+  arrow inside a compass ring with a slow CSS rotation (`.hud-home-arrow`,
+  `@keyframes hud-home-spin`) to convey that it tracks home — the burned-in HUD
+  (`_homedir_svg`) already rotates it by the real bearing-to-home minus heading.
+  The horizon and compass elements likewise render as live mini-SVG previews.
+- **Font / size / colour, global + per-element.** `hudOverlay.ts` gained a
+  `DEFAULT_GLOBAL_STYLE` + `HUD_FONTS` (`monospace`/`sans-serif`/`serif`, all
+  always available to librsvg), `hudFonts()`, and validation:
+  `validateGlobalStyle()` (fills defaults, clamps size to 10–120, validates a
+  `#rgb`/`#rrggbb` colour) and `validateElementStyle()` (keeps only the valid,
+  present overrides). `validateHudLayout()` now returns `{global, elements}` with
+  per-element `font?/size?/color?`. `video-server.py`'s `buildHudSvg` reads the
+  global style and per-element overrides (`size*0.3` baseline offset so any size
+  stays vertically centred). The editor adds a **global text-style row** and a
+  **per-element style panel** (select an element → font/size/colour, blank =
+  inherit, "Use global" clears overrides); chips reflect the effective style and
+  scale via CSS container-query units (`100cqw`) so the canvas matches how
+  `rsvgoverlay fit-to-frame` scales the 1600-wide SVG onto the frame.
+- **Route:** `GET /api/hudlayout` now also returns `fonts` (the allowed list).
+
+Verified on real GStreamer (WSL): a layout with a non-default global style
+(sans-serif/40/green) + per-element colour & size overrides + the *Modem GPS*
+elements renders and the `rsvgoverlay` pipeline reaches PLAYING/EOS. New unit
+tests: `parseCGPSINFO` (hemispheres, no-fix, short/empty lines), the modem-GPS
+poll (enable-once gate + query-failure path), `mergeModemGps`, the periodic push
+timer, the global/per-element style validation, and the editor's mock chips,
+graphic previews, selection, global-style controls and per-element style panel.
+Both suites stay 100/100/100/100.
+
 ## Verification — WSL-verified
 
 - `lint` 0 · `typecheck` 0 · `covback` **100/100/100/100** (997 passing) ·

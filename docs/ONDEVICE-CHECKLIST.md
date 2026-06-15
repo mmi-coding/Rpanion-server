@@ -325,3 +325,10 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] Each new stat (AGL, airspeed, climb, throttle, current, arm state) shows real values from the FC
 - [ ] Reset to Defaults restores the default layout
 - [ ] Layout persists across a stream restart / reboot (saved in settings)
+
+## Feature #173 follow-up: modem GPS, mock data, dynamic home arrow, text styling
+
+- [ ] With the SIM7600 modem enabled and a GNSS antenna attached, enable the *Modem GPS* elements (modemFix/lat/lon/alt) in the HUD Editor → on a graphic stream they show the modem's own fix; **with NO flight controller connected** they still update (the periodic 1 Hz push), and `modemFix` reads `NO` until the modem gets a fix, then `OK` with live coordinates (`AT+CGPSINFO` returns a fix outdoors / by a window — it can take a minute on cold start)
+- [ ] The modem GPS poll does not disturb the AT status poll (signal/registration/operator/IP keep updating) and is absent/`NO` cleanly when the modem has no GNSS antenna
+- [ ] Editor canvas shows **mock values** (e.g. `ALT 124m`, `mGPS OK`) on the chips, and the **home arrow** renders as a rotating arrow; on a real graphic stream the burned-in home arrow points toward home as heading changes
+- [ ] Set a **global** font/size/colour → all text fields on the burned-in HUD change; set a **per-element** override (e.g. red battery, larger altitude) → only that field changes; "Use global" clears it. Confirm the on-stream sizes/positions match the editor preview (the `100cqw` scaling vs `rsvgoverlay fit-to-frame`)

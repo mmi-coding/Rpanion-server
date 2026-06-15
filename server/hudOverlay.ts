@@ -79,7 +79,9 @@ function emptyHudData (): HudData {
     // status
     'mode', 'armed', 'timer',
     // health
-    'vibe', 'vibeClip'
+    'vibe', 'vibeClip',
+    // modem GPS (SIM7600)
+    'modemLat', 'modemLon', 'modemAlt', 'modemFix'
   ]
   const o: HudData = {}
   for (const k of keys) {
@@ -148,8 +150,34 @@ const HUD_ELEMENTS = [
   { type: 'clock', section: 'Status', label: 'Clock', sample: '14:05:32', enabled: false, x: 0.04, y: 0.74, icon: true },
   // ── Health ──
   { type: 'vibe', section: 'Health', label: 'Vibration', sample: '12', enabled: false, x: 0.46, y: 0.18, icon: true },
-  { type: 'vibeClip', section: 'Health', label: 'Vibration Clipping', sample: '0', enabled: false, x: 0.46, y: 0.24, icon: true }
+  { type: 'vibeClip', section: 'Health', label: 'Vibration Clipping', sample: '0', enabled: false, x: 0.46, y: 0.24, icon: true },
+  // ── Modem GPS (SIM7600, when present) ──
+  { type: 'modemFix', section: 'Modem GPS', label: 'Modem GPS Fix', sample: 'OK', enabled: false, x: 0.46, y: 0.30, icon: true },
+  { type: 'modemLat', section: 'Modem GPS', label: 'Modem Latitude', sample: '37.42200', enabled: false, x: 0.46, y: 0.36, icon: false },
+  { type: 'modemLon', section: 'Modem GPS', label: 'Modem Longitude', sample: '-122.08400', enabled: false, x: 0.46, y: 0.42, icon: false },
+  { type: 'modemAlt', section: 'Modem GPS', label: 'Modem Altitude', sample: '42m', enabled: false, x: 0.46, y: 0.48, icon: true }
 ]
+
+// type → the full rendered value the burned-in HUD shows, so the editor canvas is
+// WYSIWYG (mirrors python video-server.py's hudElementText). Graphic elements
+// (horizon/compass/homeDir) render as shapes, not text.
+const HUD_MOCK: { [k: string]: string } = {
+  hdg: 'HDG 271', turnRate: 'TRN 5°/s', gload: '1.2G',
+  alt: 'ALT 124m', altRel: 'AGL 38m', spd: 'SPD 14.2', airspeed: 'AIR 15.1',
+  climb: 'VS 0.5', throttle: 'THR 45%', rangefinder: 'RNG 2.4m',
+  gps: 'GPS 3D/11', lat: 'LAT 37.42200', lon: 'LON -122.08400', hdop: 'HDOP 0.8', gpsCourse: 'CRS 270°',
+  homeDist: 'HOME 420m', wpDist: 'WP 120m', wpNum: 'WP#3', xtrack: 'XTK 1.2m', altError: 'AERR 0.5m',
+  batV: 'BAT 15.8V', batPct: '62%', current: '8.4A', mah: '1240mAh', battTemp: 'BT 32°C',
+  battTimeRemaining: 'BTL 12:30', cpuLoad: 'CPU 38%',
+  rcRssi: 'RC 95%', radioRssi: 'RSSI 180', radioRemRssi: 'RRSSI 175', radioNoise: 'NOISE 40', dropRate: 'DROP 0%',
+  windSpeed: 'WND 4.2m/s', windDir: 'WDIR 210°', baroTemp: 'TMP 24°C', pressure: 'PRS 1013hPa',
+  mode: 'AUTO', armed: 'ARMED', timer: '3:42', clock: '14:05:32', vibe: 'VIB 12', vibeClip: 'CLIP 0',
+  modemFix: 'mGPS OK', modemLat: 'mLAT 37.42200', modemLon: 'mLON -122.08400', modemAlt: 'mALT 42m'
+}
+
+// allowed font families (generic → always available to librsvg) + default global style
+const HUD_FONTS = ['monospace', 'sans-serif', 'serif']
+const DEFAULT_GLOBAL_STYLE = { font: 'monospace', size: 34, color: '#ffffff' }
 
 // element type → default { enabled, x, y, icon }, derived from the catalog above.
 const DEFAULT_PLACEMENT: { [k: string]: { enabled: boolean; x: number; y: number; icon: boolean } } = {}
@@ -157,9 +185,21 @@ for (const e of HUD_ELEMENTS) {
   DEFAULT_PLACEMENT[e.type] = { enabled: e.enabled, x: e.x, y: e.y, icon: e.icon }
 }
 
+// graphic elements draw shapes (no value text / icon / style)
+const GRAPHIC_TYPES = new Set(['horizon', 'compass', 'homeDir'])
+
 function hudElements () {
-  // catalog metadata the editor needs (placement comes from the saved layout)
-  return HUD_ELEMENTS.map((e) => ({ type: e.type, section: e.section, label: e.label, sample: e.sample }))
+  // catalog metadata the editor needs (placement comes from the saved layout).
+  // `mock` is the value as it appears on the stream (WYSIWYG); `graphic` marks
+  // the shape-only elements.
+  return HUD_ELEMENTS.map((e) => ({
+    type: e.type, section: e.section, label: e.label,
+    mock: HUD_MOCK[e.type] || '', graphic: GRAPHIC_TYPES.has(e.type)
+  }))
+}
+
+function hudFonts () {
+  return HUD_FONTS
 }
 
 // great-circle distance (m) between two lat/lon points (degrees)
@@ -182,8 +222,44 @@ function homeBearing (lat: number, lon: number, homeLat: number, homeLon: number
   return Math.round((Math.atan2(y, x) * 180 / Math.PI + 360) % 360)
 }
 
+function clampSize (v: any, def: number): number {
+  const n = Math.round(Number(v))
+  return isFinite(n) ? Math.min(120, Math.max(10, n)) : def
+}
+
+function validColor (v: any): string | null {
+  return (typeof v === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) ? v : null
+}
+
+// global text style (font/size/color) applied to every element unless overridden
+function validateGlobalStyle (g: any) {
+  g = g || {}
+  return {
+    font: HUD_FONTS.indexOf(g.font) !== -1 ? g.font : DEFAULT_GLOBAL_STYLE.font,
+    size: clampSize(g.size, DEFAULT_GLOBAL_STYLE.size),
+    color: validColor(g.color) || DEFAULT_GLOBAL_STYLE.color
+  }
+}
+
+// per-element overrides: keep only the valid, present fields (absent = inherit)
+function validateElementStyle (e: any) {
+  const s: any = {}
+  if (HUD_FONTS.indexOf(e.font) !== -1) {
+    s.font = e.font
+  }
+  if (e.size !== undefined && e.size !== null && isFinite(Number(e.size))) {
+    s.size = clampSize(e.size, DEFAULT_GLOBAL_STYLE.size)
+  }
+  const c = validColor(e.color)
+  if (c) {
+    s.color = c
+  }
+  return s
+}
+
 function defaultHudLayout () {
   return {
+    global: { ...DEFAULT_GLOBAL_STYLE },
     elements: HUD_ELEMENTS.map((e) => ({ type: e.type, ...DEFAULT_PLACEMENT[e.type] }))
   }
 }
@@ -218,10 +294,11 @@ function validateHudLayout (layout: any) {
       enabled: !!e.enabled,
       icon: !!e.icon,
       x: clamp01(e.x),
-      y: clamp01(e.y)
+      y: clamp01(e.y),
+      ...validateElementStyle(e)
     }
   })
-  return { elements }
+  return { global: validateGlobalStyle(layout && layout.global), elements }
 }
 
 function num (v: any, digits: number, suffix: string): string {
@@ -238,4 +315,4 @@ function formatHudText (hud: HudData): string {
   return line1 + '\n' + line2 + '\n' + line3
 }
 
-export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }
+export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, hudFonts, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }

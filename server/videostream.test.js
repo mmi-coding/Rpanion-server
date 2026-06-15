@@ -2328,6 +2328,59 @@ describe('Video Functions', function () {
       assert.equal(layoutWrites.length, 1)
       assert.ok(layoutWrites[0].layout.elements.find(e => e.type === 'alt'))
     })
+
+    it('#mergeModemGps() folds the SIM7600 GNSS fix into the HUD fields', function () {
+      settings.clear()
+      const vManager = liveStreamingManager()
+      // no modem wired → modem fields stay null
+      vManager.mergeModemGps()
+      assert.equal(vManager.hudData.modemFix, null)
+      assert.equal(vManager.hudData.modemLat, null)
+      // modem present but no fix → 'NO', coordinates null
+      vManager.lteModem = { status: { gps: null } }
+      vManager.mergeModemGps()
+      assert.equal(vManager.hudData.modemFix, 'NO')
+      assert.equal(vManager.hudData.modemLat, null)
+      // modem with a fix → 'OK' + coordinates
+      vManager.lteModem = { status: { gps: { lat: 37.422, lon: -122.084, alt: 42 } } }
+      vManager.mergeModemGps()
+      assert.equal(vManager.hudData.modemFix, 'OK')
+      assert.equal(vManager.hudData.modemLat, 37.422)
+      assert.equal(vManager.hudData.modemLon, -122.084)
+      assert.equal(vManager.hudData.modemAlt, 42)
+    })
+
+    it('graphic HUD push includes the modem GPS fix', function () {
+      settings.clear()
+      sinon.stub(Date, 'now').returns(30000)
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true, hudStyle: 'graphic' }
+      vManager.lteModem = { status: { gps: { lat: 37.422, lon: -122.084, alt: 42 } } }
+      vManager.updateHudFromPacket({ header: { msgid: mavCommon.Attitude.MSG_ID } }, { roll: 0, pitch: 0 })
+      const payload = JSON.parse(vManager._writes[vManager._writes.length - 1])
+      assert.equal(payload.hud.modemFix, 'OK')
+      assert.equal(payload.hud.modemLat, 37.422)
+    })
+
+    it('#startHudInterval()/#stopHudInterval() push modem GPS without a flight controller', function () {
+      settings.clear()
+      const clock = sinon.useFakeTimers()
+      const vManager = liveStreamingManager()
+      vManager.videoSettings = { useHud: true, hudStyle: 'graphic' }
+      vManager.lteModem = { status: { gps: { lat: 1, lon: 2, alt: 3 } } }
+      vManager.startHudInterval()
+      clock.tick(1000)
+      assert.ok(vManager._writes.length >= 1)
+      const payload = JSON.parse(vManager._writes[vManager._writes.length - 1])
+      assert.equal(payload.cmd, 'hud')
+      assert.equal(payload.hud.modemLat, 1)
+      // stopping the interval halts further pushes
+      const n = vManager._writes.length
+      vManager.stopHudInterval()
+      clock.tick(3000)
+      assert.equal(vManager._writes.length, n)
+      clock.restore()
+    })
   })
 
   describe('#initialize() with active=true in settings', function () {
