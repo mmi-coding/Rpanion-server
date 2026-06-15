@@ -743,11 +743,12 @@ describe('PPPConnection', function () {
   // ── getPPPDataRate ──────────────────────────────────────────────────────────
 
   describe('getPPPDataRate', function () {
-    it('returns {rxRate:0, txRate:0} when not connected (no extra fields)', function () {
+    it('returns the zeroed full shape when not connected', function () {
       const ppp = new PPPConnection(mockSettings);
       ppp.isConnected = false;
       const r = ppp.getPPPDataRate();
-      assert.deepStrictEqual(r, { rxRate: 0, txRate: 0 });
+      // getPPPDataRate returns its full shape on every branch (strict-null refactor).
+      assert.deepStrictEqual(r, { rxRate: 0, txRate: 0, percentusedRx: 0, percentusedTx: 0 });
     });
 
     it('returns zeros with all four fields on first call (sets prevdata)', function () {

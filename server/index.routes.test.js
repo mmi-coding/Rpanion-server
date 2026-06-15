@@ -2206,7 +2206,7 @@ describe('WireGuard Hub route', function () {
       try {
         assert.equal(res.status, 200)
         assert.ok(res.body.script.startsWith('#!/usr/bin/env bash'))
-        assert.ok(res.body.script.includes('Endpoint = wg.example.com:51820'))
+        assert.ok(res.body.script.includes('Endpoint = $ENDPOINT:$WG_PORT')) // bash-var form; expands on the VPS
         assert.ok(res.body.script.includes('203.0.113.10'))
         done()
       } catch (e) { done(e) }

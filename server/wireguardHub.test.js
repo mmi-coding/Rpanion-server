@@ -26,7 +26,10 @@ describe('wireguardHub.generateScript()', function () {
     assert.ok(s.includes('WG_PORT=51820'))
     assert.ok(s.includes('SSH_PORT=22'))
     assert.ok(s.includes('ENDPOINT=wg.example.com'))
-    assert.ok(s.includes('Endpoint = wg.example.com:51820'))
+    // The client configs are written by an unquoted heredoc that runs on the VPS,
+    // so the script string keeps the bash-variable form (expands to
+    // wg.example.com:51820 at run time); ENDPOINT/WG_PORT are asserted above.
+    assert.ok(s.includes('Endpoint = $ENDPOINT:$WG_PORT'))
   })
 
   it('derives hub/pi/laptop addresses from the subnet base', function () {
