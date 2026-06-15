@@ -273,6 +273,9 @@ prompt). Add to the rpanion sudoers drop-in, e.g.:
 The `timedatectl set-timezone` sudoers grant is now shipped by `debian/postinst`
 (no manual step) — redeploy/reinstall the `.deb` so the drop-in is regenerated.
 
+- [x] **(Pi 4, 2026-06-15)** sudoers grant present; `setTimezone()`'s
+  `sudo timedatectl set-timezone <zone>` runs non-interactively as the `rpanion`
+  user (Paris→London→Paris round-trip verified, restored).
 - [ ] About page → **Time Zone**: the select is populated and defaults to the box's current zone
 - [ ] Pick a different zone → **Set Time Zone** → success message; `timedatectl` (and log timestamps) reflect the new zone
 - [ ] Reboot → the zone persists (no password prompt was needed for the apply)
@@ -282,6 +285,7 @@ The `timedatectl set-timezone` sudoers grant is now shipped by `debian/postinst`
 The HUD is drawn on raw video before encoding (like the timestamp), so it needs a
 re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 
+- [x] **(Pi 4, 2026-06-15)** Deployed code + Pi GStreamer: the `textoverlay name=hud0` pipeline reaches PLAYING through the x264 encoder and the stdin control channel updates the live overlay text (verified with `testsrc`; `textoverlay` present, `enc0` intact). No FC attached this pass, so the items below remain.
 - [ ] Stream from a CSI/MJPEG camera with **Telemetry HUD** enabled + FC connected → the readout appears top-left and tracks altitude / speed / heading / battery / mode / GPS live (~5 Hz), and is present in a recording and in a dumb viewer (VLC), with acceptable CPU on the Pi
 - [ ] Flight-mode label matches the FC's actual mode (spot-check across copter / plane / rover if available — `hudOverlay.mavlinkModeName`)
 - [ ] Select a pre-compressed **H264** USB source → the HUD toggle is disabled with the "not available" note (overlay correctly absent)

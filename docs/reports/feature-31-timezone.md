@@ -57,12 +57,20 @@ rpanion sudoers drop-in (alongside the existing `shutdown`/networking grants), s
 a fresh install / redeploy has it automatically — no manual step. (The original
 deploy lacked this, so an on-device redeploy is required to pick it up.)
 
-## Needs on-device
+## Verified on-device (Pi 4, 2026-06-15)
 
-- [ ] After redeploy, confirm the sudoers drop-in includes the
-  `timedatectl set-timezone` grant, then on the About page pick a new zone →
-  **Set Time Zone** → `timedatectl` reflects it (no password prompt); reboot →
-  zone persists.
+- [x] Redeployed; the `/etc/sudoers.d/allow-vpn-control` drop-in now contains the
+  `/usr/bin/timedatectl set-timezone *` grant.
+- [x] Exercised the **exact feature path** as the service user:
+  `sudo -u rpanion sudo -n timedatectl set-timezone Europe/London` ran
+  password-less, `timedatectl` reflected `Europe/London`, then restored to
+  `Europe/Paris` (the box's zone). So `setTimezone()`'s `sudo timedatectl …`
+  succeeds non-interactively on-device.
+- [x] `GET/POST /api/timezone` are served (401 unauthenticated — route present).
+
+Remaining (manual, needs an app login + a browser): click **Set Time Zone** on
+the About page and confirm the UI round-trip; reboot to confirm persistence
+(inherent to `timedatectl`).
 
 ## Related: upstream #228 (camera parameter control)
 

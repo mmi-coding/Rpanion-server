@@ -79,12 +79,22 @@ deliberately deferred.
   generated pipeline parses (`Gst.parse_launch`) with the `text` property settable
   (including newlines). Python is outside the JS coverage ratchet.
 
-## Needs on-device
+## Verified on-device (Pi 4, IMX708 attached, 2026-06-15)
 
-- [ ] On the Pi, stream from a CSI/MJPEG camera with the HUD enabled and a FC
-  connected → the readout appears and tracks altitude / speed / heading / battery /
-  mode / GPS live in a recording and in a dumb viewer (VLC), with acceptable CPU.
-- [ ] Confirm the HUD is correctly **absent** on a pre-compressed H264 USB source
-  (the toggle is disabled in the UI).
-- [ ] Verify the flight-mode label matches the FC's actual mode across a copter /
-  plane / rover (the `mavlinkModeName` maps).
+- [x] Deployed: `video-server.py` carries the HUD support and `hudOverlay.js`
+  (compiled) ships in the package; `textoverlay` is present in the Pi's GStreamer.
+- [x] On the Pi's **real GStreamer**, the deployed generator builds the
+  `… ! textoverlay name=hud0 ! … ! x264enc name=enc0 ! rtph264pay name=pay0`
+  pipeline, it reaches **PLAYING** (so the overlay→encoder chain negotiates), and
+  the stdin control channel updates the live overlay text
+  (`'' → 'ALT 124m  SPD 14.2'`) on the running pipeline. `enc0` is intact (bitrate
+  retune unaffected).
+
+Remaining (manual, needs an app login + a flight controller + a viewer): stream
+the IMX708 with the HUD enabled and a FC connected, and confirm real telemetry
+(alt/speed/heading/battery/mode/GPS) tracks in a recording / VLC with acceptable
+CPU; confirm the toggle is disabled on a pre-compressed H264 source; spot-check
+the `mavlinkModeName` label against a copter / plane / rover. No FC was connected
+during this pass, so the live MAVLink→overlay path is unverified end-to-end (the
+Node-side tap is fully unit-tested; the Python overlay + control channel are now
+verified on-device).
