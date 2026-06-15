@@ -184,6 +184,12 @@ class HudEditorPage extends basePage {
     });
   }
 
+  // set a graphic element's size multiplier (clamped 0.5–5×)
+  setElScale(type, value) {
+    const v = isNaN(value) ? 1 : Math.min(5, Math.max(0.5, value));
+    this.updateEl(type, { scale: v });
+  }
+
   setGlobal(patch) {
     this.setState({ global: { ...this.state.global, ...patch } });
   }
@@ -253,10 +259,10 @@ class HudEditorPage extends basePage {
 
   // a live mini-preview for the shape-only (graphic) elements, so the canvas is
   // WYSIWYG. The home arrow slowly rotates to show it tracks home like a compass.
-  renderGraphic(type) {
+  renderGraphic(type, scale = 1) {
     if (type === 'horizon') {
       return (
-        <svg width="90" height="50" viewBox="0 0 90 50" style={{ display: 'block' }}>
+        <svg width={90 * scale} height={50 * scale} viewBox="0 0 90 50" style={{ display: 'block' }}>
           <g transform="rotate(-14 45 25)">
             <line x1="-30" y1="25" x2="120" y2="25" stroke="#00e0a0" strokeWidth="2.5" />
             <line x1="20" y1="15" x2="70" y2="15" stroke="#00e0a0" strokeWidth="1.5" />
@@ -268,7 +274,7 @@ class HudEditorPage extends basePage {
     }
     if (type === 'compass') {
       return (
-        <svg width="120" height="26" viewBox="0 0 120 26" style={{ display: 'block' }}>
+        <svg width={120 * scale} height={26 * scale} viewBox="0 0 120 26" style={{ display: 'block' }}>
           {[['N', 20], ['30', 50], ['E', 80], ['60', 110]].map(([lbl, hx]) => (
             <g key={hx}>
               <line x1={hx} y1="12" x2={hx} y2="20" stroke="#00e0a0" strokeWidth="1.5" />
@@ -281,7 +287,7 @@ class HudEditorPage extends basePage {
     }
     // homeDir — rotating arrow
     return (
-      <svg width="34" height="34" viewBox="0 0 34 34" className="hud-home-arrow" style={{ display: 'block' }}>
+      <svg width={34 * scale} height={34 * scale} viewBox="0 0 34 34" className="hud-home-arrow" style={{ display: 'block' }}>
         <circle cx="17" cy="17" r="15" stroke="#00e0a0" strokeWidth="1.5" fill="none" opacity="0.5" />
         <path d="M17 4 L9 28 L17 22 L25 28 Z" fill="#ffcf40" />
       </svg>
@@ -303,7 +309,7 @@ class HudEditorPage extends basePage {
       return (
         <div key={e.type} onMouseDown={this.startDrag(e.type)} data-eltype={e.type}
           style={{ ...baseStyle, border: '1px solid ' + (selected ? '#4fa3ff' : 'rgba(0,224,160,0.5)') }}>
-          {this.renderGraphic(e.type)}
+          {this.renderGraphic(e.type, e.scale || 1)}
         </div>
       );
     }
@@ -329,7 +335,19 @@ class HudEditorPage extends basePage {
     }
     const cat = this.catalogFor(type);
     if (cat.graphic) {
-      return <p className="text-muted"><small>Selected: <b>{cat.label}</b> — graphic elements have no text style. Drag it to reposition.</small></p>;
+      const gscale = (this.getEl(type) || {}).scale || 1;
+      return (
+        <div style={{ border: '1px solid #2a3340', borderRadius: 4, padding: '8px 12px', marginBottom: 12 }}>
+          <div style={{ marginBottom: 6 }}><b>{cat.label}</b> <span className="text-muted"><small>(graphic element — drag to position)</small></span></div>
+          <Form.Group>
+            <Form.Label className="mb-0"><small>Size<HelpTip text="Scale this graphic, 0.5–5×. Applies to the preview and the burned-in HUD." /></small></Form.Label>
+            <div className="d-flex align-items-center" style={{ gap: 10 }}>
+              <Form.Range min="0.5" max="5" step="0.1" value={gscale} onChange={ev => this.setElScale(type, parseFloat(ev.target.value))} data-testid="el-scale" style={{ width: 220 }} />
+              <span style={{ width: 40 }}>{gscale.toFixed(1)}×</span>
+            </div>
+          </Form.Group>
+        </div>
+      );
     }
     const el = this.getEl(type) || {};
     const g = this.state.global;

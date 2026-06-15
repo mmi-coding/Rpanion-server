@@ -190,8 +190,16 @@ for (const e of HUD_ELEMENTS) {
   DEFAULT_PLACEMENT[e.type] = { enabled: e.enabled, x: e.x, y: e.y, icon: e.icon }
 }
 
-// graphic elements draw shapes (no value text / icon / style)
+// graphic elements draw shapes (no value text / icon / style) — they carry a
+// `scale` multiplier instead of a text size. Defaults are >1 so they're prominent
+// out of the box (the horizon especially); the editor lets the user dial 0.5–5.
 const GRAPHIC_TYPES = new Set(['horizon', 'compass', 'homeDir'])
+const GRAPHIC_DEFAULT_SCALE: { [k: string]: number } = { horizon: 1.8, compass: 1.4, homeDir: 1.4 }
+
+function validScale (v: any, def: number): number {
+  const n = Number(v)
+  return isFinite(n) ? +Math.min(5, Math.max(0.5, n)).toFixed(2) : def
+}
 
 function hudElements () {
   // catalog metadata the editor needs (placement comes from the saved layout).
@@ -261,7 +269,13 @@ function validateElementStyle (e: any) {
 function defaultHudLayout () {
   return {
     global: { ...DEFAULT_GLOBAL_STYLE },
-    elements: HUD_ELEMENTS.map((e) => ({ type: e.type, ...DEFAULT_PLACEMENT[e.type] }))
+    elements: HUD_ELEMENTS.map((e) => {
+      const out: any = { type: e.type, ...DEFAULT_PLACEMENT[e.type] }
+      if (GRAPHIC_TYPES.has(e.type)) {
+        out.scale = GRAPHIC_DEFAULT_SCALE[e.type]
+      }
+      return out
+    })
   }
 }
 
@@ -287,17 +301,13 @@ function validateHudLayout (layout: any) {
   const elements = HUD_ELEMENTS.map((cat) => {
     const e = known[cat.type]
     const d = DEFAULT_PLACEMENT[cat.type]
-    if (!e) {
-      return { type: cat.type, enabled: d.enabled, x: d.x, y: d.y, icon: d.icon }
+    const out: any = e
+      ? { type: cat.type, enabled: !!e.enabled, icon: !!e.icon, x: clamp01(e.x), y: clamp01(e.y), ...validateElementStyle(e) }
+      : { type: cat.type, enabled: d.enabled, x: d.x, y: d.y, icon: d.icon }
+    if (GRAPHIC_TYPES.has(cat.type)) {
+      out.scale = validScale(e ? e.scale : undefined, GRAPHIC_DEFAULT_SCALE[cat.type])
     }
-    return {
-      type: cat.type,
-      enabled: !!e.enabled,
-      icon: !!e.icon,
-      x: clamp01(e.x),
-      y: clamp01(e.y),
-      ...validateElementStyle(e)
-    }
+    return out
   })
   return { global: validateGlobalStyle(layout && layout.global), elements }
 }
