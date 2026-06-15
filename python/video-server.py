@@ -246,7 +246,16 @@ def _hud_icon(t, x, y):
     return '<circle cx="{1}" cy="{2}" r="3" fill="{0}"/>'.format(col, x + 10, y - 4)
 
 
-def _horizon_svg(cx, cy, f):
+def _scaled(content, cx, cy, scale):
+    # uniformly scale a graphic about its centre (cx, cy) so the same drawing code
+    # can be made bigger/smaller from the editor's per-element scale
+    if not scale or abs(scale - 1.0) < 1e-3:
+        return content
+    return '<g transform="translate({0} {1}) scale({2}) translate({3} {4})">{5}</g>'.format(
+        cx, cy, scale, -cx, -cy, content)
+
+
+def _horizon_svg(cx, cy, f, scale=1):
     roll = f.get("roll") or 0
     pitch = f.get("pitch") or 0
     ppd = 8
@@ -260,10 +269,10 @@ def _horizon_svg(cx, cy, f):
                '{4}</g>').format(-roll, cx, cy, pitch * ppd, "".join(rungs), cx - 1000, cx + 1000)
     marker = ('<path d="M {0} {1} l -70 0 l 20 22 M {0} {1} l 70 0 l -20 22" '
               'stroke="#ffcf40" stroke-width="5" fill="none"/>').format(cx, cy)
-    return horizon + marker
+    return _scaled(horizon + marker, cx, cy, scale)
 
 
-def _compass_svg(cx, cy, f):
+def _compass_svg(cx, cy, f, scale=1):
     # a horizontal heading tape centred at cx,cy with a fixed pointer
     hdg = f.get("hdg")
     if hdg is None:
@@ -278,22 +287,23 @@ def _compass_svg(cx, cy, f):
         lbl = {0: "N", 90: "E", 180: "S", 270: "W"}.get(deg, str(deg))
         ticks.append('<text x="{0}" y="{1}" fill="#00e0a0" font-size="22" font-family="monospace" text-anchor="middle">{2}</text>'.format(hx, cy - 16, lbl))
     pointer = '<path d="M {0} {1} l -8 -12 l 16 0 Z" fill="#ffcf40"/>'.format(cx, cy + 12)
-    return '<g>' + "".join(ticks) + pointer + '</g>'
+    return _scaled('<g>' + "".join(ticks) + pointer + '</g>', cx, cy, scale)
 
 
-def _homedir_svg(cx, cy, f):
+def _homedir_svg(cx, cy, f, scale=1):
     # an arrow pointing toward home, relative to the current heading
     homeDir = f.get("homeDir")
     hdg = f.get("hdg") or 0
     rel = 0 if homeDir is None else (homeDir - hdg)
-    return ('<g transform="rotate({0} {1} {2})">'
-            '<path d="M {1} {3} L {4} {5} L {6} {5} Z" fill="#ffcf40"/></g>').format(
+    arrow = ('<g transform="rotate({0} {1} {2})">'
+             '<path d="M {1} {3} L {4} {5} L {6} {5} Z" fill="#ffcf40"/></g>').format(
         rel, cx, cy, cy - 22, cx - 14, cy + 14, cx + 14)
+    return _scaled(arrow, cx, cy, scale)
 
 
 # fallback layout if none has been pushed yet (mirrors hudOverlay.defaultHudLayout)
 _DEFAULT_HUD_ELEMENTS = [
-    {"type": "horizon", "enabled": True, "x": 0.5, "y": 0.5, "icon": False},
+    {"type": "horizon", "enabled": True, "x": 0.5, "y": 0.5, "icon": False, "scale": 1.8},
     {"type": "alt", "enabled": True, "x": 0.86, "y": 0.06, "icon": True},
     {"type": "spd", "enabled": True, "x": 0.04, "y": 0.06, "icon": True},
     {"type": "hdg", "enabled": True, "x": 0.46, "y": 0.06, "icon": False},
@@ -324,14 +334,15 @@ def buildHudSvg(layout, fields):
         t = el.get("type")
         x = (el.get("x") or 0) * 1600
         y = (el.get("y") or 0) * 900
+        scale = el.get("scale") or 1
         if t == "horizon":
-            parts.append(_horizon_svg(x, y, fields))
+            parts.append(_horizon_svg(x, y, fields, scale))
             continue
         if t == "compass":
-            parts.append(_compass_svg(x, y, fields))
+            parts.append(_compass_svg(x, y, fields, scale))
             continue
         if t == "homeDir":
-            parts.append(_homedir_svg(x, y, fields))
+            parts.append(_homedir_svg(x, y, fields, scale))
             continue
         font = el.get("font") or g_font
         size = int(el.get("size") or g_size)

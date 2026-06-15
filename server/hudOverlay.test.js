@@ -128,6 +128,29 @@ describe('HUD overlay helpers (#173)', function () {
       assert.deepEqual(g, { font: 'monospace', size: 34, color: '#ffffff' })
     })
 
+    it('graphic elements carry a default scale; text elements do not', function () {
+      const els = hud.defaultHudLayout().elements
+      assert.equal(els.find(e => e.type === 'horizon').scale, 1.8)
+      assert.equal(els.find(e => e.type === 'compass').scale, 1.4)
+      assert.equal(els.find(e => e.type === 'homeDir').scale, 1.4)
+      assert.ok(!('scale' in els.find(e => e.type === 'alt')))
+    })
+
+    it('#validateHudLayout() validates + clamps the graphic scale', function () {
+      const out = hud.validateHudLayout({ elements: [
+        { type: 'horizon', enabled: true, x: 0.5, y: 0.5, scale: 3.25 },
+        { type: 'compass', enabled: true, x: 0.5, y: 0.1, scale: 99 },  // clamp → 5
+        { type: 'homeDir', enabled: true, x: 0.5, y: 0.9, scale: 0.1 }, // clamp → 0.5
+        { type: 'alt', enabled: true, x: 0.8, y: 0.1, scale: 2 }        // text: scale ignored
+      ] })
+      assert.equal(out.elements.find(e => e.type === 'horizon').scale, 3.25)
+      assert.equal(out.elements.find(e => e.type === 'compass').scale, 5)
+      assert.equal(out.elements.find(e => e.type === 'homeDir').scale, 0.5)
+      assert.ok(!('scale' in out.elements.find(e => e.type === 'alt')))
+      // a non-numeric scale falls back to the per-element default
+      assert.equal(hud.validateHudLayout({ elements: [{ type: 'horizon', enabled: true, x: 0.5, y: 0.5, scale: 'big' }] }).elements.find(e => e.type === 'horizon').scale, 1.8)
+    })
+
     it('#validateHudLayout() normalises the global text style', function () {
       // valid values pass through
       const ok = hud.validateHudLayout({ global: { font: 'serif', size: 50, color: '#0af' }, elements: [] })

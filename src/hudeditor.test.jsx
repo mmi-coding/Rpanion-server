@@ -141,9 +141,10 @@ describe('#HudEditorPage()', function () {
     await page.flush()
     // no selection → prompt to pick an element
     expect(page.container.textContent).toContain('Click an element')
-    // a graphic element has no text style
+    // a graphic element shows a size (scale) control, not text style
     act(() => { getRef().setState({ selectedType: 'horizon' }) })
-    expect(page.container.textContent).toContain('graphic elements have no text style')
+    expect(page.container.textContent).toContain('graphic element')
+    expect(page.container.querySelector('[data-testid="el-scale"]')).toBeTruthy()
     // select alt (a text element with a colour override from the fixture)
     act(() => { getRef().setState({ selectedType: 'alt' }) })
     selectValue(page.container.querySelector('[data-testid="el-font"]'), 'sans-serif')
@@ -185,6 +186,26 @@ describe('#HudEditorPage()', function () {
     expect(getRef().getEl('alt').size).toBe(44)
     act(() => { getRef().setElStyle('alt', 'size', NaN) })
     expect('size' in getRef().getEl('alt')).toBe(false)
+    page.unmount()
+  })
+
+  test('graphic elements have a size (scale) control that resizes the preview', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    act(() => { getRef().setState({ selectedType: 'horizon' }) })
+    const range = page.container.querySelector('[data-testid="el-scale"]')
+    expect(range).toBeTruthy()
+    page.setValue(range, '3')
+    expect(getRef().getEl('horizon').scale).toBe(3)
+    // the horizon chip SVG grew with the scale (width = 90 × scale)
+    expect(Number(page.container.querySelector('[data-eltype="horizon"] svg').getAttribute('width'))).toBeCloseTo(270)
+    // setElScale clamps out-of-range and NaN
+    act(() => { getRef().setElScale('horizon', 99) }); expect(getRef().getEl('horizon').scale).toBe(5)
+    act(() => { getRef().setElScale('horizon', 0.1) }); expect(getRef().getEl('horizon').scale).toBe(0.5)
+    act(() => { getRef().setElScale('horizon', NaN) }); expect(getRef().getEl('horizon').scale).toBe(1)
+    // a graphic with no layout entry → the scale panel still renders (defaults)
+    act(() => { getRef().setState({ selectedType: 'compass', elements: getRef().state.elements.filter(e => e.type !== 'compass') }) })
+    expect(page.container.querySelector('[data-testid="el-scale"]')).toBeTruthy()
     page.unmount()
   })
 
