@@ -317,3 +317,11 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 
 - [ ] With a primary stream + a secondary stream running, connect QGroundControl (which uses the MAVLink camera protocol) → it discovers BOTH streams (count = 2) and can select either; each stream's URI / resolution / encoding is correct
 - [ ] A request for a specific streamId returns only that stream
+
+## Feature #173: customizable HUD / OSD editor
+
+- [ ] HUD Editor page: drag elements on the black canvas, toggle stats + icons, Save → with a graphic HUD streaming (FC connected), the live overlay matches the layout (positions, which elements, icons) and updates live on Save
+- [ ] Untick the Artificial Horizon → text-only OSD; re-tick + drag it → recentres
+- [ ] Each new stat (AGL, airspeed, climb, throttle, current, arm state) shows real values from the FC
+- [ ] Reset to Defaults restores the default layout
+- [ ] Layout persists across a stream restart / reboot (saved in settings)

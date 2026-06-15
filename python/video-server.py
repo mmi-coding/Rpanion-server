@@ -74,45 +74,133 @@ def hudOverlayElement():
     return "textoverlay name=hud0 text=\"\" valignment=top halignment=left font-desc=\"Monospace, 12\" shaded-background=true ypad=4 xpad=8"
 
 
-def buildHudSvg(f):
-    # an artificial-horizon HUD as an SVG string (16:9 viewBox; rsvgoverlay
-    # fit-to-frame scales it onto the video). f is the telemetry field dict.
-    def num(v, suffix, digits=0):
-        if v is None:
-            return "--"
-        return ("{0:." + str(digits) + "f}").format(v) + suffix
+def _hud_num(v, suffix, digits=0):
+    if v is None:
+        return "--"
+    return ("{0:.%df}" % digits).format(v) + suffix
+
+
+_GPS_FIX = {0: "NO", 1: "NO", 2: "2D", 3: "3D", 4: "DGPS", 5: "RTKf", 6: "RTKx", 7: "STAT", 8: "PPP"}
+
+
+def _hud_escape(s):
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def hudElementText(t, f):
+    # the value string for one OSD element type. Mirrors the labels in
+    # server/hudOverlay.ts. f is the telemetry field dict.
+    if t == "alt":
+        return "ALT " + _hud_num(f.get("alt"), "m")
+    if t == "altRel":
+        return "AGL " + _hud_num(f.get("altRel"), "m")
+    if t == "spd":
+        return "SPD " + _hud_num(f.get("spd"), "", 1)
+    if t == "airspeed":
+        return "AIR " + _hud_num(f.get("airspeed"), "", 1)
+    if t == "hdg":
+        return "HDG " + ("--" if f.get("hdg") is None else str(int(round(f.get("hdg")))))
+    if t == "climb":
+        return "VS " + _hud_num(f.get("climb"), "", 1)
+    if t == "throttle":
+        return "THR " + ("--" if f.get("throttle") is None else str(int(round(f.get("throttle")))) + "%")
+    if t == "batV":
+        return "BAT " + _hud_num(f.get("batV"), "V", 1)
+    if t == "batPct":
+        return ("--" if f.get("batPct") is None else str(f.get("batPct"))) + "%"
+    if t == "current":
+        return _hud_num(f.get("current"), "A", 1)
+    if t == "mode":
+        return f.get("mode") or "MODE --"
+    if t == "armed":
+        return "ARMED" if f.get("armed") else "DISARM"
+    if t == "gps":
+        fix = f.get("gpsFix")
+        sats = f.get("gpsSats")
+        return "GPS " + ("--" if fix is None else _GPS_FIX.get(fix, "?")) + "/" + ("--" if sats is None else str(sats))
+    return ""
+
+
+def _hud_icon(t, x, y):
+    # a small (~30px) glyph for an OSD element, drawn just left of its value.
+    # Several element types share a concept (battery, gauge), so map to a glyph.
+    col = "#7fe9c8"
+    if t in ("batV", "batPct", "current"):
+        return ('<g stroke="{0}" stroke-width="3" fill="none">'
+                '<rect x="{1}" y="{2}" width="26" height="16" rx="2"/>'
+                '<rect x="{3}" y="{4}" width="3" height="8" fill="{0}"/></g>').format(col, x, y - 8, x + 26, y - 4)
+    if t in ("alt", "altRel"):
+        return '<path d="M {1} {2} l 12 -22 l 12 22 Z" fill="{0}"/>'.format(col, x, y + 2)
+    if t in ("climb",):
+        return '<path d="M {1} {2} l 12 -20 l 12 20" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
+    if t in ("spd", "airspeed", "throttle"):
+        return '<path d="M {1} {2} a 14 14 0 0 1 28 0" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
+    if t == "hdg":
+        return ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="13"/>'
+                '<path d="M {1} {3} l 4 8 l -8 0 Z" fill="{0}" stroke="none"/></g>').format(col, x + 13, y - 4, y - 14)
+    if t == "gps":
+        return ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="4" fill="{0}"/>'
+                '<path d="M {3} {4} a 10 10 0 0 1 16 0"/></g>').format(col, x + 13, y - 4, x + 5, y - 4)
+    if t == "mode":
+        return '<circle cx="{1}" cy="{2}" r="12" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x + 13, y - 4)
+    if t == "armed":
+        return '<path d="M {1} {2} l 13 -6 l 13 6 v 10 l -13 8 l -13 -8 Z" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 14)
+    return '<circle cx="{1}" cy="{2}" r="3" fill="{0}"/>'.format(col, x + 10, y - 4)
+
+
+def _horizon_svg(cx, cy, f):
     roll = f.get("roll") or 0
     pitch = f.get("pitch") or 0
-    cx, cy = 800, 450
-    ppd = 8  # pixels per degree of pitch
-    pitch_off = pitch * ppd
+    ppd = 8
     rungs = []
     for d in (-20, -10, 10, 20):
-        y = cy + d * ppd
-        rungs.append('<line x1="{0}" y1="{1}" x2="{2}" y2="{1}" stroke="#00e0a0" stroke-width="3"/>'.format(cx - 90, y, cx + 90))
-        rungs.append('<text x="{0}" y="{1}" fill="#00e0a0" font-size="26" font-family="monospace">{2}</text>'.format(cx + 100, y + 8, abs(d)))
+        ry = cy + d * ppd
+        rungs.append('<line x1="{0}" y1="{1}" x2="{2}" y2="{1}" stroke="#00e0a0" stroke-width="3"/>'.format(cx - 90, ry, cx + 90))
+        rungs.append('<text x="{0}" y="{1}" fill="#00e0a0" font-size="26" font-family="monospace">{2}</text>'.format(cx + 100, ry + 8, abs(d)))
     horizon = ('<g transform="rotate({0} {1} {2}) translate(0 {3})">'
-               '<line x1="-200" y1="{2}" x2="1800" y2="{2}" stroke="#00e0a0" stroke-width="4"/>'
-               '{4}</g>').format(-roll, cx, cy, pitch_off, "".join(rungs))
-    # fixed aircraft marker + corner readouts
+               '<line x1="{5}" y1="{2}" x2="{6}" y2="{2}" stroke="#00e0a0" stroke-width="4"/>'
+               '{4}</g>').format(-roll, cx, cy, pitch * ppd, "".join(rungs), cx - 1000, cx + 1000)
     marker = ('<path d="M {0} {1} l -70 0 l 20 22 M {0} {1} l 70 0 l -20 22" '
               'stroke="#ffcf40" stroke-width="5" fill="none"/>').format(cx, cy)
-    readout = (
-        '<text x="40" y="60" fill="#ffffff" font-size="34" font-family="monospace">SPD {0}</text>'
-        '<text x="1180" y="60" fill="#ffffff" font-size="34" font-family="monospace">ALT {1}</text>'
-        '<text x="660" y="60" fill="#ffffff" font-size="34" font-family="monospace">HDG {2}</text>'
-        '<text x="40" y="860" fill="#ffffff" font-size="34" font-family="monospace">{3}</text>'
-        '<text x="1100" y="860" fill="#ffffff" font-size="34" font-family="monospace">BAT {4} {5}</text>'
-    ).format(
-        num(f.get("spd"), "", 1),
-        num(f.get("alt"), "m"),
-        "--" if f.get("hdg") is None else str(int(round(f.get("hdg")))),
-        (f.get("mode") or "MODE --"),
-        num(f.get("batV"), "V", 1),
-        "--" if f.get("batPct") is None else (str(f.get("batPct")) + "%")
-    )
-    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">'
-            + horizon + marker + readout + '</svg>')
+    return horizon + marker
+
+
+# fallback layout if none has been pushed yet (mirrors hudOverlay.defaultHudLayout)
+_DEFAULT_HUD_ELEMENTS = [
+    {"type": "horizon", "enabled": True, "x": 0.5, "y": 0.5, "icon": False},
+    {"type": "alt", "enabled": True, "x": 0.86, "y": 0.06, "icon": True},
+    {"type": "spd", "enabled": True, "x": 0.04, "y": 0.06, "icon": True},
+    {"type": "hdg", "enabled": True, "x": 0.46, "y": 0.06, "icon": False},
+    {"type": "batV", "enabled": True, "x": 0.78, "y": 0.92, "icon": True},
+    {"type": "mode", "enabled": True, "x": 0.04, "y": 0.92, "icon": False},
+    {"type": "gps", "enabled": True, "x": 0.46, "y": 0.92, "icon": True},
+]
+
+
+def buildHudSvg(layout, fields):
+    # a customizable OSD as an SVG string (16:9 viewBox; rsvgoverlay fit-to-frame
+    # scales it onto the video). layout = {elements:[{type,enabled,x,y,icon}]}.
+    fields = fields or {}
+    elements = (layout or {}).get("elements") if layout else None
+    if not elements:
+        elements = _DEFAULT_HUD_ELEMENTS
+    parts = []
+    for el in elements:
+        if not el.get("enabled"):
+            continue
+        t = el.get("type")
+        x = (el.get("x") or 0) * 1600
+        y = (el.get("y") or 0) * 900
+        if t == "horizon":
+            parts.append(_horizon_svg(x, y, fields))
+            continue
+        tx = x
+        if el.get("icon"):
+            parts.append(_hud_icon(t, x, y))
+            tx = x + 42
+        parts.append('<text x="{0}" y="{1}" fill="#ffffff" font-size="34" font-family="monospace">{2}</text>'.format(
+            tx, y + 10, _hud_escape(hudElementText(t, fields))))
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">' + "".join(parts) + '</svg>'
 
 
 def gopFrames(framerate) -> int:
@@ -378,7 +466,7 @@ live_selectors = []
 live_pipelines = []
 # latest HUD overlay text (#173), so a client connecting after the last update
 # still shows the current readout
-hud_state = {"text": "", "svg": ""}
+hud_state = {"text": "", "layout": None, "fields": {}}
 
 
 def applySwitchToSelector(sel):
@@ -437,30 +525,37 @@ def setHudElement(el):
     try:
         kind = el.get_factory().get_name()
         if kind == "rsvgoverlay":
-            if hud_state["svg"] != "":
-                el.set_property("data", hud_state["svg"])
+            # re-render the OSD from the current layout + latest telemetry
+            el.set_property("data", buildHudSvg(hud_state["layout"], hud_state["fields"]))
         else:
             el.set_property("text", hud_state["text"])
     except Exception as e:
         print("HUD error: {0}".format(e))
 
 
+def _refreshHud():
+    for pipe in list(live_pipelines):
+        el = pipe.get_by_name("hud0")
+        if el is not None:
+            setHudElement(el)
+
+
 def doHudText(text):
     # text-mode HUD: update the textoverlay readout on every running pipeline
     hud_state["text"] = text
-    for pipe in list(live_pipelines):
-        el = pipe.get_by_name("hud0")
-        if el is not None:
-            setHudElement(el)
+    _refreshHud()
 
 
 def doHudGraphic(fields):
-    # graphic-mode HUD: render an artificial-horizon SVG and feed every rsvgoverlay
-    hud_state["svg"] = buildHudSvg(fields)
-    for pipe in list(live_pipelines):
-        el = pipe.get_by_name("hud0")
-        if el is not None:
-            setHudElement(el)
+    # graphic-mode HUD: store the latest telemetry and re-render
+    hud_state["fields"] = fields
+    _refreshHud()
+
+
+def doHudLayout(layout):
+    # graphic-mode HUD: store the OSD layout (from the editor) and re-render
+    hud_state["layout"] = layout
+    _refreshHud()
 
 
 def applyHudToPipeline(element):
@@ -482,6 +577,8 @@ def handleControlLine(line):
             doHudText(cmd.get("text"))
         elif cmd.get("cmd") == "hud" and isinstance(cmd.get("hud"), dict):
             doHudGraphic(cmd.get("hud"))
+        elif cmd.get("cmd") == "hudlayout" and isinstance(cmd.get("layout"), dict):
+            doHudLayout(cmd.get("layout"))
         else:
             print("Unknown control command: {0}".format(line.strip()))
     except ValueError:

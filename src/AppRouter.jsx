@@ -21,6 +21,7 @@ import UserManagement from './userManagement.jsx'
 import PPPPage from './ppp.jsx'
 import CameraSwitcherPage from './cameraswitcher.jsx'
 import SecondaryStreamsPage from './secondarystreams.jsx'
+import HudEditorPage from './hudeditor.jsx'
 import PipelineEditorPage from './pipelineeditor.jsx'
 import LTEModemPage from './ltemodem.jsx'
 import CellularTuningPage from './cellulartuning.jsx'
@@ -43,6 +44,7 @@ const NAV_GROUPS = [
   { id: 'camera', label: 'Camera & Video', items: [
     { to: '/video', code: 'VID', label: 'Photo and Video' },
     { to: '/secondarystreams', code: 'SEC', label: 'Secondary Streams' },
+    { to: '/hudeditor', code: 'HUD', label: 'HUD Editor' },
     { to: '/cameraswitcher', code: 'CAM', label: 'Camera Switcher' },
     { to: '/pipelineeditor', code: 'PIP', label: 'Video Pipeline Editor' },
     { to: '/cellulartuning', code: 'CVT', label: 'Cellular Video Tuning' },
@@ -218,6 +220,7 @@ function AppRouter () {
             <Route exact path="/about" element={<About />} />
             <Route exact path="/video" element={<VideoPage />} />
             <Route exact path="/secondarystreams" element={<SecondaryStreamsPage />} />
+            <Route exact path="/hudeditor" element={<HudEditorPage />} />
             <Route exact path="/cameraswitcher" element={<CameraSwitcherPage />} />
             <Route exact path="/pipelineeditor" element={<PipelineEditorPage />} />
             <Route exact path="/ltemodem" element={<LTEModemPage />} />

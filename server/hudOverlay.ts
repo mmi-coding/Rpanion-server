@@ -56,11 +56,17 @@ function gpsFixName (fixType: number): string {
 
 interface HudData {
   alt: number | null
+  altRel: number | null
   spd: number | null
+  airspeed: number | null
   hdg: number | null
+  climb: number | null
+  throttle: number | null
   batV: number | null
   batPct: number | null
+  current: number | null
   mode: string | null
+  armed: boolean | null
   gpsFix: number | null
   gpsSats: number | null
   roll: number | null
@@ -68,7 +74,96 @@ interface HudData {
 }
 
 function emptyHudData (): HudData {
-  return { alt: null, spd: null, hdg: null, batV: null, batPct: null, mode: null, gpsFix: null, gpsSats: null, roll: null, pitch: null }
+  return {
+    alt: null, altRel: null, spd: null, airspeed: null, hdg: null, climb: null,
+    throttle: null, batV: null, batPct: null, current: null, mode: null, armed: null,
+    gpsFix: null, gpsSats: null, roll: null, pitch: null
+  }
+}
+
+// The catalog of customizable OSD elements (#173 "professional HUD"). The editor
+// (frontend) reads this list (label + a sample value, for the draggable chips);
+// video-server.py has a matching renderer (label/unit/icon glyph) keyed on `type`.
+const HUD_ELEMENTS = [
+  { type: 'horizon', label: 'Artificial Horizon', sample: '' },
+  { type: 'alt', label: 'Altitude (MSL)', sample: '124m' },
+  { type: 'altRel', label: 'Altitude (AGL)', sample: '38m' },
+  { type: 'spd', label: 'Ground Speed', sample: '14.2m/s' },
+  { type: 'airspeed', label: 'Airspeed', sample: '15.1m/s' },
+  { type: 'hdg', label: 'Heading', sample: '271°' },
+  { type: 'climb', label: 'Climb Rate', sample: '0.5m/s' },
+  { type: 'throttle', label: 'Throttle', sample: '45%' },
+  { type: 'batV', label: 'Battery Voltage', sample: '15.8V' },
+  { type: 'batPct', label: 'Battery Remaining', sample: '62%' },
+  { type: 'current', label: 'Current', sample: '8.4A' },
+  { type: 'mode', label: 'Flight Mode', sample: 'AUTO' },
+  { type: 'armed', label: 'Arm State', sample: 'ARMED' },
+  { type: 'gps', label: 'GPS', sample: '3D/11' }
+]
+
+// element type → default { enabled, x, y, icon }. x/y are 0..1 fractions of the
+// frame. Defaults roughly mirror the original fixed graphic HUD.
+const DEFAULT_PLACEMENT: { [k: string]: { enabled: boolean; x: number; y: number; icon: boolean } } = {
+  horizon: { enabled: true, x: 0.5, y: 0.5, icon: false },
+  alt: { enabled: true, x: 0.86, y: 0.06, icon: true },
+  altRel: { enabled: false, x: 0.86, y: 0.12, icon: true },
+  spd: { enabled: true, x: 0.04, y: 0.06, icon: true },
+  airspeed: { enabled: false, x: 0.04, y: 0.12, icon: true },
+  hdg: { enabled: true, x: 0.46, y: 0.06, icon: false },
+  climb: { enabled: false, x: 0.04, y: 0.18, icon: true },
+  throttle: { enabled: false, x: 0.04, y: 0.24, icon: true },
+  batV: { enabled: true, x: 0.78, y: 0.92, icon: true },
+  batPct: { enabled: false, x: 0.78, y: 0.86, icon: true },
+  current: { enabled: false, x: 0.78, y: 0.80, icon: true },
+  mode: { enabled: true, x: 0.04, y: 0.92, icon: false },
+  armed: { enabled: false, x: 0.04, y: 0.86, icon: true },
+  gps: { enabled: true, x: 0.46, y: 0.92, icon: true }
+}
+
+function hudElements () {
+  return HUD_ELEMENTS
+}
+
+function defaultHudLayout () {
+  return {
+    elements: HUD_ELEMENTS.map((e) => ({ type: e.type, ...DEFAULT_PLACEMENT[e.type] }))
+  }
+}
+
+function clamp01 (v: any): number {
+  const n = Number(v)
+  if (!isFinite(n)) {
+    return 0
+  }
+  return Math.min(1, Math.max(0, n))
+}
+
+// Normalize a layout from the editor / settings: keep only known element types,
+// coerce flags to booleans, clamp positions to the frame. Always returns the full
+// element set (missing ones filled from the defaults) so the renderer is complete.
+function validateHudLayout (layout: any) {
+  const known: { [k: string]: any } = {}
+  const incoming = (layout && Array.isArray(layout.elements)) ? layout.elements : []
+  for (const e of incoming) {
+    if (e && typeof e.type === 'string' && DEFAULT_PLACEMENT[e.type]) {
+      known[e.type] = e
+    }
+  }
+  const elements = HUD_ELEMENTS.map((cat) => {
+    const e = known[cat.type]
+    const d = DEFAULT_PLACEMENT[cat.type]
+    if (!e) {
+      return { type: cat.type, enabled: d.enabled, x: d.x, y: d.y, icon: d.icon }
+    }
+    return {
+      type: cat.type,
+      enabled: !!e.enabled,
+      icon: !!e.icon,
+      x: clamp01(e.x),
+      y: clamp01(e.y)
+    }
+  })
+  return { elements }
 }
 
 function num (v: number | null, digits: number, suffix: string): string {
@@ -85,4 +180,4 @@ function formatHudText (hud: HudData): string {
   return line1 + '\n' + line2 + '\n' + line3
 }
 
-export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData }
+export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, defaultHudLayout, validateHudLayout }
