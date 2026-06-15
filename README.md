@@ -6,7 +6,18 @@
 
 It runs on a Raspberry Pi carried by the drone and serves a web interface to configure MAVLink telemetry, HD video, networking, cellular modems and VPNs — so you can fly and stream over 4G/LTE (including behind carrier-grade NAT) to Mission Planner from anywhere.
 
-> **Note on screenshots/docs:** the upstream user documentation at <https://www.docs.rpanion.com/software/rpanion-server> covers the shared base. Fork-specific features are documented under [`docs/`](docs/). The UI has been redesigned (see [Ground Station theme](docs/GROUND-STATION-THEME.md)).
+<p align="center">
+  <img src="images/dashboard-dark.png" width="48%" alt="Rpanion Server Plus — dashboard (dark theme)">
+  &nbsp;
+  <img src="images/dashboard-light.png" width="48%" alt="Rpanion Server Plus — dashboard (light theme)">
+</p>
+<p align="center">
+  <img src="images/mobile.png" width="26%" alt="Rpanion Server Plus — mobile responsive layout">
+  <br>
+  <em>The redesigned, self-documenting "Ground Station" web UI — light/dark toggle, collapsible categories, mobile-responsive (shown with sample data). See <a href="docs/GROUND-STATION-THEME.md">GROUND-STATION-THEME.md</a>.</em>
+</p>
+
+> The upstream user documentation at <https://www.docs.rpanion.com/software/rpanion-server> covers the shared base; fork-specific features are documented under [`docs/`](docs/).
 
 ## What this fork adds
 
