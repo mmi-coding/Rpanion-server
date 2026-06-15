@@ -84,6 +84,63 @@ describe('About Functions', function () {
     })
   })
 
+  describe('#getLiveStats()', function () {
+    it('returns CPU/temp/mem/disk/uptime stats', function (done) {
+      sinon.stub(si, 'get').resolves({
+        currentLoad: { currentLoad: 42.6 },
+        cpuTemperature: { main: 55.3 },
+        mem: { total: 4 * 1024 * 1024 * 1024, available: 1 * 1024 * 1024 * 1024 },
+        fsSize: [{ mount: '/boot', size: 1e9, used: 1e8 }, { mount: '/', size: 32 * 1024 * 1024 * 1024, used: 8 * 1024 * 1024 * 1024 }],
+        time: { uptime: 3661 }
+      })
+      aboutPage.getLiveStats(function (stats, err) {
+        try {
+          assert.equal(err, null)
+          assert.equal(stats.cpuLoad, 43)
+          assert.equal(stats.cpuTempC, 55)
+          assert.equal(stats.memUsedMB, 3072)
+          assert.equal(stats.memTotalMB, 4096)
+          assert.equal(stats.diskUsedGB, 8)
+          assert.equal(stats.diskTotalGB, 32)
+          assert.equal(stats.uptimeSec, 3661)
+          done()
+        } catch (e) { done(e) }
+      })
+    })
+
+    it('handles a missing root mount and unavailable temperature', function (done) {
+      sinon.stub(si, 'get').resolves({
+        currentLoad: { currentLoad: 5 },
+        cpuTemperature: { main: -1 }, // unavailable (e.g. VM/WSL)
+        mem: { total: 2 * 1024 * 1024 * 1024, available: 1 * 1024 * 1024 * 1024 },
+        fsSize: [{ mount: '/boot', size: 1e9, used: 1e8 }], // no '/'
+        time: { uptime: 100 }
+      })
+      aboutPage.getLiveStats(function (stats, err) {
+        try {
+          assert.equal(err, null)
+          assert.equal(stats.cpuTempC, null)
+          assert.equal(stats.diskUsedGB, 0)
+          assert.equal(stats.diskTotalGB, 0)
+          done()
+        } catch (e) { done(e) }
+      })
+    })
+
+    it('returns an error when sampling fails', function (done) {
+      sinon.stub(si, 'get').rejects(new Error('si fail'))
+      const logSpy = sinon.spy(console, 'log')
+      aboutPage.getLiveStats(function (stats, err) {
+        try {
+          assert.equal(stats, null)
+          assert.ok(err)
+          assert.ok(logSpy.calledWithMatch('Error getting live stats:'))
+          done()
+        } catch (e) { done(e) }
+      })
+    })
+  })
+
   describe('#getSoftwareInfo() production', function () {
     it('should read the package version from dpkg', function (done) {
       // outside development the version comes from the installed package

@@ -91,6 +91,18 @@ export = function systemRoutes ({ authenticateToken, aboutPage, networkClients, 
     })
   })
 
+  router.get('/api/systemstatus', authenticateToken, (req: Request, res: Response) => {
+    aboutPage.getLiveStats((stats: any, err: any) => {
+      res.setHeader('Content-Type', 'application/json')
+      if (!err) {
+        res.send(JSON.stringify(stats))
+      } else {
+        res.send(JSON.stringify({ error: 'Could not read system status' }))
+        console.log('Error in /api/systemstatus ', { message: err })
+      }
+    })
+  })
+
   router.post('/api/shutdowncc', authenticateToken, function () {
     // User wants to shutdown the computer
     aboutPage.shutdownCC()

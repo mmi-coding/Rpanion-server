@@ -156,6 +156,35 @@ describe('Package B — delegate HTTP routes', function () {
     })
   })
 
+  describe('GET /api/systemstatus', function () {
+    it('200 — success path returns the live stats object', function (done) {
+      sinon.stub(aboutPage, 'getLiveStats').callsFake(function (cb) {
+        cb({ cpuLoad: 12, cpuTempC: 48, memUsedMB: 800, memTotalMB: 4096, diskUsedGB: 8, diskTotalGB: 32, uptimeSec: 3600 }, null)
+      })
+      request('GET', '/api/systemstatus').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.cpuLoad, 12)
+          assert.equal(res.body.diskTotalGB, 32)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — error path returns an error message', function (done) {
+      sinon.stub(aboutPage, 'getLiveStats').callsFake(function (cb) {
+        cb(null, 'sampling failed')
+      })
+      request('GET', '/api/systemstatus').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.error, 'Could not read system status')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
   describe('GET /api/approot', function () {
     it('200 — returns appRoot string', function (done) {
       request('GET', '/api/approot').then(function (res) {

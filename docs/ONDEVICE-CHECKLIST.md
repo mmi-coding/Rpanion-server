@@ -253,3 +253,7 @@ be enabled before serial telemetry to the FC works:
 - [ ] Enable the GPIO UART: `enable_uart=1` in `/boot/firmware/config.txt` (and free the serial console / Bluetooth as needed); the GPIO serial on Pi 5 enumerates as `/dev/ttyAMA0`
 - [ ] Loopback test (jumper TX↔RX): `stty -F /dev/ttyAMA0 57600 && (cat /dev/ttyAMA0 &) && echo hello > /dev/ttyAMA0` → should echo back
 - [ ] Point the Flight Controller page at the correct `/dev/ttyAMA0` device
+
+## Feature #31: live system stats
+
+- [ ] Home dashboard "System" card shows a real CPU temperature (°C, not N/A) plus live CPU load, RAM and disk usage, and uptime — updating every few seconds
