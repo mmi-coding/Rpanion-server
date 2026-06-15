@@ -1,41 +1,33 @@
 const fs = require('fs')
 const events = require('events')
 const path = require('path')
-const { spawn, spawnSync } = require('child_process')
+const { spawnSync } = require('child_process')
 
-const { common } = require('node-mavlink')
-const mavManager = require('../mavlink/mavManager')
+const FCLink = require('./fcLink')
 const logpaths = require('./paths')
 const serialDetection = require('./serialDetection')
+
+// Max simultaneous telemetry input links (#311). Bounds the per-link loopback
+// port range (monitor 14540+2i, DataFlash logger 14541+2i).
+const MAX_LINKS = 4
 
 class FCDetails {
   UDPoutputs: any
   settings: any
-  vehiclePosition: any
   mavlinkRouterPath: any
-  active: any
-  dflogger: any
-  doLogging: any
-  binlog: any
   enableDSRequest: any
   UDPBPort: any
   enableUDPB: any
   enableTCP: any
   enableHeartbeat: any
-  intervalObj: any
+  doLogging: any
   eventEmitter: any
-  m: any
-  router: any
-  activeDevice: any
+  links: any[]
   inputTypes: any
   mavlinkVersions: any
   baudRates: any
   serialDevices: any
-  previousConnection: any
   constructor (settings: any) {
-    // if the device was successfully opend and got packets
-    this.previousConnection = false
-
     // all detected serial ports and baud rates
     this.serialDevices = []
     this.baudRates = [{ value: 9600, label: '9600' },
@@ -54,65 +46,29 @@ class FCDetails {
       { value: 2, label: '2.0' }]
     this.inputTypes = [{ value: 'UART', label: 'UART' },
       { value: 'UDP', label: 'UDP Server' }]
-    // JSON of active device (input type, port and baud and mavversion). User selected
-    // null if user selected no link (or no serial port of that name)
-    this.activeDevice = null
 
-    // mavlink-router process
-    this.router = null
-
-    // the mavlink manager object
-    this.m = null
+    // active telemetry input links (FCLink instances)
+    this.links = []
 
     // For sending events outside of object
     this.eventEmitter = new events.EventEmitter()
 
-    // Interval to check connection status and re-connect
-    // if required
-    this.intervalObj = null
-
-    // UDP Outputs
+    // UDP Outputs (shared across all links)
     this.UDPoutputs = []
 
-    // Send out MAVLink heartbeat packets?
+    // Global output / behaviour options (apply to every link)
     this.enableHeartbeat = false
-  
-    // Use TCP output?
     this.enableTCP = false
-
-    // Use UDP Broadcast?
     this.enableUDPB = true
     this.UDPBPort = 14550
-
-    // Send datastream requests to flight controller?
     this.enableDSRequest = false
-
-    // Current binlog via mavlink-router
-    this.binlog = null
-
     this.doLogging = false
 
-    // DataFlash logger process
-    this.dflogger = null
-
-    // Is the connection active?
-    this.active = false
-
-    // mavlink-routerd path
+    // mavlink-routerd path (resolved lazily)
     this.mavlinkRouterPath = null
-    
-    // Store vehicle position received via mavlink
-    this.vehiclePosition = {
-            lat: 0,
-            lon: 0,
-            alt: 0,       // MSL in meters
-            relAlt: 0,    // Relative to home/ground in meters
-            hdg: 0        // Heading in degrees
-    }
 
     // load settings
     this.settings = settings
-    this.activeDevice = this.settings.value('flightcontroller.activeDevice', null)
     this.UDPoutputs = this.settings.value('flightcontroller.outputs', [])
     this.enableHeartbeat = this.settings.value('flightcontroller.enableHeartbeat', false)
     this.enableTCP = this.settings.value('flightcontroller.enableTCP', false)
@@ -120,48 +76,63 @@ class FCDetails {
     this.UDPBPort = this.settings.value('flightcontroller.UDPBPort', 14550)
     this.enableDSRequest = this.settings.value('flightcontroller.enableDSRequest', false)
     this.doLogging = this.settings.value('flightcontroller.doLogging', false)
-    this.active = this.settings.value('flightcontroller.active', false)
 
-    if (this.active) {
-      // restart link if saved serial device is found
-      this.getDeviceSettings((err: Error | null, devices: any[]) => {
-        if (this.activeDevice.inputType === 'UART') {
-          let found = false
-          for (let i = 0, len = devices.length; i < len; i++) {
-            if (this.activeDevice.serial === devices[i].value) {
-              found = true
-              this.startLink((err: string | null) => {
-                if (err) {
-                  console.log("Can't open found FC " + this.activeDevice.serial + ', resetting link')
-                  this.activeDevice = null
-                  this.active = false
-                }
-                this.startInterval()
-              })
-              break
-            }
-          }
-          if (!found) {
-            console.log("Can't open saved connection, resetting")
-            this.activeDevice = null
-            this.active = false
-          }
-        } else if (this.activeDevice.inputType === 'UDP') {
-          this.startLink((err: string | null) => {
-            if (err) {
-              console.log("Can't open UDP port " + this.activeDevice.udpInputPort + ', resetting link')
-              this.activeDevice = null
-              this.active = false
-            }
-            this.startInterval()
-          })
-        }
-      })
+    // restore previously-active links (migrating the old single-device config)
+    const savedLinks = this.loadSavedLinks()
+    if (savedLinks.length > 0) {
+      this.restoreLinks(savedLinks)
     }
   }
 
+  loadSavedLinks () {
+    // new multi-link config, or migrate the legacy single-device one
+    let savedLinks = this.settings.value('flightcontroller.links', null)
+    if (savedLinks === null) {
+      const oldDevice = this.settings.value('flightcontroller.activeDevice', null)
+      const wasActive = this.settings.value('flightcontroller.active', false)
+      savedLinks = (wasActive && oldDevice) ? [oldDevice] : []
+    }
+    return savedLinks
+  }
+
+  restoreLinks (savedLinks: any[]) {
+    // re-open each saved link. UART links only start if the serial port is present.
+    this.getDeviceSettings((err: Error | null, data: any) => {
+      const present = data.serialPorts.map((d: any) => d.value)
+      for (let i = 0; i < savedLinks.length && this.links.length < MAX_LINKS; i++) {
+        const device = savedLinks[i]
+        if (device.inputType === 'UART' && present.indexOf(device.serial) === -1) {
+          console.log("Can't open saved FC " + device.serial + ', skipping')
+          continue
+        }
+        const link = new FCLink(this.nextSlot(), device, this)
+        link.startLink((startErr: string | null) => {
+          if (startErr) {
+            console.log("Can't open saved link: " + startErr)
+          } else {
+            this.links.push(link)
+            link.startInterval()
+          }
+        })
+      }
+      this.saveSerialSettings()
+    })
+  }
+
+  nextSlot () {
+    // lowest free slot id in 0..MAX_LINKS-1
+    const used = this.links.map((l) => l.id)
+    for (let s = 0; s < MAX_LINKS; s++) {
+      if (used.indexOf(s) === -1) {
+        return s
+      }
+    }
+    /* istanbul ignore next -- callers check MAX_LINKS before allocating, so a slot is always free */
+    return -1
+  }
+
   validMavlinkRouter () {
-    // check mavlink-router is installed and updates folder
+    // check mavlink-router is installed
     const ls = spawnSync('which', ['mavlink-routerd'])
     console.log(ls.stdout.toString())
     if (ls.stdout.toString().trim() == '') {
@@ -170,7 +141,7 @@ class FCDetails {
       const mavlinkRouterPath = path.join(parentDir, 'mavlink-routerd')
       if (fs.existsSync(mavlinkRouterPath)) {
         console.log('Found mavlink-routerd in ' + parentDir)
-        this.mavlinkRouterPath = parentDir + "/mavlink-routerd"
+        this.mavlinkRouterPath = parentDir + '/mavlink-routerd'
         return true
       }
       this.mavlinkRouterPath = null
@@ -181,8 +152,6 @@ class FCDetails {
       return true
     }
   }
-
-
 
   getUDPOutputs () {
     // get list of current UDP outputs
@@ -195,323 +164,141 @@ class FCDetails {
 
   addUDPOutput (newIP: string, newPort: number) {
     // add a new udp output, if not already in
-    // check if this ip:port is already in the list
     for (let i = 0, len = this.UDPoutputs.length; i < len; i++) {
       if (this.UDPoutputs[i].IP === newIP && this.UDPoutputs[i].port === newPort) {
         return this.getUDPOutputs()
       }
     }
-
-    // check that it's not the internal 127.0.0.1:14540
+    // not the internal monitor endpoint
     if (newIP === '127.0.0.1' && newPort === 14540) {
       return this.getUDPOutputs()
     }
-
-    // add it in
     this.UDPoutputs.push({ IP: newIP, port: newPort })
     console.log('Added UDP Output ' + newIP + ':' + newPort)
+    this.restartAllLinks()
+    try {
+      this.saveSerialSettings()
+    } catch (e) { /* istanbul ignore next -- saveSerialSettings has its own try/catch and never throws */
+      console.log(e)
+    }
+    return this.getUDPOutputs()
+  }
 
-    // restart mavlink-router, if link active
-    if (this.m) {
-      this.closeLink(() => {
-        this.startLink((err: string | null) => {
+  removeUDPOutput (remIP: string, remPort: number) {
+    // not the internal monitor endpoint
+    if (remIP === '127.0.0.1' && remPort === 14540) {
+      return this.getUDPOutputs()
+    }
+    for (let i = 0, len = this.UDPoutputs.length; i < len; i++) {
+      if (this.UDPoutputs[i].IP === remIP && this.UDPoutputs[i].port === remPort) {
+        this.UDPoutputs.splice(i, 1)
+        console.log('Removed UDP Output ' + remIP + ':' + remPort)
+        this.restartAllLinks()
+        try {
+          this.saveSerialSettings()
+        } catch (e) { /* istanbul ignore next -- saveSerialSettings has its own try/catch and never throws */
+          console.log(e)
+        }
+        return this.getUDPOutputs()
+      }
+    }
+    return this.getUDPOutputs()
+  }
+
+  restartAllLinks () {
+    // bounce every link's router so output/option changes take effect
+    for (let i = 0; i < this.links.length; i++) {
+      const link = this.links[i]
+      link.closeLink(() => {
+        link.startLink((err: string | null) => {
           if (err) {
             console.log(err)
           }
         })
       })
     }
-
-    // try to save. Will be invalid if running under test runner
-    try {
-      this.saveSerialSettings()
-    } catch (e) { /* istanbul ignore next -- saveSerialSettings has its own try/catch and never throws */
-      console.log(e)
-    }
-
-    return this.getUDPOutputs()
   }
 
-  removeUDPOutput (remIP: string, remPort: number) {
-    // remove new udp output
-
-    // check that it's not the internal 127.0.0.1:14540
-    if (remIP === '127.0.0.1' && remPort === 14540) {
-      return this.getUDPOutputs()
-    }
-
-    // check if this ip:port is already in the list
-    for (let i = 0, len = this.UDPoutputs.length; i < len; i++) {
-      if (this.UDPoutputs[i].IP === remIP && this.UDPoutputs[i].port === remPort) {
-        // and remove
-        this.UDPoutputs.splice(i, 1)
-        console.log('Removed UDP Output ' + remIP + ':' + remPort)
-
-        // restart mavlink-router, if link active
-        if (this.m) {
-          this.closeLink(() => {
-            this.startLink((err: string | null) => {
-              if (err) {
-                console.log(err)
-              }
-            })
-          })
-        }
-
-        // try to save. Will be invalid if running under test runner
-        try {
-          this.saveSerialSettings()
-        } catch (e) { /* istanbul ignore next -- saveSerialSettings has its own try/catch and never throws */
-          console.log(e)
-        }
-
-        return this.getUDPOutputs()
-      }
-    }
-
-    return this.getUDPOutputs()
+  // primary link's binlog, for log management (logging is primary-only)
+  get binlog () {
+    return this.links.length > 0 ? this.links[0].binlog : null
   }
 
   getSystemStatus () {
-    // get the system status
-    if (this.m !== null) {
-      return {
-        numpackets: this.m.statusNumRxPackets,
-        FW: this.m.autopilotFromID(),
-        vehType: this.m.vehicleFromID(),
-        conStatus: this.m.conStatusStr(),
-        statusText: this.m.statusText,
-        byteRate: this.m.statusBytesPerSec.avgBytesSec,
-        fcVersion: this.m.fcVersion,
-        vehiclePosition: this.vehiclePosition
-
-      }
-    } else {
-      return {
-        numpackets: 0,
-        FW: '',
-        vehType: '',
-        conStatus: 'Not connected',
-        statusText: '',
-        byteRate: 0,
-        fcVersion: '',
-        vehiclePosition: { lat: 0, lon: 0, alt: 0, relAlt: 0, hdg: 0 }
-      }
+    // primary (first) link's status — used for photo geotagging
+    if (this.links.length > 0) {
+      return this.links[0].getStatus()
+    }
+    return {
+      numpackets: 0, FW: '', vehType: '', conStatus: 'Not connected',
+      statusText: '', byteRate: 0, fcVersion: '',
+      vehiclePosition: { lat: 0, lon: 0, alt: 0, relAlt: 0, hdg: 0 }
     }
   }
 
+  getAllStatus () {
+    // primary status at the top level (back-compat for the dashboard) plus the
+    // full per-link array for the Flight Controller page's status cards
+    const links = this.links.map((l) => l.getStatus())
+    const primary = this.getSystemStatus()
+    return { ...primary, links }
+  }
+
   rebootFC () {
-    // command the flight controller to reboot
-    if (this.m !== null) {
-      console.log('Rebooting FC')
-      this.m.sendReboot()
+    // command every connected flight controller to reboot
+    for (let i = 0; i < this.links.length; i++) {
+      if (this.links[i].m !== null) {
+        console.log('Rebooting FC on link ' + this.links[i].id)
+        this.links[i].m.sendReboot()
+      }
     }
   }
 
   startBinLogging () {
-    // command the flight controller to start streaming bin log
-    if (this.m !== null) {
+    // primary link only
+    if (this.links.length > 0 && this.links[0].m !== null) {
       console.log('Bin log start request')
-      this.m.sendBinStreamRequest()
+      this.links[0].m.sendBinStreamRequest()
     }
   }
 
   stopBinLogging () {
-    // command the flight controller to stop streaming bin log
-    if (this.m !== null) {
+    if (this.links.length > 0 && this.links[0].m !== null) {
       console.log('Bin log stop request')
-      this.m.sendBinStreamRequestStop()
+      this.links[0].m.sendBinStreamRequestStop()
     }
   }
 
-  startDFLogger () {
-    // Start the dataflash logger Python process
-    if (this.dflogger !== null) {
-      console.log('DFLogger already running')
-      return
-    }
-
-    console.log('Starting DataFlash logger')
-    const pythonPath = logpaths.getPythonPath()
-    const dfloggerPath = path.join(__dirname, '..', 'python', 'dflogger.py')
-    
-    this.dflogger = spawn(pythonPath, [
-      dfloggerPath,
-      '--connection', 'udp:127.0.0.1:14541',
-      '--logdir', logpaths.flightsLogsDir,
-      '--rotate-on-disarm'
-    ])
-
-    this.dflogger.stdout.on('data', (data: Buffer) => {
-      console.log(`DFLogger: ${data}`)
-    })
-
-    this.dflogger.stderr.on('data', (data: Buffer) => {
-      console.error(`DFLogger stderr: ${data}`)
-    })
-
-    this.dflogger.on('close', (code: number | null) => {
-      console.log(`DFLogger exited with code ${code}`)
-      this.dflogger = null
-    })
-  }
-
-  stopDFLogger () {
-    // Stop the dataflash logger Python process
-    if (this.dflogger === null) {
-      console.log('DFLogger not running')
-      return
-    }
-
-    console.log('Stopping DataFlash logger')
-    this.dflogger.kill('SIGTERM')
-    this.dflogger = null
-  }
-
-  getDFLoggerStatus () {
-    // Get the current status of the dataflash logger
-    return {
-      running: this.dflogger !== null
-    }
-  }
-
-  startLink (callback: (err: string | null, success: boolean) => void) {
-    // start the serial link
-    if (this.activeDevice.inputType === 'UDP') {
-      console.log('Opening UDP Link ' + '0.0.0.0:' + this.activeDevice.udpInputPort + ', MAV v' + this.activeDevice.mavversion)
-    } else {
-      console.log('Opening UART Link ' + this.activeDevice.serial + ' @ ' + this.activeDevice.baud + ', MAV v' + this.activeDevice.mavversion)
-    }
-    // this.outputs.push({ IP: newIP, port: newPort })
-
-    // build up the commandline for mavlink-router
-    const cmd = ['-e', '127.0.0.1:14540', '-e', '127.0.0.1:14541', '--tcp-port']
-    if (this.enableTCP === true) {
-      cmd.push('5760')
-    } else {
-      cmd.push('0')
-    }
-    for (let i = 0, len = this.UDPoutputs.length; i < len; i++) {
-      cmd.push('-e')
-      cmd.push(this.UDPoutputs[i].IP + ':' + this.UDPoutputs[i].port)
-    }
-    //cmd.push('--log')
-    //cmd.push(logpaths.flightsLogsDir)
-    //if (this.doLogging === true) {
-    //  cmd.push('--telemetry-log')
-    //}
-    if (this.enableUDPB === true) {
-      cmd.push('0.0.0.0:' + this.UDPBPort)
-    }
-    if (this.activeDevice.inputType === 'UART') {
-      const serialPath = serialDetection.getSerialPathFromValue(this.activeDevice.serial, this.serialDevices)
-      cmd.push(serialPath + ':' + this.activeDevice.baud)
-    } else if (this.activeDevice.inputType === 'UDP') {
-      cmd.push('0.0.0.0:' + this.activeDevice.udpInputPort)
-    }
-    console.log(cmd)
-
-    // check mavlink-router exists
-    if (!this.validMavlinkRouter()) {
-      console.log('Could not find mavlink-routerd')
-      this.active = false
-      return callback('Could not find mavlink-routerd', false)
-    }
-
-    // start mavlink-router
-    this.router = spawn(this.mavlinkRouterPath, cmd)
-    this.router.stdout.on('data', (data: Buffer) => {
-      console.log(`stdout: ${data}`)
-    })
-
-    this.router.stderr.on('data', (data: Buffer) => {
-      console.error(`stderr: ${data}`)
-      if (data.toString().includes('Logging target') && data.toString().includes('.bin')) {
-        // remove old log, if it exists and is >60kB
-        try {
-          if (this.binlog !== null) {
-            const fileStat = fs.lstatSync(this.binlog)
-            if (Math.round(fileStat.size / 1024) < 60) {
-              fs.unlinkSync(this.binlog)
-            }
-          }
-        } catch (err) {
-          console.log(err)
-        }
-        const res = data.toString().split(' ')
-        const curLog = (res[res.length - 1]).trim()
-        this.binlog = path.join(logpaths.flightsLogsDir, curLog)
-        console.log('Current log is: ' + this.binlog)
+  // ---- MAVLink fan-out (index.ts wires camera / RTCM / heartbeat through here) ----
+  sendRTCMMessage (msg: any, seq: any) {
+    for (let i = 0; i < this.links.length; i++) {
+      if (this.links[i].m !== null) {
+        this.links[i].m.sendRTCMMessage(msg, seq)
       }
-    })
-
-    this.router.on('close', (code: number | null) => {
-      console.log(`child process exited with code ${code}`)
-      console.log('Closed Router')
-      this.eventEmitter.emit('stopLink')
-    })
-
-    console.log('Opened Router')
-
-    // only restart the mavlink processor if it's a new link,
-    // not a reconnect attempt
-    if (this.m === null) {
-      this.m = new mavManager(this.activeDevice.mavversion, '127.0.0.1', 14540, this.enableDSRequest)
-      this.m.eventEmitter.on('gotMessage', (packet: any, data: any) => {
-        // got valid message - send on to attached classes
-        this.previousConnection = true
-        if (packet.header.msgid === common.GlobalPositionInt.MSG_ID) {
-            // MAVLink sends lat/lon as int * 1E7, alt as mm, heading as cdeg
-            if (this.vehiclePosition) {
-                this.vehiclePosition.lat = data.lat / 10000000
-                this.vehiclePosition.lon = data.lon / 10000000
-                this.vehiclePosition.alt = data.alt / 1000
-                this.vehiclePosition.relAlt = data.relativeAlt / 1000
-                this.vehiclePosition.hdg = data.hdg / 100
-            }
-        }
-        this.eventEmitter.emit('gotMessage', packet, data)
-      })
-
-      // arming events - just pass them on. Registered only with a fresh
-      // mavManager so auto-reconnect (which reuses this.m) does not stack
-      // duplicate listeners on every retry.
-      this.m.eventEmitter.on('armed', () => {
-        this.eventEmitter.emit('armed')
-      })
-      this.m.eventEmitter.on('disarmed', () => {
-        this.eventEmitter.emit('disarmed')
-      })
     }
-
-    this.eventEmitter.emit('newLink')
-
-    // Start dataflash logger if logging enabled
-    if (this.doLogging === true) {
-      this.startDFLogger()
-    }
-
-    this.active = true
-    return callback(null, true)
   }
 
-  closeLink (callback: (err: null) => void) {
-    // stop the serial link
-    this.active = false
-    
-    // Stop dataflash logger if running
-    if (this.dflogger !== null) {
-      this.stopDFLogger()
+  sendCommandAck (cmd: any, result: any, senderSysId: any, senderCompId: any, targetComponent: any) {
+    for (let i = 0; i < this.links.length; i++) {
+      if (this.links[i].m !== null) {
+        this.links[i].m.sendCommandAck(cmd, result, senderSysId, senderCompId, targetComponent)
+      }
     }
-    
-    if (this.router && this.router.exitCode === null) {
-      this.router.kill('SIGINT')
-      console.log('Trying to close router')
-      return callback(null)
-    } else {
-      console.log('Already Closed Router')
-      this.eventEmitter.emit('stopLink')
-      return callback(null)
+  }
+
+  sendHeartbeat (mavType: any, autopilot: any, component: any) {
+    for (let i = 0; i < this.links.length; i++) {
+      if (this.links[i].m !== null) {
+        this.links[i].m.sendHeartbeat(mavType, autopilot, component)
+      }
+    }
+  }
+
+  sendData (msg: any, senderCompId: any) {
+    for (let i = 0; i < this.links.length; i++) {
+      if (this.links[i].m !== null) {
+        this.links[i].m.sendData(msg, senderCompId)
+      }
     }
   }
 
@@ -520,7 +307,6 @@ class FCDetails {
     if (serialDetection.isModemManagerInstalled()) {
       return new Error('The ModemManager package is installed. This must be uninstalled (via sudo apt remove modemmanager), due to conflicts with serial ports')
     }
-
     // Check if serial console is active on Raspberry Pi
     if (fs.existsSync('/boot/cmdline.txt') && serialDetection.isPi()) {
       const data = fs.readFileSync('/boot/cmdline.txt', { encoding: 'utf8', flag: 'r' })
@@ -528,151 +314,139 @@ class FCDetails {
         return new Error('Serial console is active on /dev/serial0. Use raspi-config to deactivate it')
       }
     }
-
     return null
   }
 
   async getDeviceSettings (callback: (...args: any[]) => void) {
-    // get all serial devices
-    this.serialDevices = []
-    let retError: Error | null = null
-
-    // Detect all serial devices using hardwareDetection module
+    // detect serial ports + return current links and global options
     this.serialDevices = await serialDetection.detectSerialDevices()
-
-    // Check for configuration issues
-    retError = this.checkSerialPortIssues()
-
-    // set the active device as selected
-    if (this.active && this.activeDevice && this.activeDevice.inputType === 'UART') {
-      return callback(retError, this.serialDevices, this.baudRates, this.activeDevice.serial,
-        this.activeDevice.baud, this.mavlinkVersions, this.activeDevice.mavversion,
-        this.active, this.enableHeartbeat, this.enableTCP, this.enableUDPB, this.UDPBPort, this.enableDSRequest, this.doLogging, this.activeDevice.udpInputPort,
-        this.inputTypes[0].value, this.inputTypes)
-    } else if (this.active && this.activeDevice && this.activeDevice.inputType === 'UDP') {
-      return callback(retError, this.serialDevices, this.baudRates, this.serialDevices.length > 0 ? this.serialDevices[0].value : [], this.baudRates[3].value,
-        this.mavlinkVersions, this.activeDevice.mavversion, this.active, this.enableHeartbeat,
-        this.enableTCP, this.enableUDPB, this.UDPBPort, this.enableDSRequest, this.doLogging, this.activeDevice.udpInputPort,
-        this.inputTypes[1].value, this.inputTypes)
-    } else {
-      // no connection
-      return callback(retError, this.serialDevices, this.baudRates, this.serialDevices.length > 0 ? this.serialDevices[0].value : [],
-        this.baudRates[3].value, this.mavlinkVersions, this.mavlinkVersions[1].value, this.active, this.enableHeartbeat,
-        this.enableTCP, this.enableUDPB, this.UDPBPort, this.enableDSRequest, this.doLogging, 9000, this.inputTypes[0].value, this.inputTypes)
-    }
+    const retError = this.checkSerialPortIssues()
+    return callback(retError, {
+      serialPorts: this.serialDevices,
+      baudRates: this.baudRates,
+      mavVersions: this.mavlinkVersions,
+      inputTypes: this.inputTypes,
+      links: this.links.map((l: any) => ({
+        id: l.id,
+        inputType: l.device.inputType,
+        serial: l.device.serial,
+        baud: l.device.baud,
+        mavversion: l.device.mavversion,
+        udpInputPort: l.device.udpInputPort,
+        label: l.deviceLabel()
+      })),
+      enableHeartbeat: this.enableHeartbeat,
+      enableTCP: this.enableTCP,
+      enableUDPB: this.enableUDPB,
+      UDPBPort: this.UDPBPort,
+      enableDSRequest: this.enableDSRequest,
+      doLogging: this.doLogging
+    })
   }
 
-  startInterval () {
-    // start the 1-sec loop checking for disconnects
-    this.intervalObj = setInterval(() => {
-    
-    // Send heartbeats, if they are enabled
-    if(this.enableHeartbeat){
-      this.m.sendHeartbeat()
-    }
-      // check for timeouts in serial link (ie disconnected cable or reboot)
-      if (this.m && this.m.conStatusInt() === -1) {
-        console.log('Trying to reconnect FC...')
-        this.closeLink(() => {
-          this.startLink((err: string | null) => {
-            if (err) {
-              console.log(err)
-            } else {
-              // DS request is in this.m.restart()
-              this.m.restart()
-            }
-          })
-        })
+  validateDevice (inputType: string, device: string, baud: number, mavversion: number, udpInputPort: number) {
+    // build + validate a link's device config. Returns { device } or { error }.
+    if (inputType === 'UART') {
+      let serial = null
+      for (let i = 0, len = this.serialDevices.length; i < len; i++) {
+        if (this.serialDevices[i].value === device) {
+          serial = this.serialDevices[i].value
+          break
+        }
       }
-    }, 1000)
+      let validBaud = null
+      for (let i = 0, len = this.baudRates.length; i < len; i++) {
+        if (this.baudRates[i].value === baud) {
+          validBaud = this.baudRates[i].value
+          break
+        }
+      }
+      if (serial === null || validBaud === null || mavversion === null) {
+        return { error: 'Bad serial device or baud' }
+      }
+      return { device: { inputType: 'UART', serial, baud: validBaud, mavversion, udpInputPort: 9000 } }
+    } else if (inputType === 'UDP') {
+      return { device: { inputType: 'UDP', serial: null, baud: null, mavversion, udpInputPort } }
+    }
+    return { error: 'Unknown input type' }
   }
 
-  startStopTelemetry (device: string, baud: number, mavversion: number, enableHeartbeat: boolean, enableTCP: boolean, enableUDPB: boolean, UDPBPort: number, enableDSRequest: boolean,
-                      doLogging: boolean, inputType: string, udpInputPort: number, callback: (err: Error | string | null, isSuccessful: boolean) => void) {
-    // user wants to start or stop telemetry
-    // callback is (err, isSuccessful)
+  isDuplicate (device: any) {
+    // already have a link on this serial port / UDP input port?
+    for (let i = 0; i < this.links.length; i++) {
+      const d = this.links[i].device
+      if (device.inputType === 'UART' && d.inputType === 'UART' && d.serial === device.serial) {
+        return true
+      }
+      if (device.inputType === 'UDP' && d.inputType === 'UDP' && d.udpInputPort === device.udpInputPort) {
+        return true
+      }
+    }
+    return false
+  }
 
+  addLink (inputType: string, device: string, baud: number, mavversion: number, udpInputPort: number, callback: (err: Error | string | null, links: any[]) => void) {
+    // add + start a new telemetry input link
+    if (this.links.length >= MAX_LINKS) {
+      return callback(new Error('Maximum of ' + MAX_LINKS + ' links reached'), this.linkList())
+    }
+    const result = this.validateDevice(inputType, device, baud, mavversion, udpInputPort)
+    if (result.error) {
+      return callback(new Error(result.error), this.linkList())
+    }
+    if (this.isDuplicate(result.device)) {
+      return callback(new Error('A link on that input already exists'), this.linkList())
+    }
+    const link = new FCLink(this.nextSlot(), result.device, this)
+    link.startLink((err: string | null) => {
+      if (err) {
+        console.log(err)
+        return callback(err, this.linkList())
+      }
+      this.links.push(link)
+      link.startInterval()
+      this.saveSerialSettings()
+      return callback(null, this.linkList())
+    })
+  }
+
+  removeLink (id: number, callback: (err: Error | null, links: any[]) => void) {
+    // stop + remove a link by id
+    const idx = this.links.findIndex((l) => l.id === id)
+    if (idx === -1) {
+      return callback(new Error('No such link'), this.linkList())
+    }
+    const link = this.links[idx]
+    link.destroy(() => {
+      this.links.splice(idx, 1)
+      this.saveSerialSettings()
+      return callback(null, this.linkList())
+    })
+  }
+
+  linkList () {
+    return this.links.map((l: any) => ({ id: l.id, inputType: l.device.inputType, label: l.deviceLabel() }))
+  }
+
+  setGlobalOptions (enableHeartbeat: boolean, enableTCP: boolean, enableUDPB: boolean, UDPBPort: number, enableDSRequest: boolean, doLogging: boolean, callback: (err: null) => void) {
+    // update shared options + apply to every running link
     this.enableHeartbeat = enableHeartbeat
     this.enableTCP = enableTCP
     this.enableUDPB = enableUDPB
     this.UDPBPort = UDPBPort
     this.enableDSRequest = enableDSRequest
     this.doLogging = doLogging
-
-    if (this.m) {
-      this.m.enableDSRequest = enableDSRequest
+    for (let i = 0; i < this.links.length; i++) {
+      this.links[i].m.enableDSRequest = enableDSRequest
     }
-
-    // check port, mavversion and baud are valid (if starting telem)
-    if (!this.active) {
-      this.activeDevice = { serial: null, baud: null, inputType: 'UART', mavversion: null, udpInputPort: 9000 }
-      this.activeDevice.mavversion = mavversion
-
-      if (inputType === 'UART') {
-        this.activeDevice.inputType = 'UART'
-        for (let i = 0, len = this.serialDevices.length; i < len; i++) {
-          if (this.serialDevices[i].value === device) {
-            this.activeDevice.serial = this.serialDevices[i].value
-            break
-          }
-        }
-        for (let i = 0, len = this.baudRates.length; i < len; i++) {
-          if (this.baudRates[i].value === baud) {
-            this.activeDevice.baud = this.baudRates[i].value
-            break
-          }
-        }
-        console.log('Selected device: ' + device + ' @ ' + baud)
-        console.log(this.activeDevice)
-
-        if (this.activeDevice.serial === null || this.activeDevice.baud === null || this.activeDevice.serial.value === null || this.activeDevice.mavversion === null || this.enableTCP === null) {
-          this.activeDevice = null
-          this.active = false
-          return callback(new Error('Bad serial device or baud'), false)
-        }
-      } else if (inputType === 'UDP') {
-        // UDP input
-        this.activeDevice.inputType = 'UDP'
-        this.activeDevice.serial = null
-        this.activeDevice.baud = null
-        this.activeDevice.mavversion = mavversion
-        this.activeDevice.udpInputPort = udpInputPort
-      } else {
-        // unknown input type
-        this.activeDevice = null
-        return callback(new Error('Unknown input type'), false)
-      }
-
-      // this.activeDevice = {inputType, udpInputPort, serial: device, baud: baud};
-      this.startLink((err: string | null) => {
-        if (err) {
-          console.log(err)
-          this.activeDevice = null
-        } else {
-          // start timeout function for auto-reconnect
-          this.startInterval()
-          this.saveSerialSettings()
-        }
-        return callback(err, this.activeDevice !== null)
-      })
-    } else {
-      // close link
-      this.activeDevice = null
-      this.closeLink(() => {
-        this.saveSerialSettings()
-        clearInterval(this.intervalObj)
-        this.previousConnection = false
-        this.m.close()
-        this.m = null
-        return callback(null, this.activeDevice !== null)
-      })
-    }
+    this.restartAllLinks()
+    this.saveSerialSettings()
+    return callback(null)
   }
 
   saveSerialSettings () {
-    // Save the current settings to file
     try {
-      this.settings.setValue('flightcontroller.activeDevice', this.activeDevice)
+      this.settings.setValue('flightcontroller.links', this.links.map((l: any) => l.device))
       this.settings.setValue('flightcontroller.outputs', this.UDPoutputs)
       this.settings.setValue('flightcontroller.enableHeartbeat', this.enableHeartbeat)
       this.settings.setValue('flightcontroller.enableTCP', this.enableTCP)
@@ -680,7 +454,6 @@ class FCDetails {
       this.settings.setValue('flightcontroller.UDPBPort', this.UDPBPort)
       this.settings.setValue('flightcontroller.enableDSRequest', this.enableDSRequest)
       this.settings.setValue('flightcontroller.doLogging', this.doLogging)
-      this.settings.setValue('flightcontroller.active', this.active)
       console.log('Saved FC settings')
     } catch (e) {
       console.log(e)

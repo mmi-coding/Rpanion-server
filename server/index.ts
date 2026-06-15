@@ -226,9 +226,8 @@ process.once('SIGUSR2', () => {
 ntripClient.eventEmitter.on('rtcmpacket', (msg: any, seq: any) => {
   // logManager.writetlog(msg.buf);
   try {
-    if (fcManager.m) {
-      fcManager.m.sendRTCMMessage(msg, seq)
-    }
+    // inject RTCM to every connected vehicle
+    fcManager.sendRTCMMessage(msg, seq)
   } catch (err) {
     console.log(err)
   }
@@ -238,10 +237,8 @@ ntripClient.eventEmitter.on('rtcmpacket', (msg: any, seq: any) => {
 // This function responds to a MAVLink command to capture a photo.
 vManager.eventEmitter.on('digicamcontrol', (senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
-    if (fcManager.m) {
-      // Acknowledge the MAV_CMD_DO_DIGICAM_CONTROL command
-      fcManager.m.sendCommandAck(203, 0, senderSysId, senderCompId, targetComponent)
-    }
+    // Acknowledge the MAV_CMD_DO_DIGICAM_CONTROL command
+    fcManager.sendCommandAck(203, 0, senderSysId, senderCompId, targetComponent)
   } catch (err) {
     console.log('Error acknowledging DoDigicamControl:', err);
   }
@@ -250,9 +247,7 @@ vManager.eventEmitter.on('digicamcontrol', (senderSysId: any, senderCompId: any,
 // Got a camera heartbeat event, send to flight controller
 vManager.eventEmitter.on('cameraheartbeat', (mavType: any, autopilot: any, component: any) => {
   try {
-    if (fcManager.m) {
-      fcManager.m.sendHeartbeat(mavType, autopilot, component)
-    }
+    fcManager.sendHeartbeat(mavType, autopilot, component)
   } catch (err) {
     console.log('Error sending camera heartbeat:', err);
   }
@@ -261,11 +256,9 @@ vManager.eventEmitter.on('cameraheartbeat', (mavType: any, autopilot: any, compo
 // Got a CAMERA_INFORMATION event, send to flight controller
 vManager.eventEmitter.on('camerainfo', (msg: any, senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
-    if (fcManager.m) {
-      // Acknowledge the CAMERA_INFORMATION request
-      fcManager.m.sendCommandAck(common.CameraInformation.MSG_ID, 0, senderSysId, senderCompId, targetComponent)
-      fcManager.m.sendData(msg, senderCompId)
-    }
+    // Acknowledge the CAMERA_INFORMATION request
+    fcManager.sendCommandAck(common.CameraInformation.MSG_ID, 0, senderSysId, senderCompId, targetComponent)
+    fcManager.sendData(msg, senderCompId)
   } catch (err) {
     console.log('Error sending CameraInformation:', err);
   }
@@ -274,11 +267,9 @@ vManager.eventEmitter.on('camerainfo', (msg: any, senderSysId: any, senderCompId
 // Got a VIDEO_STREAM_INFORMATION event, send to flight controller
 vManager.eventEmitter.on('videostreaminfo', (msg: any, senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
-    if (fcManager.m) {
-      // Acknowledge the VIDEO_STREAM_INFORMATION request
-      fcManager.m.sendCommandAck(common.VideoStreamInformation.MSG_ID, 0, senderSysId, senderCompId, targetComponent)
-      fcManager.m.sendData(msg, senderCompId)
-    }
+    // Acknowledge the VIDEO_STREAM_INFORMATION request
+    fcManager.sendCommandAck(common.VideoStreamInformation.MSG_ID, 0, senderSysId, senderCompId, targetComponent)
+    fcManager.sendData(msg, senderCompId)
   } catch (err) {
     console.log('Error sending VideoStreamInformation:', err);
   }
@@ -287,11 +278,9 @@ vManager.eventEmitter.on('videostreaminfo', (msg: any, senderSysId: any, senderC
 // Got a CAMERA_SETTINGS event, send to flight controller
 vManager.eventEmitter.on('camerasettings', (msg: any, senderSysId: any, senderCompId: any, targetComponent: any) => {
   try {
-    if (fcManager.m) {
-      // Acknowledge the CAMERA_SETTINGS request
-      fcManager.m.sendCommandAck(common.CameraSettings.MSG_ID, 0, senderSysId, senderCompId, targetComponent)
-      fcManager.m.sendData(msg, senderCompId)
-    }
+    // Acknowledge the CAMERA_SETTINGS request
+    fcManager.sendCommandAck(common.CameraSettings.MSG_ID, 0, senderSysId, senderCompId, targetComponent)
+    fcManager.sendData(msg, senderCompId)
   } catch (err) {
     console.log('Error sending CameraSettings:', err);
     // console.log(err)
@@ -301,10 +290,8 @@ vManager.eventEmitter.on('camerasettings', (msg: any, senderSysId: any, senderCo
 // Got a CAMERA_TRIGGER event, send to flight controller
 vManager.eventEmitter.on('cameratrigger', (msg: any, senderCompId: any) => {
   try {
-    if (fcManager.m) {
-      // Send the CAMERA_TRIGGER message to the flight controller
-      fcManager.m.sendData(msg, senderCompId)
-    }
+    // Send the CAMERA_TRIGGER message to the flight controller
+    fcManager.sendData(msg, senderCompId)
   } catch (err) {
     console.log('Error sending CameraTrigger:', err);
   }
@@ -321,17 +308,17 @@ vManager.eventEmitter.on('filesaved', (filepath: string) => {
 
 // Connecting the flight controller datastream to the logger
 // and ntrip and video
-fcManager.eventEmitter.on('gotMessage', (packet: any, data: any) => {
+fcManager.eventEmitter.on('gotMessage', (packet: any, data: any, link: any) => {
   try {
     ntripClient.onMavPacket(packet, data)
     vManager.onMavPacket(packet, data)
     camSwitcher.onMavPacket(packet, data)
-    // ask the FC to stream RC_CHANNELS (2 Hz), once per link, if the
-    // camera switcher needs it
+    // ask the FC to stream RC_CHANNELS (2 Hz), once, if the camera switcher
+    // needs it — requested from the link whose vehicle we first locked onto
     if (camSwitcher.getSettings().enabled && !camSwitcher.streamRequested &&
-        fcManager.m && fcManager.m.targetSystem !== null) {
+        link && link.m && link.m.targetSystem !== null) {
       camSwitcher.streamRequested = true
-      fcManager.m.sendSetMessageInterval(common.RcChannels.MSG_ID, 500000)
+      link.m.sendSetMessageInterval(common.RcChannels.MSG_ID, 500000)
     }
   } catch (err) {
     console.log('Error processing MAVLink message in listener:', err);
@@ -452,7 +439,7 @@ io.on('connection', function () {
   }
   // send Flight Controller and NTRIP status out 1 per second
   FCStatusLoop = setInterval(function () {
-    io.sockets.emit('FCStatus', fcManager.getSystemStatus())
+    io.sockets.emit('FCStatus', fcManager.getAllStatus())
     io.sockets.emit('NTRIPStatus', ntripClient.conStatusStr())
     io.sockets.emit('CloudBinStatus', cloud.conStatusBinStr())
     io.sockets.emit('LogConversionStatus', logConversion.conStatusLogStr())
