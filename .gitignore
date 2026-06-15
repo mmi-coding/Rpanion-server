@@ -9,6 +9,12 @@
 # production
 /build
 
+# WireGuard secrets — client configs embed a PRIVATE KEY; never commit these
+/pi.conf
+/laptop.conf
+/*.key
+/*.pub
+
 # misc
 .DS_Store
 .env
@@ -93,3 +99,7 @@ __pycache__/
 /server/routes/telemetryInjector.js
 /server/routes/vpn.js
 /server/index.js
+
+# Claude Code tooling — kept locally, never committed
+/CLAUDE.md
+/.claude/
