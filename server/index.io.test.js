@@ -748,7 +748,6 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
           assert.ok(res.body.layout && Array.isArray(res.body.layout.elements))
           assert.ok(res.body.layout.global && typeof res.body.layout.global.font === 'string')
           assert.ok(Array.isArray(res.body.elements) && res.body.elements.length > 10)
-          assert.ok(Array.isArray(res.body.fonts) && res.body.fonts.includes('monospace'))
           done()
         } catch (e) { done(e) }
       }).catch(done)
@@ -767,6 +766,105 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
           assert.equal(res.body.error, null)
           assert.ok(res.body.layout.elements.find(function (e) { return e.type === 'alt' }))
           done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
+  // HUD font routes (list / import / remove / serve-for-preview)
+  // =========================================================================
+  describe('HUD font routes', function () {
+    function postFont (hasFile) {
+      return new Promise(function (resolve, reject) {
+        var http = require('http')
+        var boundary = '----RpanionFontBoundary'
+        var parts = []
+        if (hasFile) {
+          parts.push('--' + boundary)
+          parts.push('Content-Disposition: form-data; name="font"; filename="my.ttf"')
+          parts.push('Content-Type: font/ttf')
+          parts.push('')
+          parts.push('\x00\x01\x00\x00font-bytes')
+        }
+        parts.push('--' + boundary + '--')
+        parts.push('')
+        var bodyBuf = Buffer.from(parts.join('\r\n'), 'binary')
+        var req = http.request({
+          hostname: '127.0.0.1', port: getPort(), path: '/api/hudfonts', method: 'POST',
+          headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': bodyBuf.length }
+        }, function (res) {
+          var data = ''
+          res.on('data', function (c) { data += c })
+          res.on('end', function () { var b; try { b = JSON.parse(data) } catch (_) { b = data } resolve({ status: res.statusCode, body: b }) })
+        })
+        req.on('error', reject)
+        req.write(bodyBuf)
+        req.end()
+      })
+    }
+
+    it('GET /api/hudfonts — 200 lists generics + curated (incl. the DJI-style font)', function (done) {
+      request('GET', '/api/hudfonts').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.generics.includes('monospace'))
+          assert.ok(res.body.fonts.find(function (f) { return f.family === 'Oxanium' }))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/hudfonts — 200 imports an uploaded font', function (done) {
+      sinon.stub(hooks.hudFonts, 'importFont').resolves({ family: 'My Font', file: 'my.ttf', id: 'my.ttf' })
+      sinon.stub(hooks.hudFonts, 'list').returns({ generics: ['monospace'], fonts: [] })
+      postFont(true).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.font.family, 'My Font')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/hudfonts — 422 on an invalid font', function (done) {
+      sinon.stub(hooks.hudFonts, 'importFont').rejects(new Error('Not a TrueType/OpenType font'))
+      postFont(true).then(function (res) {
+        try { assert.equal(res.status, 422); assert.ok(/TrueType/.test(res.body.error)); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('POST /api/hudfonts — 422 when no file is uploaded', function (done) {
+      postFont(false).then(function (res) {
+        try { assert.equal(res.status, 422); assert.ok(/No font/.test(res.body.error)); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('DELETE /api/hudfonts/:id — 200 removes an imported font', function (done) {
+      sinon.stub(hooks.hudFonts, 'removeFont').resolves({ generics: ['monospace'], fonts: [] })
+      request('DELETE', '/api/hudfonts/my.ttf').then(function (res) {
+        try { assert.equal(res.status, 200); assert.ok(res.body.fonts); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('DELETE /api/hudfonts/:id — 422 on an unknown font', function (done) {
+      sinon.stub(hooks.hudFonts, 'removeFont').rejects(new Error('Unknown font'))
+      request('DELETE', '/api/hudfonts/nope.ttf').then(function (res) {
+        try { assert.equal(res.status, 422); assert.ok(/Unknown/.test(res.body.error)); done() } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('GET /api/hudfonts/file/:name — serves a known font, 404 otherwise', function (done) {
+      var real = require('path').join(__dirname, '..', 'assets', 'hudfonts', 'Oxanium-Medium.ttf')
+      var stub = sinon.stub(hooks.hudFonts, 'fileFor')
+      stub.withArgs('Oxanium-Medium.ttf').returns(real)
+      stub.returns(null)
+      request('GET', '/api/hudfonts/file/Oxanium-Medium.ttf').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          request('GET', '/api/hudfonts/file/missing.ttf').then(function (res2) {
+            try { assert.equal(res2.status, 404); done() } catch (e) { done(e) }
+          }).catch(done)
         } catch (e) { done(e) }
       }).catch(done)
     })

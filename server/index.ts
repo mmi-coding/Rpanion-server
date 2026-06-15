@@ -23,6 +23,7 @@ const logpaths = require('./paths')
 const CameraSwitcher = require('./cameraSwitcher')
 const CustomPipelines = require('./customPipelines')
 const LTEModem = require('./ltemodem')
+const HudFonts = require('./hudFonts')
 const CellularTuning = require('./cellularTuning')
 const DynamicDns = require('./dynamicDns')
 const NetworkPriority = require('./networkPriority')
@@ -61,8 +62,9 @@ const limiter = RateLimit({
 // apply rate limiter to all requests
 app.use(limiter)
 
-// use file uploader for Wireguard profiles
-app.use(fileUpload({ limits: { fileSize: 1000 }, abortOnLimit: true, useTempFiles: true, tempFileDir: '/tmp/', safeFileNames: true, preserveExtension: 4 }))
+// file uploader for WireGuard profiles + HUD fonts (6 MB ceiling covers a .ttf/
+// .otf; configs are far smaller; every upload route is authenticated + validated)
+app.use(fileUpload({ limits: { fileSize: 6 * 1024 * 1024 }, abortOnLimit: true, useTempFiles: true, tempFileDir: '/tmp/', safeFileNames: true, preserveExtension: 4 }))
 
 // Init settings before running the other classes
 settings.init({
@@ -88,6 +90,12 @@ const customPipelines = new CustomPipelines(settings)
 const lteModem = new LTEModem(settings)
 // let the graphic HUD overlay the modem's GNSS fix (#173 modem-GPS follow-up)
 vManager.lteModem = lteModem
+// custom OSD fonts (#173): install curated fonts + expose the manager to the
+// video manager (which spawns video-server.py with XDG_DATA_HOME so librsvg
+// resolves them) and the HUD routes
+const hudFonts = new HudFonts(settings)
+hudFonts.install()
+vManager.hudFonts = hudFonts
 // cellular video tuning: ties the LTE modem's signal quality to the video
 // stream's encoder bitrate
 const cellularTuning = new CellularTuning(settings, {
@@ -399,7 +407,7 @@ app.use(require('./routes/adhoc')({ authenticateToken, adhocManager }))
 // body-parser middleware so camera/start sees req.body
 app.use(require('./routes/camera')({ authenticateToken, toBool, vManager, fcManager, camSwitcher, MEDIA_ROOT }))
 app.use(require('./routes/secondaryStreams')({ authenticateToken, secondaryStreams }))
-app.use(require('./routes/hud')({ authenticateToken, vManager }))
+app.use(require('./routes/hud')({ authenticateToken, vManager, hudFonts }))
 
 // Camera switcher routes (extracted to ./routes/cameraSwitcher.js)
 app.use(require('./routes/cameraSwitcher')({ authenticateToken, toBool, camSwitcher }))
@@ -515,6 +523,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   logConversion,
   pppConnectionManager,
   lteModem,
+  hudFonts,
   cellularTuning,
   httpServer: http,
   io,

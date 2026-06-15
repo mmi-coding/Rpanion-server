@@ -21,7 +21,10 @@ class HudEditorPage extends basePage {
       catalog: [],   // [{ type, section, label, mock, graphic }]
       elements: [],  // [{ type, enabled, x, y, icon, font?, size?, color? }]
       global: { font: 'monospace', size: 34, color: '#ffffff' },
-      fonts: ['monospace', 'sans-serif', 'serif'],
+      // { generics:[...], fonts:[{family,label,file,kind,id?}] } — generics +
+      // curated + imported; each non-generic font is @font-face'd for an exact preview
+      fontList: { generics: ['monospace', 'sans-serif', 'serif'], fonts: [] },
+      importing: false,
       selectedType: null, // element whose style is being edited
       dragType: null,
       message: null,
@@ -31,16 +34,65 @@ class HudEditorPage extends basePage {
   }
 
   componentDidMount() {
-    fetch('/api/hudlayout', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(r => r.json()).then(data => {
+    const headers = { Authorization: `Bearer ${this.state.token}` };
+    Promise.all([
+      fetch('/api/hudlayout', { headers }).then(r => r.json()),
+      fetch('/api/hudfonts', { headers }).then(r => r.json())
+    ]).then(([data, fontList]) => {
       const layout = data.layout || {};
       this.setState({
         catalog: data.elements || [],
         elements: layout.elements || [],
         global: layout.global || this.state.global,
-        fonts: data.fonts || this.state.fonts
+        fontList: (fontList && fontList.generics) ? fontList : this.state.fontList
       });
       this.loadDone();
     });
+  }
+
+  // the editor's font <select> options: generics + curated + imported
+  fontOptions() {
+    const g = this.state.fontList.generics || [];
+    const f = this.state.fontList.fonts || [];
+    return [...g.map(x => ({ value: x, label: x })), ...f.map(x => ({ value: x.family, label: x.label }))];
+  }
+
+  // @font-face rules so the browser renders curated/imported fonts exactly as the
+  // device will burn them in (the file is served by GET /api/hudfonts/file/:name)
+  fontFaceCss() {
+    return (this.state.fontList.fonts || [])
+      .map(f => `@font-face{font-family:'${f.family}';src:url('/api/hudfonts/file/${f.file}');font-display:swap;}`)
+      .join('');
+  }
+
+  // upload a .ttf/.otf — installed on the device + added to the list
+  importFont = (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = ''; // allow re-importing the same filename later
+    if (!file) {
+      return;
+    }
+    this.setState({ importing: true, error: null });
+    const fd = new FormData();
+    fd.append('font', file);
+    fetch('/api/hudfonts', { method: 'POST', headers: { Authorization: `Bearer ${this.state.token}` }, body: fd })
+      .then(r => r.json()).then(data => {
+        if (data.error) {
+          this.setState({ importing: false, error: data.error });
+          return;
+        }
+        this.setState({ fontList: data.fonts, importing: false, message: 'Imported font: ' + data.font.family });
+        setTimeout(() => this.setState({ message: null }), 4000);
+      }).catch(() => this.setState({ importing: false, error: 'Could not import font' }));
+  }
+
+  removeFont = (id) => {
+    fetch('/api/hudfonts/' + encodeURIComponent(id), { method: 'DELETE', headers: { Authorization: `Bearer ${this.state.token}` } })
+      .then(r => r.json()).then(data => {
+        if (data.fonts) {
+          this.setState({ fontList: data.fonts });
+        }
+      }).catch(() => this.setState({ error: 'Could not remove font' }));
   }
 
   getEl(type) {
@@ -258,7 +310,7 @@ class HudEditorPage extends basePage {
             <Form.Label className="mb-0"><small>Font<HelpTip text="Font family for this field. Blank uses the global font." /></small></Form.Label>
             <Form.Select size="sm" value={el.font || ''} onChange={ev => this.setElStyle(type, 'font', ev.target.value)} data-testid="el-font">
               <option value="">Global ({g.font})</option>
-              {this.state.fonts.map(f => <option key={f} value={f}>{f}</option>)}
+              {this.fontOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Form.Select>
           </Form.Group>
           <Form.Group>
@@ -282,6 +334,7 @@ class HudEditorPage extends basePage {
   }
 
   renderContent() {
+    const importedFonts = (this.state.fontList.fonts || []).filter(f => f.kind === 'imported');
     return (
       <div style={{ maxWidth: 760 }}>
         <p><i>Arrange the graphic HUD: drag elements on the screen, pick which stats and icons to show, and style the text — each chip shows the value exactly as it will appear on the video.</i></p>
@@ -295,7 +348,7 @@ class HudEditorPage extends basePage {
           <Form.Group>
             <Form.Label className="mb-0"><small>Font<HelpTip text="Default font family for every text field, unless a field overrides it." /></small></Form.Label>
             <Form.Select size="sm" value={this.state.global.font} onChange={ev => this.setGlobal({ font: ev.target.value })} data-testid="global-font">
-              {this.state.fonts.map(f => <option key={f} value={f}>{f}</option>)}
+              {this.fontOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Form.Select>
           </Form.Group>
           <Form.Group>
@@ -308,7 +361,27 @@ class HudEditorPage extends basePage {
             <Form.Control size="sm" type="color" style={{ width: 48, padding: 2 }} value={this.state.global.color}
               onChange={ev => this.setGlobal({ color: ev.target.value })} data-testid="global-color" />
           </Form.Group>
+          <div className="d-flex align-items-center" style={{ gap: 8, marginLeft: 'auto' }}>
+            <label className="btn btn-sm btn-outline-secondary mb-0" style={{ cursor: 'pointer' }}>
+              {this.state.importing ? 'Importing…' : 'Import font…'}
+              <HelpTip text="Upload a .ttf/.otf to add it to the list. It is installed on the device and rendered both here and on the video, so the preview matches." />
+              <input type="file" accept=".ttf,.otf" style={{ display: 'none' }} onChange={this.importFont} disabled={this.state.importing} data-testid="font-import" />
+            </label>
+          </div>
         </div>
+
+        {importedFonts.length > 0 &&
+          <div className="mb-2"><small className="text-muted">Imported fonts: </small>
+            {importedFonts.map(f => (
+              <span key={f.id} className="badge bg-secondary" style={{ marginRight: 6, fontWeight: 'normal' }}>
+                {f.family}{' '}
+                <span role="button" aria-label={'Remove ' + f.family} style={{ cursor: 'pointer' }} onClick={() => this.removeFont(f.id)} data-testid={'font-remove-' + f.id}>×</span>
+              </span>
+            ))}
+          </div>}
+
+        {/* @font-face so curated/imported fonts preview exactly as the device renders them */}
+        <style dangerouslySetInnerHTML={{ __html: this.fontFaceCss() }} />
 
         <div
           ref={this.canvasRef}

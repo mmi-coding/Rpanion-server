@@ -332,3 +332,11 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] The modem GPS poll does not disturb the AT status poll (signal/registration/operator/IP keep updating) and is absent/`NO` cleanly when the modem has no GNSS antenna
 - [ ] Editor canvas shows **mock values** (e.g. `ALT 124m`, `mGPS OK`) on the chips, and the **home arrow** renders as a rotating arrow; on a real graphic stream the burned-in home arrow points toward home as heading changes
 - [ ] Set a **global** font/size/colour → all text fields on the burned-in HUD change; set a **per-element** override (e.g. red battery, larger altitude) → only that field changes; "Use global" clears it. Confirm the on-stream sizes/positions match the editor preview (the `100cqw` scaling vs `rsvgoverlay fit-to-frame`)
+
+## Feature #173 follow-up: custom HUD fonts (curated + import)
+
+- [ ] `fontconfig` is present on the Pi (`fc-cache`/`fc-query`) — it's a new `.deb` dependency; on an apt-installed package it's pulled in automatically, but on a `redeploy.sh` (dpkg -i, no apt) over an old base, install it once (`sudo apt-get install -y fontconfig`)
+- [ ] The bundled curated fonts ship: `/usr/share/rpanion-server/app/assets/hudfonts/*.ttf` exist, and on first start they are copied into `/etc/rpanion-server/fontdata/fonts/` and `fc-cache`d (check the service log / `fc-list | grep -i oxanium` with `XDG_DATA_HOME=/etc/rpanion-server/fontdata`)
+- [ ] In the HUD Editor, the font dropdowns list **Oxanium (DJI/FPV OSD style)**, Chakra Petch, IBM Plex Mono/Sans + the generics; pick **Oxanium** globally → on a graphic stream the burned-in HUD renders in Oxanium (not a fallback), matching the editor preview
+- [ ] **Import** a `.ttf`/`.otf` from the editor → it appears in the list and renders both in the preview and on the burned-in video; a **running** stream may need a restart to pick up a newly imported font (fontconfig caches per process). Confirm a non-font / >5 MB upload is rejected with a clear message
+- [ ] Remove an imported font → it disappears from the list (and from the fonts dir)

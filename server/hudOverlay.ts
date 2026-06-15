@@ -175,9 +175,14 @@ const HUD_MOCK: { [k: string]: string } = {
   modemFix: 'mGPS OK', modemLat: 'mLAT 37.42200', modemLon: 'mLON -122.08400', modemAlt: 'mALT 42m'
 }
 
-// allowed font families (generic → always available to librsvg) + default global style
-const HUD_FONTS = ['monospace', 'sans-serif', 'serif']
+// default global text style. A font family is any safe name (generics, or a
+// curated/imported family from the HudFonts manager) — letters/digits/space/
+// hyphen only, so it is safe to interpolate into the SVG/CSS.
 const DEFAULT_GLOBAL_STYLE = { font: 'monospace', size: 34, color: '#ffffff' }
+
+function validFont (v: any): boolean {
+  return typeof v === 'string' && /^[A-Za-z0-9 \-]{1,64}$/.test(v)
+}
 
 // element type → default { enabled, x, y, icon }, derived from the catalog above.
 const DEFAULT_PLACEMENT: { [k: string]: { enabled: boolean; x: number; y: number; icon: boolean } } = {}
@@ -196,10 +201,6 @@ function hudElements () {
     type: e.type, section: e.section, label: e.label,
     mock: HUD_MOCK[e.type] || '', graphic: GRAPHIC_TYPES.has(e.type)
   }))
-}
-
-function hudFonts () {
-  return HUD_FONTS
 }
 
 // great-circle distance (m) between two lat/lon points (degrees)
@@ -235,7 +236,7 @@ function validColor (v: any): string | null {
 function validateGlobalStyle (g: any) {
   g = g || {}
   return {
-    font: HUD_FONTS.indexOf(g.font) !== -1 ? g.font : DEFAULT_GLOBAL_STYLE.font,
+    font: validFont(g.font) ? g.font : DEFAULT_GLOBAL_STYLE.font,
     size: clampSize(g.size, DEFAULT_GLOBAL_STYLE.size),
     color: validColor(g.color) || DEFAULT_GLOBAL_STYLE.color
   }
@@ -244,7 +245,7 @@ function validateGlobalStyle (g: any) {
 // per-element overrides: keep only the valid, present fields (absent = inherit)
 function validateElementStyle (e: any) {
   const s: any = {}
-  if (HUD_FONTS.indexOf(e.font) !== -1) {
+  if (validFont(e.font)) {
     s.font = e.font
   }
   if (e.size !== undefined && e.size !== null && isFinite(Number(e.size))) {
@@ -315,4 +316,4 @@ function formatHudText (hud: HudData): string {
   return line1 + '\n' + line2 + '\n' + line3
 }
 
-export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, hudFonts, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }
+export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }

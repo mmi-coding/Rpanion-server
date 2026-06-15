@@ -36,5 +36,11 @@ export = {
     flightsLogsDir: path.join(baseDir, 'flightlogs'),
     kmzDir: path.join(baseDir, 'flightlogs', 'kmzlogs'),
     mediaDir: path.join(baseDir, 'media'),
+    // Custom-HUD fonts (#173). fontDataHome is passed to video-server.py as
+    // XDG_DATA_HOME so fontconfig/librsvg find hudFontsDir (curated + imported
+    // ttf); bundledFontsDir is the read-only assets dir shipped in the .deb.
+    fontDataHome: path.join(baseDir, 'fontdata'),
+    hudFontsDir: path.join(baseDir, 'fontdata', 'fonts'),
+    bundledFontsDir: path.join(__dirname, '..', 'assets', 'hudfonts'),
     getPythonPath: getPythonPath,
 };

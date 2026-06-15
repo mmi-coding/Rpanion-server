@@ -32,6 +32,7 @@ class videoStream {
   hudLayout: any
   hudTimer: any
   lteModem: any
+  hudFonts: any
   homePos: any
   armTime: number | null
   secondaryStreams: any
@@ -56,6 +57,9 @@ class videoStream {
     // the LTEModem instance, wired by index.ts after construction (null in tests /
     // standalone). Its GNSS fix is folded into the HUD as the modem* fields.
     this.lteModem = null;
+    // the HudFonts manager, wired by index.ts (null in tests / standalone). Its
+    // dataHome is passed to video-server.py as XDG_DATA_HOME for custom OSD fonts.
+    this.hudFonts = null;
     this.homePos = null; // {lat,lon} from HOME_POSITION, for distance/bearing-to-home
     this.armTime = null; // ms timestamp of the last arm, for the flight timer
 
@@ -577,6 +581,13 @@ class videoStream {
     this._sendStdinCommand({ cmd: 'hud', hud: this.hudData })
   }
 
+  // Environment for the spawned video-server.py. When the HUD fonts manager is
+  // wired, point fontconfig (the graphic HUD's rsvgoverlay/librsvg) at the custom
+  // OSD fonts dir via XDG_DATA_HOME so curated + imported fonts resolve (#173).
+  _spawnEnv() {
+    return this.hudFonts ? { ...process.env, XDG_DATA_HOME: this.hudFonts.dataHome } : process.env
+  }
+
   startHudInterval() {
     this.stopHudInterval()
     this.hudTimer = setInterval(() => this._pushHudPeriodic(), 1000)
@@ -661,7 +672,7 @@ class videoStream {
     this.currentBitrate = null;
 
     const pythonPath = logpaths.getPythonPath()
-    this.deviceStream = spawn(pythonPath, args)
+    this.deviceStream = spawn(pythonPath, args, { env: this._spawnEnv() })
     this.setupStreamEvents('Streaming', callback);
 
     // push the customizable OSD layout to the graphic HUD so it renders even

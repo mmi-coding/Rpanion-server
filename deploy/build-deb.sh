@@ -55,7 +55,7 @@ rm -rf ./python/.venv
 mkdir -p ./additional/etc/rpanion-server/config
 cp ./config/user.json ./additional/etc/rpanion-server/config
 mkdir -p ./additional/usr/share/rpanion-server/app/server
-node_modules.dev/.bin/node-deb --verbose --extra-files additional -- server mavlink build python
+node_modules.dev/.bin/node-deb --verbose --extra-files additional -- server mavlink build python assets
 rm -r ./additional
 
 echo "Built: $(ls -1 rpanion-server_*_${ARCH}.deb 2>/dev/null | tail -1)"
