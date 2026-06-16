@@ -161,7 +161,7 @@ class VPNPage extends basePage {
     return (
         <div style={{ width: 800 }}>
         <h2>Services</h2>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-4 col-form-label">VPN Service</label>
           <div className="col-sm-8">
             <Form.Select onChange={this.handleVPNChange} value={this.state.selectedVPN}>
@@ -193,7 +193,7 @@ class VPNPage extends basePage {
               ))}
             </tbody>
             </Table>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label ">Add new network by key: </label>
               <div className="col-sm-4">
                 <Form.Control type="text" name="ipaddress" disabled={!this.state.selVPNActive} value={this.state.newZerotierKey} onChange={this.handlenewZerotierKey} />
@@ -232,7 +232,7 @@ class VPNPage extends basePage {
               ))}
             </tbody>
             </Table>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label ">Add new Wireguard profile</label>
               <div className="col-sm-6">
                 <Form id='uploadForm' onSubmit={this.handleSubmit}>

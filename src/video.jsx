@@ -802,7 +802,7 @@ renderContent() {
 
                 {/* Streaming Transport (Only for Streaming Mode) */}
                 {showStreamingOptions && (
-                  <div className="form-group row" style={{ marginBottom: '5px' }}>
+                  <div className="form-group row">
                     <label className="col-sm-4 col-form-label">Streaming Mode</label>
                     <div className="col-sm-8">
                       <Form.Select disabled={active} value={this.state.transportSelected} onChange={(e) => this.setState({ transportSelected: e.target.value })}>
@@ -813,7 +813,7 @@ renderContent() {
                 )}
 
                 {/* Video Device Select - Different sources based on mode */}
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-4 col-form-label">Video Device</label>
                   <div className="col-sm-8">
                     {isVideo ? (
@@ -832,7 +832,7 @@ renderContent() {
 
                 {/* RTSP Source Input (If specific device selected) */}
                 {this.isrtspSourceSelected() && (
-                  <div className="form-group row" style={{ marginBottom: '5px' }}>
+                  <div className="form-group row">
                     <label className="col-sm-4 col-form-label">RTSP Source URL</label>
                     <div className="col-sm-8">
                       <Form.Control type="text" disabled={active} value={this.state.customRTSPSource} onChange={(e) => this.setState({ customRTSPSource: e.target.value })} />
@@ -842,7 +842,7 @@ renderContent() {
 
                 {/* Video Resolution */}
                 {!this.isrtspSourceSelected() && (
-                  <div className="form-group row" style={{ marginBottom: '5px' }}>
+                  <div className="form-group row">
                     <label className="col-sm-4 col-form-label">Resolution</label>
                     <div className="col-sm-8">
                       {isVideo ? (
@@ -864,7 +864,7 @@ renderContent() {
                 {!this.isrtspSourceSelected() && (
                   <>
                     {/* Rotation (Hide if H264 native sometimes, but keeping logic simpler here) */}
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                       <label className="col-sm-4 col-form-label">Rotation</label>
                       <div className="col-sm-8">
                         <Form.Select disabled={active} onChange={this.handleRotChange} value={this.state.rotSelected}>
@@ -873,7 +873,7 @@ renderContent() {
                       </div>
                     </div>
 
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                       <label className="col-sm-4 col-form-label">Max Bitrate</label>
                       <div className="col-sm-8">
                         <Form.Control disabled={active} type="number" min="50" max="50000" step="100" onChange={this.handleBitrateChange} value={this.state.bitrate} style={{ width: '100px', display: 'inline-block' }} /> kbps
@@ -882,7 +882,7 @@ renderContent() {
 
                     {/* Hide the timestamp control in video recording mode since it's not supported*/}
                     {!isVideo && (
-                      <div className="form-group row" style={{ marginBottom: '5px' }}>
+                      <div className="form-group row">
                         <label className="col-sm-4 col-form-label">Timestamp</label>
                         <div className="col-sm-8">
                           <Form.Check
@@ -895,7 +895,7 @@ renderContent() {
 
                     {/* Telemetry HUD overlay (#173) - same raw-video constraint as the timestamp */}
                     {!isVideo && (
-                      <div className="form-group row" style={{ marginBottom: '5px' }}>
+                      <div className="form-group row">
                         <label className="col-sm-4 col-form-label">Telemetry HUD<HelpTip text="Burn a live flight-telemetry readout (altitude, speed, heading, battery, mode, GPS) onto the video itself, so any viewer or recording sees it - not just a ground station with its own MAVLink link. Like the timestamp it is drawn before encoding, so it works on CSI / MJPEG / raw sources the companion computer re-encodes, not on a pre-compressed H264 source or RTSP passthrough." /></label>
                         <div className="col-sm-8">
                           <Form.Check
@@ -912,7 +912,7 @@ renderContent() {
 
                     {/* HUD style: text readout vs graphic artificial horizon (#173 follow-up) */}
                     {!isVideo && this.state.useHud && !this.isH264NativeSource() && (
-                      <div className="form-group row" style={{ marginBottom: '5px' }}>
+                      <div className="form-group row">
                         <label className="col-sm-4 col-form-label">HUD Style<HelpTip text="Text: a compact corner readout. Graphic: an artificial-horizon overlay (attitude + ladders + readouts) rendered as an SVG. Graphic costs a little more CPU on the Pi." /></label>
                         <div className="col-sm-8">
                           <Form.Select disabled={active} value={this.state.hudStyle} onChange={(e) => this.setState({ hudStyle: e.target.value })}>
@@ -925,7 +925,7 @@ renderContent() {
 
                     {/* Also hide the compression control since we don't have the ability to change ccompression options*/}
                     {!isVideo && (
-                      <div className="form-group row" style={{ marginBottom: '5px' }}>
+                      <div className="form-group row">
                         <label className="col-sm-4 col-form-label">Compression</label>
                         <div className="col-sm-8">
                           <Form.Select disabled={active} value={this.state.compression} onChange={(e) => this.setState({ compression: e.target.value })}>
@@ -935,7 +935,7 @@ renderContent() {
                       </div>
                     )}
 
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                       <label className="col-sm-4 col-form-label">Framerate</label>
                       <div className="col-sm-8">
                         {this.state.FPSMax === 0 ? (
@@ -957,13 +957,13 @@ renderContent() {
                 {/* RTP Settings (Only if Streaming + RTP) */}
                 {isStreaming && this.state.transportSelected === 'RTP' && (
                   <>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                       <label className="col-sm-4 col-form-label">Destination IP</label>
                       <div className="col-sm-7">
                         <IPAddressInput name="ipaddress" value={this.state.useUDPIP} onChange={this.handleUDPIPChange} disabled={active} />
                       </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                       <label className="col-sm-4 col-form-label">Destination Port</label>
                       <div className="col-sm-8">
                         <Form.Control type="number" disabled={active} value={this.state.useUDPPort} onChange={this.handleUDPPortChange} />
@@ -974,7 +974,7 @@ renderContent() {
 
                 {/* Media Destinations */}
                 {isVideo && (
-                  <div className="form-group row" style={{ marginBottom: '5px' }}>
+                  <div className="form-group row">
                     <label className="col-sm-4 col-form-label">Media Destination</label>
                     <div className="col-sm-8">
                       <Form.Control 
@@ -991,7 +991,7 @@ renderContent() {
 
               {/* --- Photo Mode Settings --- */}
               <div style={{ display: showPhotoSettings ? 'block' : 'none' }}>
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-4 col-form-label">Photo Device</label>
                   <div className="col-sm-8">
                     <Form.Select disabled={active}
@@ -1001,7 +1001,7 @@ renderContent() {
                     </Form.Select>
                   </div>
                 </div>
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-4 col-form-label">Resolution</label>
                   <div className="col-sm-8">
                     <Form.Select disabled={active} onChange={this.handleStillCapChange} value={this.state.stillCapSelected}>
@@ -1009,7 +1009,7 @@ renderContent() {
                     </Form.Select>
                   </div>
                 </div>
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-4 col-form-label">Media Destination</label>
                   <div className="col-sm-8">
                     <Form.Control 
@@ -1030,7 +1030,7 @@ renderContent() {
             <Accordion.Header>MAVLink Video Streaming Service</Accordion.Header>
             <Accordion.Body>
               <p><i>Configuration for advertising the camera and associated video stream via MAVLink. See <a href='https://mavlink.io/en/services/camera.html#video_streaming'>here</a> for details.</i></p>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">Enable camera heartbeats</label>
                 <div className="col-sm-7">
                   <Form.Check
@@ -1043,7 +1043,7 @@ renderContent() {
               </div>
               {/* Show Source IP only if Heartbeat Enabled AND Streaming Mode AND RTSP (Server) mode */}
               {(this.state.enableCameraHeartbeat && isStreaming && this.state.transportSelected === 'RTSP') && (
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-4 col-form-label">Video source IP Address</label>
                   <div className="col-sm-8">
                     <Form.Select

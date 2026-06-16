@@ -162,7 +162,7 @@ class FCPage extends basePage {
     const live = (this.state.FCStatus.links || []).find(s => s.id === link.id) || {};
     const pos = live.vehiclePosition;
     return (
-      <Card key={link.id} style={{ marginBottom: '8px' }}>
+      <Card key={link.id} className="mb-3">
         <Card.Body>
           <Card.Title>
             {link.label}
@@ -198,7 +198,7 @@ class FCPage extends basePage {
           <Accordion.Item eventKey="0">
             <Accordion.Header>Add a Link</Accordion.Header>
             <Accordion.Body>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">Input Type<HelpTip text="UART for a serial-attached flight controller / radio; UDP Server to receive a MAVLink stream the vehicle sends to this device's IP:port." /></label>
                 <div className="col-sm-8">
                   <Form.Select value={this.state.addInputType} onChange={this.handleAddInputType}>
@@ -208,7 +208,7 @@ class FCPage extends basePage {
               </div>
               {isUART ? (
                 <>
-                  <div className="form-group row" style={{ marginBottom: '5px' }}>
+                  <div className="form-group row">
                     <label className="col-sm-4 col-form-label">Serial Device<HelpTip text="The serial port the flight controller / telemetry radio is on. Never select the modem's own serial port." /></label>
                     <div className="col-sm-8">
                       <Form.Select onChange={this.handleAddSerial} value={this.state.addSerial || ''}>
@@ -216,7 +216,7 @@ class FCPage extends basePage {
                       </Form.Select>
                     </div>
                   </div>
-                  <div className="form-group row" style={{ marginBottom: '5px' }}>
+                  <div className="form-group row">
                     <label className="col-sm-4 col-form-label">Baud Rate<HelpTip text="Must match the flight controller's SERIALn_BAUD for this port (commonly 57600 or 115200)." /></label>
                     <div className="col-sm-8">
                       <Form.Select onChange={this.handleAddBaud} value={this.state.addBaud}>
@@ -226,14 +226,14 @@ class FCPage extends basePage {
                   </div>
                 </>
               ) : (
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-5 col-form-label">UDP Input Port<HelpTip text="The port this device listens on for the vehicle's MAVLink stream. Set the FC's NET_Pn_TYPE=1 and NET_Pn_IP* to this device's IP." /></label>
                   <div className="col-sm-7">
                     <input type="number" min="1000" max="65535" value={this.state.addUdpPort} onChange={this.handleAddUdpPort} />
                   </div>
                 </div>
               )}
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">MAVLink Version<HelpTip text="MAVLink protocol version for this link. Modern ArduPilot uses 2.0." /></label>
                 <div className="col-sm-8">
                   <Form.Select onChange={this.handleAddMavVersion} value={this.state.addMavVersion}>
@@ -258,7 +258,7 @@ class FCPage extends basePage {
                   {this.renderUDPTableData(this.state.UDPoutputs)}
                 </tbody>
               </Table>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">Add new destination</label>
                 <div className="col-sm-8">
                   <input type="text" onChange={this.changeaddrow} value={this.state.addrow} /><Button size="sm" onClick={this.addUdpOutput}>Add</Button>
@@ -266,13 +266,13 @@ class FCPage extends basePage {
               </div>
               <br />
               <h3>UDP Server <HelpTip text="Lets one GCS connect to this device's IP:port (broadcast). Binds a fixed port, so it carries the first link only." /></h3>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">Enable UDP Server</label>
                 <div className="col-sm-8">
                   <input type="checkbox" checked={this.state.enableUDPB} onChange={this.handleUseUDPBChange} />
                 </div>
               </div>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">UDP Server Port</label>
                 <div className="col-sm-8">
                   <input type="number" min="1000" max="20000" step="1" onChange={this.changeUDPBPort} value={this.state.UDPBPort} disabled={!this.state.enableUDPB} />
@@ -280,7 +280,7 @@ class FCPage extends basePage {
               </div>
               <br />
               <h3>TCP Server <HelpTip text="Lets multiple GCSs connect to this device's IP:5760. Binds a fixed port, so it carries the first link only." /></h3>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-5 col-form-label">Enable TCP Server at port 5760</label>
                 <div className="col-sm-7">
                   <input type="checkbox" checked={this.state.enableTCP} onChange={this.handleUseTCPChange} />
@@ -292,19 +292,19 @@ class FCPage extends basePage {
           <Accordion.Item eventKey="2">
             <Accordion.Header>Other Options (shared)</Accordion.Header>
             <Accordion.Body>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-5 col-form-label">Enable datastream requests<HelpTip text="Have this device request the telemetry datastreams from each vehicle. Needed when no GCS is connected to ask for them." /></label>
                 <div className="col-sm-7">
                   <input type="checkbox" checked={this.state.enableDSRequest} onChange={this.handleDSRequest} />
                 </div>
               </div>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-5 col-form-label">Enable MAVLink heartbeats<HelpTip text="Advertise this device as an onboard companion computer on the MAVLink network." /></label>
                 <div className="col-sm-7">
                   <input type="checkbox" checked={this.state.enableHeartbeat} onChange={this.handleUseHeartbeatChange} />
                 </div>
               </div>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-5 col-form-label">Enable flight controller logging<HelpTip text="Record a DataFlash log of the first link's vehicle." /></label>
                 <div className="col-sm-7">
                   <input type="checkbox" checked={this.state.doLogging} onChange={this.handleLoggingChange} />
@@ -314,7 +314,7 @@ class FCPage extends basePage {
           </Accordion.Item>
         </Accordion>
 
-        <div className="form-group row" style={{ marginBottom: '5px', marginTop: '8px' }}>
+        <div className="form-group row" style={{ marginTop: '8px' }}>
           <div className="col-sm-8">
             <Button onClick={this.applyOptions}>Apply Shared Options</Button>
             <HelpTip text="Apply the destination + option changes above. Running links are briefly restarted to pick them up." />

@@ -148,45 +148,45 @@ class TelemetryInjectorPage extends basePage {
                     </tbody>
                 </Table>
 
-                <h2 style={{ marginTop: '20px' }}>Settings</h2>
+                <h2>Settings</h2>
                 <Form onSubmit={this.handleSubmit}>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Enable injector<HelpTip text="Master switch. When off, all sources stop and no MAVLink messages are injected. Takes effect on Save" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="enabled" checked={config.enabled} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">HTTP source<HelpTip text="Accept readings POSTed as JSON to /api/telemetryinject. Best for scripts already running on the companion computer. Takes effect on Save" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="httpEnabled" checked={config.httpEnabled} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">UDP source<HelpTip text="Listen for newline-delimited JSON datagrams. Best for a sensor or microcontroller on the local network. Takes effect on Save" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="udpEnabled" checked={config.udpEnabled} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">UDP listen port<HelpTip text="The UDP port this service binds to when the UDP source is enabled (1-65535, default 14600). Point your sensor at this port" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="number" name="udpPort" value={config.udpPort} onChange={this.handleConfigChange} min={1} max={65535} style={{ maxWidth: '200px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Serial source<HelpTip text="Read newline-delimited JSON from a serial device. Takes effect on Save. Never select the flight-controller serial port" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="serialEnabled" checked={config.serialEnabled} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Serial device<HelpTip text="Path to the serial device that emits JSON readings, e.g. /dev/ttyUSB0. Leave blank to disable serial even if the source is ticked" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="serialPort" value={config.serialPort} onChange={this.handleConfigChange} placeholder="/dev/ttyUSB0" style={{ maxWidth: '300px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Serial baud<HelpTip text="Baud rate of the serial device. Must match the device's setting" /></label>
                         <div className="col-sm-8">
                             <Form.Select name="serialBaud" value={config.serialBaud} onChange={this.handleConfigChange} style={{ maxWidth: '200px' }}>
@@ -194,19 +194,19 @@ class TelemetryInjectorPage extends basePage {
                             </Form.Select>
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">MAVLink System ID<HelpTip text="System ID stamped on injected messages (1-255). Usually matches the vehicle so the readings group with it in the GCS" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="number" name="sysid" value={config.sysid} onChange={this.handleConfigChange} min={1} max={255} style={{ maxWidth: '200px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">MAVLink Component ID<HelpTip text="Component ID stamped on injected messages (1-255). Pick a value distinct from the autopilot (1) so injected readings are clearly attributable, e.g. 158" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="number" name="compid" value={config.compid} onChange={this.handleConfigChange} min={1} max={255} style={{ maxWidth: '200px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <div className="col-sm-11">
                             <Button type="submit" className="btn btn-primary">Save</Button>
                         </div>

@@ -104,31 +104,31 @@ class WireguardHubPage extends basePage {
         </HelpSection>
 
         <h2>VPS configuration</h2>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">VPS public IP<HelpTip text="The public IPv4 address of your fresh VPS. Point your domain's A record at this address. Used for NAT setup and shown in the final reminder." /></label>
           <div className="col-sm-6">
             <Form.Control type="text" name="vpsIp" value={this.state.vpsIp} onChange={this.handleChange} placeholder="203.0.113.10" />
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">Domain / subdomain<HelpTip text="A hostname you control (e.g. wg.example.com) with an A record pointing at the VPS IP. Used as the Endpoint in the Pi/laptop configs so the tunnel survives a VPS IP change." /></label>
           <div className="col-sm-6">
             <Form.Control type="text" name="domain" value={this.state.domain} onChange={this.handleChange} placeholder="wg.example.com" />
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">WireGuard UDP port<HelpTip text="The UDP port the hub listens on (default 51820). Your VPS firewall/security group must allow inbound traffic on this port." /></label>
           <div className="col-sm-6">
             <Form.Control type="number" name="port" value={this.state.port} onChange={this.handleChange} />
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">VPN subnet<HelpTip text="The private subnet for the tunnel (default 10.13.13.0/24). The hub gets .1, the drone .2, the laptop .3. Use a range that doesn't clash with your home/field LAN." /></label>
           <div className="col-sm-6">
             <Form.Control type="text" name="subnet" value={this.state.subnet} onChange={this.handleChange} />
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">SSH port<HelpTip text="The port you SSH into the VPS on (default 22). The script's firewall keeps this open so enabling the firewall can't lock you out." /></label>
           <div className="col-sm-6">
             <Form.Control type="number" name="sshPort" value={this.state.sshPort} onChange={this.handleChange} />

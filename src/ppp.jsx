@@ -131,7 +131,7 @@ class PPPPage extends basePage {
             <p><i>Higher baud rates may not be supported on some UARTS</i></p>
             <h2>Configuration</h2>
                 <Form style={{ width: 600 }}>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-4 col-form-label">UART Port</label>
                         <div className="col-sm-7">
                             <Form.Select disabled={this.state.config.enabled === true} onChange={this.handleUartChange} value={this.state.config.selDevice}>
@@ -141,7 +141,7 @@ class PPPPage extends basePage {
                             </Form.Select>
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-4 col-form-label">Baudrate</label>
                         <div className="col-sm-5">
                             <Form.Select disabled={this.state.config.enabled === true} onChange={this.handleBaudrateChange} value={this.state.config.selBaudRate}>
@@ -151,7 +151,7 @@ class PPPPage extends basePage {
                             </Form.Select>
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-4 col-form-label">Local IP Address</label>
                         <div className="col-sm-7">
                             <IPAddressInput
@@ -162,7 +162,7 @@ class PPPPage extends basePage {
                             />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-4 col-form-label">Remote IP Address</label>
                         <div className="col-sm-7">
                             <IPAddressInput
@@ -173,7 +173,7 @@ class PPPPage extends basePage {
                             />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <div className="col-sm-10">
                             <Button onClick={this.handleSubmit} className="btn btn-primary">{this.state.config.enabled === true ? "Disable" : "Enable"}</Button>
                         </div>

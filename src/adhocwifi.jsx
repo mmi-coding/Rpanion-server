@@ -163,7 +163,7 @@ class AdhocConfig extends basePage {
         </HelpSection>
         <div style={{ display: (this.state.netDeviceSelected !== null) ? "block" : "none" }}>
           <Form style={{ width: 600 }}>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-2 col-form-label">Adapter</label>
               <div className="col-sm-10">
                 <Form.Select disabled={this.state.curSettings.isActive} onChange={this.handleAdapterChange} value={this.state.netDeviceSelected}>
@@ -173,13 +173,13 @@ class AdhocConfig extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-2 col-form-label">SSID</label>
               <div className="col-sm-10">
                 <input disabled={this.state.curSettings.isActive} name="ssid" onChange={this.SSIDhandler} value={this.state.curSettings.ssid} type="text" />
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-2 col-form-label">Band</label>
               <div className="col-sm-10">
                 <Form.Select disabled={this.state.curSettings.isActive} name="band" onChange={this.bandhandler} value={this.state.curSettings.band}>
@@ -189,7 +189,7 @@ class AdhocConfig extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-2 col-form-label">Channel</label>
               <div className="col-sm-10">
                 <Form.Select disabled={this.state.curSettings.isActive} name="channel" onChange={this.channelhandler} value={this.state.curSettings.channel}>
@@ -199,7 +199,7 @@ class AdhocConfig extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-2 col-form-label">Security</label>
               <div className="col-sm-10">
                 <Form.Select disabled={this.state.curSettings.isActive} name="wpaType" value={this.state.curSettings.wpaType} onChange={this.securityhandler}>
@@ -209,28 +209,28 @@ class AdhocConfig extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-2 col-form-label">Password</label>
               <div className="col-sm-10">
                 <input disabled={this.state.curSettings.isActive || this.state.curSettings.wpaType === "none"} name="password" type={this.state.showPW === true ? "text" : "password"} value={this.state.curSettings.wpaType === "none" ? '' : this.state.curSettings.password} onChange={this.passwordhandler} />
                 <label><input disabled={this.state.curSettings.wpaType === "none"} name="showpassword" type="checkbox" checked={this.state.showPW} onChange={this.togglePasswordVisible} />Show Password</label>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-2 col-form-label">IP Address</label>
               <div className="col-sm-10">
                 {/* <IPut className="ipaddress" disabled={this.state.curSettings.isActive} onChange={this.IPHandler} defaultValue={this.state.curSettings.ipaddress} value={this.state.curSettings.ipaddress} /> */}
                 <input name="ipaddress" disabled={this.state.curSettings.isActive} onChange={this.IPHandler} value={this.state.curSettings.ipaddress} type="text" />
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '0px' }}>
+            <div className="form-group row">
               <label className="col-sm-5 col-form-label">Gateway IP Address (Optional)</label>
               <div className="col-sm-7">
                 {/* <IPut className="ipaddress" disabled={this.state.curSettings.isActive} onChange={this.IPHandler} defaultValue={this.state.curSettings.ipaddress} value={this.state.curSettings.ipaddress} /> */}
                 <input name="ipaddress" disabled={this.state.curSettings.isActive} onChange={this.GatewayHandler} value={this.state.curSettings.gateway} type="text" />
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <div className="col-sm-10">
                 <Button onClick={this.handleadhocSubmit} disabled={this.state.netDeviceSelected === null} className="btn btn-primary">{this.state.curSettings.isActive ? "Disable" : "Enable"}</Button>
               </div>

@@ -725,7 +725,7 @@ class NetworkConfig extends basePage {
         <p><i>Create, view, edit and delete network connections</i></p>
         <h2>Select Connection</h2>
         <p><i>Show a specific network connection, filtered by network adapter</i></p>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-4 col-form-label">Adapter</label>
           <div className="col-sm-8">
             <Form.Select onChange={this.handleAdapterChange} value={this.state.netDeviceSelected || ''}>
@@ -735,7 +735,7 @@ class NetworkConfig extends basePage {
             </Form.Select>
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-4 col-form-label">Connection</label>
           <div className="col-sm-8">
             <Form.Select onChange={this.handleConnectionChange} value={this.state.netConnectionFilteredSelected || ''}>
@@ -745,7 +745,7 @@ class NetworkConfig extends basePage {
             </Form.Select>
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-4 col-form-label"></label>
           <div className="col-sm-8">
             <Form.Check 
@@ -756,7 +756,7 @@ class NetworkConfig extends basePage {
             />
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-4 col-form-label"></label>
           <div className="col-sm-8">
             <Button size="sm" variant="primary" onClick={this.deleteConnection} disabled={!selectedConnection || selectedConnection.type === "tun"} className="deleteConnection">Delete</Button>{' '}
@@ -765,13 +765,13 @@ class NetworkConfig extends basePage {
             <Button size="sm" variant="secondary" onClick={this.deactivateConnection} disabled={!selectedConnection || selectedConnection.state === ""} className="deactivateConnection">Deactivate</Button>{' '}
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-4 col-form-label"></label>
           <div className="col-sm-7">
             <Button size="sm" disabled={selectedConnection && selectedConnection.type === "tun"} onClick={this.refreshConList}>Refresh Connection List</Button>{' '}
           </div>
         </div>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-4 col-form-label"></label>
           <div className="col-sm-7">
             <Button size="sm" disabled={!selectedConnection || selectedConnection.type === "tun"} onClick={this.refreshInfoList}>Refresh Connection Information</Button>
@@ -782,7 +782,7 @@ class NetworkConfig extends basePage {
         <h2>Edit Connection</h2>
         <Form onSubmit={this.handleNetworkSubmit} style={{ display: selectedConnection ? "block" : "none" }}>
           <div className="adapterattach" style={{ display: selectedConnection && selectedConnection.type === "tun" ? "none" : "block" }}>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Attach to Specific Adapter</label>
               <div className="col-sm-8">
                 <Form.Select name="attachedIface" onChange={this.changeHandler} value={this.state.curSettings.attachedIface}>
@@ -796,7 +796,7 @@ class NetworkConfig extends basePage {
 
           <div className="ipconfig" style={{ display: (this.state.showIP && this.state.curSettings.mode !== "adhoc" && this.state.curSettings.mode !== "ap") ? "block" : "none" }}><h3>IP Address</h3>
 
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">IP Address Type</label>
               <div className="col-sm-8">
                 <div className="form-check">
@@ -810,7 +810,7 @@ class NetworkConfig extends basePage {
               </div>
             </div>
             <div style={{ display: (this.state.curSettings.ipaddresstype !== "auto") ? "block" : "none" }}>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">IP Address</label>
                 <div className="col-sm-8">
                   <IPAddressInput
@@ -821,7 +821,7 @@ class NetworkConfig extends basePage {
                   />
                 </div>
               </div>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">Subnet Mask</label>
                 <div className="col-sm-8">
                   <IPAddressInput
@@ -837,13 +837,13 @@ class NetworkConfig extends basePage {
           </div>
           
           <div className="wificlientconfig" style={{ display: this.state.curSettings.mode === "infrastructure" ? "block" : "none" }}><h3>Wifi Client</h3>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">SSID Name</label>
               <div className="col-sm-8">
                 <Form.Control name="ssid" onChange={this.changeHandler} value={this.state.curSettings.ssid} type="text" />
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Security</label>
               <div className="col-sm-8">
                 <Form.Select name="wpaType" value={this.state.curSettings.wpaType} onChange={this.changeHandler}>
@@ -854,7 +854,7 @@ class NetworkConfig extends basePage {
               </div>
             </div>
             <div style={{ display: (this.state.curSettings.wpaType !== "none") ? "block" : "none" }}>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <label className="col-sm-4 col-form-label">Password</label>
                 <div className="col-sm-8">
                   <Form.Control 
@@ -879,14 +879,14 @@ class NetworkConfig extends basePage {
           </div>
 
           <div className="wifiapconfig" style={{ display: (this.state.curSettings.mode === "ap" || this.state.curSettings.mode === "adhoc") ? "block" : "none" }}><h3>Wifi Access Point</h3>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">SSID Name</label>
               <div className="col-sm-8">
                 <Form.Control name="ssid" onChange={this.changeHandler} value={this.state.curSettings.ssid} type="text" />
               </div>
             </div>
 
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Band</label>
               <div className="col-sm-8">
                 <Form.Select name="band" onChange={this.changeHandler} value={this.state.curSettings.band}>
@@ -896,7 +896,7 @@ class NetworkConfig extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Channel</label>
               <div className="col-sm-8">
                 <Form.Select name="channel" onChange={this.changeHandler} value={this.state.curSettings.channel}>
@@ -907,7 +907,7 @@ class NetworkConfig extends basePage {
               </div>
             </div>
 
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Security</label>
               <div className="col-sm-8">
                 <Form.Select name="wpaType" value={this.state.curSettings.wpaType} onChange={this.changeHandler}>
@@ -918,7 +918,7 @@ class NetworkConfig extends basePage {
               </div>
             </div>
 
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Password</label>
               <div className="col-sm-8">
                 <Form.Control 
@@ -939,7 +939,7 @@ class NetworkConfig extends basePage {
               </div>
             </div>
 
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Starting IP Address</label>
               <div className="col-sm-8">
                 <IPAddressInput
@@ -952,7 +952,7 @@ class NetworkConfig extends basePage {
 
           </div>
 
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <label className="col-sm-4 col-form-label"></label>
             <div className="col-sm-8">
               <Button size="sm" variant="primary" type="submit" disabled={selectedConnection && selectedConnection.type === "tun"}>Save Changes</Button>{' '}

@@ -141,25 +141,25 @@ class PipelineEditorPage extends basePage {
                 }
                 <h2>Editor</h2>
                 <Form>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Camera device<HelpTip text="The camera this pipeline overrides - must exactly match the device name shown on the Photo and Video page (e.g. /dev/video0 or the libcamera path)" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="device" placeholder="/dev/video0 or /base/soc/i2c0mux/i2c@1/imx708@1a" value={this.state.device} onChange={this.handleChange} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Pipeline<HelpTip text="gst-launch syntax, without the network sink, ending in a payloader named pay0. See the rules above" /></label>
                         <div className="col-sm-8">
                             <Form.Control as="textarea" rows={5} name="pipeline" style={{ fontFamily: 'monospace' }} value={this.state.pipeline} onChange={this.handleChange} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Enabled<HelpTip text="Only an enabled pipeline replaces the auto-generated one - and only if it passes validation. Disabled pipelines are kept but ignored" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="enabled" checked={this.state.enabled} onChange={this.handleChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <div className="col-sm-11">
                             <Button onClick={this.handleValidate} className="btn btn-secondary" style={{ marginRight: '10px' }}>Validate</Button>
                             <Button onClick={this.handleSave} className="btn btn-primary">Save</Button>

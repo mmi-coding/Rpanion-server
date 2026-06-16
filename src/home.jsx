@@ -108,7 +108,7 @@ class Home extends basePage {
     return (
       <div style={{ maxWidth: 650 }}>
         <div className="mb-4">
-          <h5>Quick Links</h5>
+          <h2>Quick Links</h2>
           <p>Use the navigation menu to configure system components:</p>
           <ul>
             <li><a href='https://github.com/stephendade/Rpanion-server'>Rpanion-server website</a></li>

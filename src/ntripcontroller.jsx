@@ -85,33 +85,33 @@ class NTRIPPage extends basePage {
         <p><i>Stream NTRIP (GPS correction) data from a web service to the flight controller</i></p>
         <h2>Configuration</h2>
         <Form style={{ width: 500 }}>
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <label className="col-sm-2 col-form-label">Host</label>
             <div className="col-sm-10">
               <input type="text" className="form-control" name="host" disabled={this.state.active === true} onChange={this.changeHandler} value={this.state.host} />
             </div>
           </div>
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <label className="col-sm-2 col-form-label">Port</label>
             <div className="col-sm-10">
               <input type="number" min="100" max="60000" step="1" className="form-control" name="port" disabled={this.state.active === true} onChange={this.changeHandler} value={this.state.port} />
               <input type="checkbox" name="useTLS" disabled={this.state.active === true} onChange={this.toggleuseTLS} checked={this.state.useTLS} /><label>Use TLS</label>
             </div>
           </div>
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <label className="col-sm-2 col-form-label">Mountpoint</label>
             <div className="col-sm-10">
               <input type="text" className="form-control" name="mountpoint" disabled={this.state.active === true} onChange={this.changeHandler} value={this.state.mountpoint} />
             </div>
           </div>
 
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <label className="col-sm-2 col-form-label">Username</label>
             <div className="col-sm-10">
               <input type="text" className="form-control" name="username" disabled={this.state.active === true} onChange={this.changeHandler} value={this.state.username} />
             </div>
           </div>
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <label className="col-sm-2 col-form-label">Password</label>
             <div className="col-sm-10">
               <input type={this.state.showPW === true ? "text" : "password"} className="form-control" name="password" disabled={this.state.active === true} onChange={this.changeHandler} value={this.state.password} />
@@ -119,7 +119,7 @@ class NTRIPPage extends basePage {
             </div>
           </div>
 
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <div className="col-sm-10">
               <Button onClick={this.handleNTRIPSubmit} className="btn btn-primary">{this.state.active === true ? "Disable" : "Enable"}</Button>
             </div>

@@ -77,7 +77,7 @@ class TailscalePage extends basePage {
           </tbody>
         </Table>
         <h2>Connection</h2>
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">Auth key<HelpTip text="Paste a Tailscale auth key (tskey-auth-...) from the admin console to join the tailnet headlessly. Takes effect immediately; reusable/ephemeral keys survive re-flashes." /></label>
           <div className="col-sm-6">
             <Form.Control type="text" name="authkey" value={this.state.authkey} onChange={this.handleAuthKeyChange} />

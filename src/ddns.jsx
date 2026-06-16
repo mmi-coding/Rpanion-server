@@ -97,30 +97,30 @@ class DDNSPage extends basePage {
           </div>
         </div>
 
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">Hostname<HelpTip text="The DDNS hostname/subdomain to update (e.g. 'mydrone' for mydrone.duckdns.org, or the full No-IP host)." /></label>
           <div className="col-sm-5"><Form.Control type="text" name="hostname" value={this.state.hostname} onChange={this.handleChange} /></div>
         </div>
 
         {this.state.provider === 'noip' ? (
           <div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-3 col-form-label">Username<HelpTip text="Your No-IP account username (or DDNS key username)." /></label>
               <div className="col-sm-5"><Form.Control type="text" name="username" value={this.state.username} onChange={this.handleChange} /></div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-3 col-form-label">Password<HelpTip text="Your No-IP password (or DDNS key). Leave blank to keep the saved one." /></label>
               <div className="col-sm-5"><Form.Control type="password" name="password" value={this.state.password} placeholder={this.state.hasPassword ? '(unchanged)' : ''} onChange={this.handleChange} /></div>
             </div>
           </div>
         ) : (
-          <div className="form-group row" style={{ marginBottom: '5px' }}>
+          <div className="form-group row">
             <label className="col-sm-3 col-form-label">Token<HelpTip text="Your DuckDNS account token (from the DuckDNS website)." /></label>
             <div className="col-sm-5"><Form.Control type="text" name="ddnsToken" value={this.state.ddnsToken} onChange={this.handleChange} /></div>
           </div>
         )}
 
-        <div className="form-group row" style={{ marginBottom: '5px' }}>
+        <div className="form-group row">
           <label className="col-sm-3 col-form-label">Update interval (min)<HelpTip text="How often to push the current IP to the provider. 1–1440 minutes." /></label>
           <div className="col-sm-3"><Form.Control type="number" name="intervalMin" value={this.state.intervalMin} onChange={this.handleChange} /></div>
         </div>

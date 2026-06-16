@@ -1,0 +1,10 @@
+{
+  "detector": {
+    "ignoreRules": [
+      "side-tab",
+      "layout-transition"
+    ],
+    "ignoreFiles": [],
+    "ignoreValues": []
+  }
+}

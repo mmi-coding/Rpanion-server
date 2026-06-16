@@ -340,7 +340,7 @@ class LTEModemPage extends basePage {
                 <Button onClick={this.handleConnect} className="btn btn-success">Connect ({config.dataPathMode.toUpperCase()})<HelpTip text="Bring the data call up using the configured data-path mode (RNDIS dials AT$QCRMCALL; QMI runs qmicli; PPP dials pppd)." /></Button>{' '}
                 <Button onClick={this.handleDisconnect} variant="secondary" className="btn">Disconnect<HelpTip text="Bring the current data call down (RNDIS AT$QCRMCALL=0; QMI stop-network; PPP poff)." /></Button>
 
-                <h2 style={{ marginTop: '20px' }}>Modem discovery</h2>
+                <h2>Modem discovery</h2>
                 <p><i>Find the connected modem automatically - serial ports and data network interface.</i></p>
                 <HelpSection title="What the scan does">
                     <ul>
@@ -412,15 +412,15 @@ class LTEModemPage extends basePage {
                         (the UART carries AT control; data needs the USB cable).</small></p>
                 }
 
-                <h2 style={{ marginTop: '20px' }}>Settings</h2>
+                <h2>Settings</h2>
                 <Form onSubmit={this.handleSubmit}>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Enable modem monitoring<HelpTip text="Poll the modem over its AT port for signal, registration and data-call status. The discovery scan and connection test work even with this off" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="enabled" checked={config.enabled} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Data path mode<HelpTip text="How the modem carries IP data. RNDIS: the modem's built-in USB network device (usb0), no extra packages. QMI: libqmi (qmicli) drives a wwan0 interface - never ModemManager. PPP: pppd dials *99# over the serial port (slowest, last resort). Takes effect on the next Connect." /></label>
                         <div className="col-sm-8">
                             <Form.Select name="dataPathMode" value={config.dataPathMode} onChange={this.handleConfigChange}>
@@ -431,7 +431,7 @@ class LTEModemPage extends basePage {
                         </div>
                     </div>
                     {config.dataPathMode === 'qmi' && (
-                        <div className="form-group row" style={{ marginBottom: '5px' }}>
+                        <div className="form-group row">
                             <label className="col-sm-3 col-form-label">QMI control device<HelpTip text="The libqmi control device, usually /dev/cdc-wdm0. Set the data network interface to wwan0 for QMI." /></label>
                             <div className="col-sm-8">
                                 <Form.Control type="text" name="qmiDevice" value={config.qmiDevice} onChange={this.handleConfigChange} />
@@ -440,13 +440,13 @@ class LTEModemPage extends basePage {
                     )}
                     {config.dataPathMode === 'ppp' && (
                         <div>
-                            <div className="form-group row" style={{ marginBottom: '5px' }}>
+                            <div className="form-group row">
                                 <label className="col-sm-3 col-form-label">PPP port<HelpTip text="Serial port pppd dials on. Leave blank to use the AT port. Must NOT be the flight-controller UART - the server refuses to dial it. Set the data network interface to ppp0 for PPP." /></label>
                                 <div className="col-sm-8">
                                     <Form.Control type="text" name="pppPort" value={config.pppPort} onChange={this.handleConfigChange} placeholder="defaults to the AT port" />
                                 </div>
                             </div>
-                            <div className="form-group row" style={{ marginBottom: '5px' }}>
+                            <div className="form-group row">
                                 <label className="col-sm-3 col-form-label">PPP baud<HelpTip text="Serial speed for the pppd dial. SIM7600 default 115200." /></label>
                                 <div className="col-sm-8">
                                     <Form.Select name="pppBaud" value={config.pppBaud} onChange={this.handleConfigChange}>
@@ -458,7 +458,7 @@ class LTEModemPage extends basePage {
                             </div>
                         </div>
                     )}
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">AT command port<HelpTip text="Serial port carrying AT commands - usually /dev/ttyUSB2 on a SIM7600 over USB, or the UART device if wired to the GPIO header. Must not be held by anything else (ModemManager, mavlink-router). The discovery scan finds it for you" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="atPort" value={config.atPort} onChange={this.handleConfigChange} list="serialports" />
@@ -469,7 +469,7 @@ class LTEModemPage extends basePage {
                             </datalist>
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Baud rate<HelpTip text="Serial speed of the AT port. Ignored on USB ports; for a UART it must match the modem's setting (SIM7600 default 115200)" /></label>
                         <div className="col-sm-8">
                             <Form.Select name="baud" value={config.baud} onChange={this.handleConfigChange}>
@@ -479,39 +479,39 @@ class LTEModemPage extends basePage {
                             </Form.Select>
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">APN<HelpTip text="Your carrier's access point name. Applied before a reconnect (AT+CGDCONT); leave empty to keep the modem's stored APN" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="apn" value={config.apn} onChange={this.handleConfigChange} placeholder="carrier APN (optional)" />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Data network interface<HelpTip text="The modem's RNDIS network device, usually usb0. Used for data usage accounting and the connection test. The discovery scan lists candidates" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="text" name="netInterface" value={config.netInterface} onChange={this.handleConfigChange} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Auto-reconnect<HelpTip text="Restart the data call automatically when the modem is registered to the network but has no IP address (dropped session)" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="autoReconnect" checked={config.autoReconnect} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Poll interval (s)<HelpTip text="How often the modem is polled for status. 5 s is a good default; longer intervals reduce AT-port traffic" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="number" name="pollInterval" value={config.pollInterval} onChange={this.handleConfigChange} min={2} max={120} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <div className="col-sm-11">
                             <Button type="submit" className="btn btn-primary">Save</Button>
                         </div>
                     </div>
                 </Form>
 
-                <h2 style={{ marginTop: '20px' }}>USB composition<HelpTip text="Switch the modem's USB mode and REBOOT it (~30s; ports re-enumerate). QMI (cdc-wdm0/wwan0) is recommended; RNDIS exposes usb0. After switching, change the Data path mode to match, re-scan and reconnect." /></h2>
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <h2>USB composition<HelpTip text="Switch the modem's USB mode and REBOOT it (~30s; ports re-enumerate). QMI (cdc-wdm0/wwan0) is recommended; RNDIS exposes usb0. After switching, change the Data path mode to match, re-scan and reconnect." /></h2>
+                <div className="form-group row">
                     <div className="col-sm-4">
                         <Form.Select name="usbMode" value={this.state.usbMode} onChange={(e) => this.setState({ usbMode: e.target.value })}>
                             <option value="qmi">QMI (cdc-wdm0 / wwan0)</option>
@@ -540,7 +540,7 @@ class LTEModemPage extends basePage {
                     </ul>
                 </HelpSection>
                 <Form onSubmit={(e) => { e.preventDefault(); this.handleConnectionTest(); }}>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <div className="col-sm-3">
                             <Button onClick={this.handleConnectionTest} disabled={this.state.testing} className="btn btn-primary">
                                 {this.state.testing ? 'Testing...' : 'Run connection test'}
@@ -570,7 +570,7 @@ class LTEModemPage extends basePage {
                 <h2>AT console</h2>
                 <p><i>Send raw AT commands to the modem (e.g. <code>AT+CPIN?</code>, <code>AT+CPSI?</code>). Only available while monitoring is enabled.</i></p>
                 {this.state.atLog.length > 0 &&
-                    <pre style={{ maxHeight: '200px', overflowY: 'auto', backgroundColor: '#f8f9fa', padding: '8px', fontSize: '0.85em' }}>
+                    <pre style={{ maxHeight: '200px', overflowY: 'auto' }}>
                         {this.state.atLog.join('\n')}
                     </pre>
                 }

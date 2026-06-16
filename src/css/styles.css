@@ -74,6 +74,16 @@ html.gs-theme {
   --bs-border-radius-sm:      0.2rem;
   --bs-border-radius-lg:      0.4rem;
   --bs-heading-color:         var(--gs-text);
+
+  /* Spacing scale — drives section/heading/form rhythm so density reads as
+     deliberate, not cramped. Use these instead of ad-hoc px/rem one-offs. */
+  --gs-space-1: 0.25rem;
+  --gs-space-2: 0.5rem;
+  --gs-space-3: 0.75rem;
+  --gs-space-4: 1rem;
+  --gs-space-5: 1.5rem;
+  --gs-space-6: 2rem;
+  --gs-space-7: 3rem;
 }
 
 /* ── 1a · Dark theme (night cockpit) ────────────────────────────────────── */
@@ -90,7 +100,7 @@ html.gs-theme[data-bs-theme="dark"] {
 
   --gs-text:        #e8eef5;
   --gs-text-dim:    #9bb0c4;
-  --gs-text-faint:  #62788d;
+  --gs-text-faint:  #7b8ea6;   /* WCAG AA: ≥4.8:1 on inputs/panels (was #62788d ≈3.6:1) */
 
   /* Foreground (text-on-surface) tones — bright on dark */
   --gs-link:        var(--gs-cyan);
@@ -128,7 +138,7 @@ html.gs-theme[data-bs-theme="light"] {
 
   --gs-text:        #16212c;
   --gs-text-dim:    #51616f;
-  --gs-text-faint:  #8090a0;
+  --gs-text-faint:  #5d6b7a;   /* WCAG AA: ≥4.5:1 on all light surfaces (was #8090a0 ≈2.9:1) */
 
   /* Foreground tones — darkened for contrast on light surfaces */
   --gs-link:        #0a6fb5;
@@ -247,7 +257,7 @@ html.gs-theme .gs-brand-name {
   overflow: hidden; text-overflow: ellipsis;
 }
 html.gs-theme .gs-brand-sub {
-  font-family: var(--gs-font-mono); font-size: 0.57rem; font-weight: 500; letter-spacing: 0.2em;
+  font-family: var(--gs-font-mono); font-size: 0.57rem; font-weight: 500; letter-spacing: 0.12em;
   color: var(--gs-text-faint); margin-top: 3px;
 }
 
@@ -373,6 +383,29 @@ html.gs-theme .container-fluid > h1::before {
   width: 4px; height: 1.05em; background: var(--gs-amber);
   box-shadow: var(--gs-glow-amber); border-radius: 1px;
 }
+/* In-page section headings — h1 is the page title (above); these are the section
+   labels inside page content. Upstream only set their font, so they sat flush against
+   the content above them. Give them deliberate vertical rhythm via the spacing scale. */
+html.gs-theme .pagedetails h2 {
+  font-size: 1.05rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  margin: var(--gs-space-6) 0 var(--gs-space-3);
+  padding-bottom: var(--gs-space-2);
+  border-bottom: 1px solid var(--gs-line-soft);
+  text-wrap: balance;
+}
+/* The first section sits close under the page title / intro, not 2rem below it. */
+html.gs-theme .pagedetails h2:first-of-type { margin-top: var(--gs-space-3); }
+html.gs-theme .pagedetails h3 {
+  font-size: 0.95rem; font-weight: 600; letter-spacing: 0.02em;
+  margin: var(--gs-space-5) 0 var(--gs-space-2);
+  text-wrap: balance;
+}
+html.gs-theme .pagedetails h4 {
+  font-size: 0.9rem; font-weight: 600;
+  margin: var(--gs-space-4) 0 var(--gs-space-2);
+}
+
 html.gs-theme a { text-decoration: none; transition: color .15s ease; }
 html.gs-theme a:hover { text-decoration: underline; text-underline-offset: 3px; }
 html.gs-theme .text-muted, html.gs-theme .text-secondary { color: var(--gs-text-dim) !important; }
@@ -451,6 +484,9 @@ html.gs-theme .btn-outline-primary, html.gs-theme .btn-outline-secondary {
 html.gs-theme .btn-link { color: var(--gs-link); text-transform: none; letter-spacing: 0; }
 
 /* ── 8 · Forms — labelled instruments ───────────────────────────────────── */
+/* Vertical rhythm between form rows. Pages used inline `marginBottom: 5px`
+   (≈invisible); this gives a consistent, deliberate gap from the spacing scale. */
+html.gs-theme .pagedetails .form-group { margin-bottom: var(--gs-space-3); }
 html.gs-theme .form-label, html.gs-theme .col-form-label, html.gs-theme .form-check-label, html.gs-theme legend {
   font-family: var(--gs-font-display); font-weight: 500; font-size: 0.82rem; letter-spacing: 0.025em; color: var(--gs-text);
 }

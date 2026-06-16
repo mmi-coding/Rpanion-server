@@ -135,27 +135,27 @@ class CellularTuningPage extends basePage {
                     </tbody>
                 </Table>
 
-                <h2 style={{ marginTop: '20px' }}>Settings</h2>
+                <h2>Settings</h2>
                 <Form onSubmit={this.handleSubmit}>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Low-latency preset<HelpTip text="Tune the video pipeline for cellular links: ~1 s keyframe interval, constant-bitrate-style rate control, frame dropping instead of buffering. Takes effect when the stream is next started. For custom pipelines, name your encoder enc0 to allow runtime bitrate changes" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="lowLatency" checked={config.lowLatency} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Adaptive bitrate<HelpTip text="Scale the encoder bitrate with the LTE signal quality (good 100% / fair 60% / poor 35% - see the table above). Requires modem monitoring on the LTE Modem page" /></label>
                         <div className="col-sm-8">
                             <input type="checkbox" name="adaptiveBitrate" checked={config.adaptiveBitrate} onChange={this.handleConfigChange} style={{ marginTop: '12px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Minimum bitrate (kbps)<HelpTip text="Adaptive bitrate never goes below this floor, however poor the signal" /></label>
                         <div className="col-sm-8">
                             <Form.Control type="number" name="minBitrate" value={config.minBitrate} onChange={this.handleConfigChange} min={50} max={10000} style={{ maxWidth: '200px' }} />
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <div className="col-sm-11">
                             <Button type="submit" className="btn btn-primary">Save</Button>
                         </div>

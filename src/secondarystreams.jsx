@@ -160,7 +160,7 @@ class SecondaryStreamsPage extends basePage {
           <p><i>No spare cameras available — every detected camera is already in use by the main stream or another secondary stream.</i></p>
         ) : (
           <>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Camera<HelpTip text="A camera not already used by the main stream or another secondary stream." /></label>
               <div className="col-sm-8">
                 <Form.Select value={this.state.addDevice} onChange={this.handleDeviceChange}>
@@ -168,7 +168,7 @@ class SecondaryStreamsPage extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Resolution<HelpTip text="Capture format and size. Lower resolutions cost less encoder/CPU time on a shared Pi." /></label>
               <div className="col-sm-8">
                 <Form.Select value={this.state.addCapSelected} onChange={this.handleCapChange}>
@@ -176,15 +176,15 @@ class SecondaryStreamsPage extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Framerate</label>
               <div className="col-sm-8"><input type="number" min="1" max="120" value={this.state.addFps} onChange={this.handleField('addFps', true)} /></div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Max Bitrate</label>
               <div className="col-sm-8"><input type="number" min="50" max="50000" step="100" value={this.state.addBitrate} onChange={this.handleField('addBitrate', true)} /> kbps</div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Rotation</label>
               <div className="col-sm-8">
                 <Form.Select value={this.state.addRotation} onChange={this.handleField('addRotation', true)}>
@@ -192,7 +192,7 @@ class SecondaryStreamsPage extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Compression</label>
               <div className="col-sm-8">
                 <Form.Select value={this.state.addCompression} onChange={this.handleField('addCompression', false)}>
@@ -201,7 +201,7 @@ class SecondaryStreamsPage extends basePage {
                 </Form.Select>
               </div>
             </div>
-            <div className="form-group row" style={{ marginBottom: '5px' }}>
+            <div className="form-group row">
               <label className="col-sm-4 col-form-label">Transport<HelpTip text="RTSP serves the stream on a port for a client to pull; RTP pushes it to a fixed destination (use this over the cellular/VPN link)." /></label>
               <div className="col-sm-8">
                 <Form.Select value={this.state.addTransport} onChange={this.handleField('addTransport', false)}>
@@ -212,11 +212,11 @@ class SecondaryStreamsPage extends basePage {
             </div>
             {isRTP && (
               <>
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-4 col-form-label">Destination IP</label>
                   <div className="col-sm-8"><input type="text" value={this.state.addUdpIP} onChange={this.handleField('addUdpIP', false)} /></div>
                 </div>
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+                <div className="form-group row">
                   <label className="col-sm-4 col-form-label">Destination Port</label>
                   <div className="col-sm-8"><input type="number" min="1" max="65535" value={this.state.addUdpPort} onChange={this.handleField('addUdpPort', true)} /></div>
                 </div>

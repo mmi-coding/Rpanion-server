@@ -76,20 +76,20 @@ class CloudConfig extends basePage {
                 <p>The synchonisation runs every 20 seconds.</p>
                 <p>Destination format is <code>username@server:/path/to/remote/dir</code>, where <code>username</code> has an ssh publickey on the remote server.</p>
                 <Form style={{ width: 700 }}>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Rsync Destination</label>
                         <div className="col-sm-7">
                             <input type="text" className="form-control" name="binUploadLink" disabled={this.state.doBinUpload === true ? true : false} onChange={this.changeHandler} value={this.state.binUploadLink}/>
                         </div>
                     </div>
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <label className="col-sm-3 col-form-label">Sync file deletions</label>
                         <div className="col-sm-7">
                         <input name="syncDeletions" type="checkbox" disabled={this.state.doBinUpload === true ? true : false} checked={this.state.syncDeletions} onChange={this.toggleSyncDelete}/>
                         </div>
                     </div>
                     
-                    <div className="form-group row" style={{ marginBottom: '5px' }}>
+                    <div className="form-group row">
                         <div className="col-sm-10">
                         <Button onClick={this.handleDoBinUploadSubmit} className="btn btn-primary">{this.state.doBinUpload === true ? 'Disable' : 'Enable'}</Button>
                         </div>

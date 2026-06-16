@@ -129,7 +129,7 @@ class LoggerPage extends basePage {
             <Accordion.Header>Telemetry Logs</Accordion.Header>
             <Accordion.Body>
               <p>Telemetry Logging can be enabled or disabled in the &quot;Flight Controller&quot; page.</p>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <div className="col-sm-8">
                 <Button id='tlog' onClick={this.clearLogs}>Clear inactive logs</Button>
                 </div>
@@ -148,7 +148,7 @@ class LoggerPage extends basePage {
             <Accordion.Header>Bin Logs</Accordion.Header>
             <Accordion.Body>
               <p>This requires the <code>LOG_BACKEND_TYPE</code> parameter in ArduPilot set to <code>Mavlink</code>. A high baudrate to the flight controller (921500 or greater) is required.</p>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <div className="col-sm-8">
                 <Button id='binlog' onClick={this.clearLogs}>Clear inactive logs</Button>
                 </div>
@@ -168,13 +168,13 @@ class LoggerPage extends basePage {
             <Accordion.Body>
               <p>KMZ files created from the Telemetry Logs every 20 seconds.</p>
               
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <div className="col-sm-8">
                   <Button onClick={this.handleDoLogConversion} className="btn btn-primary">{this.state.doLogConversion === true ? 'Disable' : 'Enable'}</Button>
                 </div>
               </div>
               <p>Status: {this.state.conversionLogStatus}</p>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <div className="col-sm-8">
                 <Button id='kmzlog' onClick={this.clearLogs}>Clear KMZ files</Button>
                 </div>
@@ -194,13 +194,13 @@ class LoggerPage extends basePage {
             <Accordion.Body>
               <p>Photos and video files recorded by Rpanion</p>
               
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
                 <div className="col-sm-8">
                   <p>Status: {this.state.videoStreamStatus}</p>
                 </div>
               </div>
-              <div className="form-group row" style={{ marginBottom: '5px' }}>
-                <div className="form-group row" style={{ marginBottom: '5px' }}>
+              <div className="form-group row">
+                <div className="form-group row">
                 <div className="col-sm-8">
                 <Button id='media' onClick={this.clearLogs}>Delete all media files and subdirectories</Button>
                 </div>
