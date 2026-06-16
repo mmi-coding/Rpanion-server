@@ -362,3 +362,34 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] In the HUD Editor, select an icon field → set **Icon size** (0.5–3×) and **Icon colour**; Save → the burned-in glyph changes size + colour live, and the value text shifts right so it never overlaps the larger glyph
 - [ ] Leaving **Icon colour** unticked keeps the default **cyan**; Icon size 1× matches the prior look (no regression for existing layouts)
 - [ ] Verify a scaled/coloured glyph renders cleanly through the real `rsvgoverlay` pipeline (reaches PLAYING; no librsvg parse warnings)
+
+## Feature #311 follow-up: FC link over Ethernet (UDP) — Pixhawk 6X
+
+The Pixhawk 6X (and other Ethernet-equipped FCs, e.g. CubeRed) on **ArduPilot 4.5+**
+can send MAVLink over Ethernet instead of a serial UART. The Pi receives it with a
+**UDP Server** input link (Feature #311). The FC page help (collapsed *"Connecting the
+flight controller over Ethernet (UDP)"* section) documents this in the webUI.
+
+**Topology constraint (verified on-device 2026-06-16):** the Pi 4 has a *single*
+Ethernet port (`eth0`), and on the bench it is the DHCP LAN uplink + primary default
+route (it carries SSH). For the FC link, `eth0`'s cable must go **Pi → Pixhawk 6X
+point-to-point** — it cannot be the home-LAN uplink at the same time. With `eth0`
+dedicated to the FC, the Pi reaches the ground via **`wlan0` / LTE / WireGuard**
+(`wlan0` already holds a second default route; WireGuard `pi` = `10.13.13.2`). Run the
+reconfig from a wlan0/VPN session or the local console — applying it over an
+`eth0`-based SSH drops that session.
+
+- [ ] Cable `eth0` directly to the Pixhawk 6X Ethernet port (point-to-point, or via a switch)
+- [ ] Give `eth0` a static IP on the FC subnet (NetworkManager profile is **`netplan-eth0`** on this box). `never-default` + empty gateway keep the default route on wlan0/LTE:
+  ```
+  sudo nmcli con mod netplan-eth0 ipv4.method manual \
+    ipv4.addresses 192.168.144.10/24 ipv4.gateway "" ipv4.never-default yes
+  sudo nmcli con up netplan-eth0
+  ```
+  (confirm `sudo nmcli connection modify` has polkit rights under the service user — see Feature #19)
+- [ ] On the Pixhawk 6X (Mission Planner / MAVProxy), reboot after `NET_ENABLE`, then again after setting TYPE/IP/PORT:
+  - `NET_ENABLE=1`, `NET_NETMASK=24` (leave the FC IP at its `192.168.144.14` default, gw `192.168.144.1`)
+  - a free port slot `Px`: `NET_Px_TYPE=1` (UDP client), `NET_Px_PROTOCOL=2` (MAVLink2), `NET_Px_IP0..3=192.168.144.10` (the Pi), `NET_Px_PORT=14550`
+- [ ] In the webUI FC page → *Add a Link*: Input Type = **UDP Server**, UDP Input Port = **14550** → the link card shows the 6X connected (vehicle type/FW, packets climbing)
+- [ ] Reachability sanity: `ping -I eth0 192.168.144.14` from the Pi hits the FC; management (SSH/webUI) still works over wlan0/VPN with `eth0` off the LAN
+- [ ] Confirm telemetry bandwidth/latency over Ethernet vs the UART baseline (the main reason to use it)

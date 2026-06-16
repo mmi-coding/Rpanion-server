@@ -188,6 +188,24 @@ class FCPage extends basePage {
           <p>Each input link (a serial UART or a UDP server) is independent: it gets its own router and connection monitor, so one link dropping out does not affect the others. Every link is routed to the shared telemetry destinations below — your ground station tells the vehicles apart by their MAVLink system ID.</p>
           <p>The <b>UDP Server</b> (broadcast) and <b>TCP Server</b> bind a fixed port, so they carry the <b>first</b> link only. For multiple vehicles over a cellular/VPN link, add an explicit <b>UDP Client</b> destination — that carries every vehicle. DataFlash logging captures the first link.</p>
         </HelpSection>
+        <HelpSection title="Connecting the flight controller over Ethernet (UDP)">
+          <p>For a flight controller with an Ethernet port (e.g. Holybro Pixhawk 6X, CubePilot CubeRed) running <b>ArduPilot 4.5+</b>, you can take telemetry over Ethernet instead of a serial UART &mdash; far higher bandwidth. The flight controller sends its MAVLink stream to this device as a <b>UDP client</b>, and this device receives it with a <b>UDP Server</b> link.</p>
+          <ol style={{ paddingLeft: '1.2em' }}>
+            <li>On this device, give <code>eth0</code> a static IP on the same subnet as the flight controller. ArduPilot uses the <code>192.168.144.0/24</code> subnet by default, so use e.g. <code>192.168.144.10</code> / <code>255.255.255.0</code>. Avoid <code>.14</code> (the FC default) and <code>.11</code> (reserved for Herelink); no gateway is needed on this link.</li>
+            <li>Add a link above: set <b>Input Type</b> to <b>UDP Server</b> and pick a <b>UDP Input Port</b> (e.g. <code>14550</code>).</li>
+            <li>On the flight controller, set the parameters below, then reboot (once after <code>NET_ENABLE</code> to reveal the rest, and again after changing <code>TYPE</code> / <code>IP</code> / <code>PORT</code>). <code>Px</code> is any free network-port slot (<code>P1</code>, <code>P2</code>, &hellip;):
+              <ul style={{ paddingLeft: '1.2em', marginTop: '4px' }}>
+                <li><code>NET_ENABLE = 1</code></li>
+                <li><code>NET_NETMASK = 24</code> &mdash; leave the FC IP at its <code>192.168.144.14</code> default</li>
+                <li><code>NET_Px_TYPE = 1</code> (UDP Client)</li>
+                <li><code>NET_Px_PROTOCOL = 2</code> (MAVLink2)</li>
+                <li><code>NET_Px_IP0..3</code> = this device&apos;s IP (<code>192.168.144.10</code>)</li>
+                <li><code>NET_Px_PORT</code> = the UDP Input Port from step 2 (<code>14550</code>)</li>
+              </ul>
+            </li>
+          </ol>
+          <p>See ArduPilot&apos;s <a href="https://ardupilot.org/copter/docs/common-network.html" target="_blank" rel="noreferrer">Ethernet / Network Setup</a> docs for full details.</p>
+        </HelpSection>
 
         <h2>Telemetry Links</h2>
         {this.state.links.length === 0 && <p><i>No links yet — add one below.</i></p>}
@@ -227,7 +245,7 @@ class FCPage extends basePage {
                 </>
               ) : (
                 <div className="form-group row">
-                  <label className="col-sm-5 col-form-label">UDP Input Port<HelpTip text="The port this device listens on for the vehicle's MAVLink stream. Set the FC's NET_Pn_TYPE=1 and NET_Pn_IP* to this device's IP." /></label>
+                  <label className="col-sm-5 col-form-label">UDP Input Port<HelpTip text="The port this device listens on for the vehicle's MAVLink stream. On the FC set NET_Px_TYPE=1 (UDP client), NET_Px_IP* to this device's IP, and NET_Px_PORT to this port. See the Ethernet (UDP) guide at the top of the page." /></label>
                   <div className="col-sm-7">
                     <input type="number" min="1000" max="65535" value={this.state.addUdpPort} onChange={this.handleAddUdpPort} />
                   </div>
