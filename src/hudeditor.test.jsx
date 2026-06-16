@@ -82,9 +82,14 @@ describe('#HudEditorPage()', function () {
     const { page } = renderEd(() => fetchWith())
     await page.flush()
     expect(page.container.textContent).toContain('HUD Editor')
-    // numeric chips show the mock value (WYSIWYG); alt has an icon → ◈ prefix
-    expect(page.container.textContent).toContain('◈ ALT 124m')
-    expect(page.container.textContent).toContain('◈ mGPS OK') // modem GPS chip
+    // numeric chips show the mock value (WYSIWYG); alt/modemFix have icon:true → a
+    // real glyph SVG drawn next to the value (ported from video-server.py)
+    expect(page.container.textContent).toContain('ALT 124m')
+    expect(page.container.querySelector('[data-eltype="alt"] svg.hud-icon')).toBeTruthy()
+    expect(page.container.textContent).toContain('mGPS OK') // modem GPS chip
+    expect(page.container.querySelector('[data-eltype="modemFix"] svg.hud-icon')).toBeTruthy()
+    // an enabled element with icon:false draws no glyph
+    expect(page.container.querySelector('[data-eltype="extrael"] svg.hud-icon')).toBeFalsy()
     expect(page.container.textContent).toContain('extrael') // catalogFor fallback (type, not in catalog)
     // graphic chips render shapes (no value text); the home arrow has its spin class
     expect(page.container.querySelector('.hud-home-arrow')).toBeTruthy()
@@ -96,6 +101,51 @@ describe('#HudEditorPage()', function () {
     expect(page.container.textContent).toContain('Artificial Horizon')
     // the palette preview column shows the mock value and a shape marker
     expect(page.container.textContent).toContain('⊕ shape')
+    page.unmount()
+  })
+
+  test('renderIcon ports every video-server.py glyph group (plus a default)', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    // one representative type per _hud_icon() branch + an unknown type (default dot)
+    const reps = ['batV', 'alt', 'climb', 'spd', 'rcRssi', 'windSpeed', 'homeDist', 'hdg', 'mode', 'gps', 'armed', 'somethingElse']
+    for (const t of reps) {
+      const svg = getRef().renderIcon(t)
+      expect(svg).toBeTruthy()
+      expect(svg.props.className).toBe('hud-icon') // a wrapped <svg> glyph
+    }
+    page.unmount()
+  })
+
+  test('icon colour + size are editable per element and drive the chip glyph', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    // alt has icon:true → the per-element panel exposes icon size + colour controls
+    act(() => { getRef().setState({ selectedType: 'alt' }) })
+    const scale = page.container.querySelector('[data-testid="el-iconscale"]')
+    expect(scale).toBeTruthy()
+    page.setValue(scale, '2')
+    expect(getRef().getEl('alt').iconScale).toBe(2)
+    // icon colour starts at the default (cyan, no override) → tick to override, then pick
+    expect(getRef().getEl('alt').iconColor).toBeUndefined()
+    act(() => { page.container.querySelector('[data-testid="el-iconcolor-on"]').click() })
+    expect(getRef().getEl('alt').iconColor).toBe('#7fe9c8')
+    page.setValue(page.container.querySelector('[data-testid="el-iconcolor"]'), '#ff8800')
+    expect(getRef().getEl('alt').iconColor).toBe('#ff8800')
+    // the chip's glyph reflects the chosen colour + 2× size (1.05 × 2 = 2.1em)
+    const svg = page.container.querySelector('[data-eltype="alt"] svg.hud-icon')
+    expect(svg.style.height).toBe('2.1em')
+    expect(svg.querySelector('path').getAttribute('fill')).toBe('#ff8800')
+    // unticking removes the override → back to the default cyan
+    act(() => { page.container.querySelector('[data-testid="el-iconcolor-on"]').click() })
+    expect('iconColor' in getRef().getEl('alt')).toBe(false)
+    // setElIconScale clamps out-of-range and NaN
+    act(() => { getRef().setElIconScale('alt', 9) }); expect(getRef().getEl('alt').iconScale).toBe(3)
+    act(() => { getRef().setElIconScale('alt', 0.1) }); expect(getRef().getEl('alt').iconScale).toBe(0.5)
+    act(() => { getRef().setElIconScale('alt', NaN) }); expect(getRef().getEl('alt').iconScale).toBe(1)
+    // a text field with icon:false shows no icon controls
+    act(() => { getRef().setState({ selectedType: 'extrael' }) })
+    expect(page.container.querySelector('[data-testid="el-iconscale"]')).toBeFalsy()
     page.unmount()
   })
 

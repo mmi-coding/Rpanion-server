@@ -355,3 +355,10 @@ re-encoded source (CSI / MJPEG / raw USB) and a connected flight controller.
 - [ ] Pick a USB camera (if attached) → preview works for raw/MJPEG caps; a pre-compressed (H264) cap shows "Camera unavailable" (preview not supported), matching the burned-in HUD constraint
 - [ ] Start the main video stream while the preview is open → the preview **stops** (frees the camera) and the stream starts; trying to open the preview **while streaming** shows "Camera unavailable (busy)"
 - [ ] Turning the toggle off / leaving the page stops `mjpeg-preview.py` (no orphaned GStreamer process: `pgrep -f mjpeg-preview`)
+
+## Feature #173 follow-up: HUD icons — real glyphs + per-icon colour/size
+
+- [ ] On a **graphic** HUD stream, an icon-enabled field (e.g. battery, GPS, home) burns in the **real glyph** (not the old `◈`), matching the editor preview
+- [ ] In the HUD Editor, select an icon field → set **Icon size** (0.5–3×) and **Icon colour**; Save → the burned-in glyph changes size + colour live, and the value text shifts right so it never overlaps the larger glyph
+- [ ] Leaving **Icon colour** unticked keeps the default **cyan**; Icon size 1× matches the prior look (no regression for existing layouts)
+- [ ] Verify a scaled/coloured glyph renders cleanly through the real `rsvgoverlay` pipeline (reaches PLAYING; no librsvg parse warnings)

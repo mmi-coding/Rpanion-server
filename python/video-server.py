@@ -212,38 +212,41 @@ def hudElementText(t, f):
     return ""
 
 
-def _hud_icon(t, x, y):
+def _hud_icon(t, x, y, col="#7fe9c8", scale=1):
     # a small (~30px) glyph for an OSD element, drawn just left of its value.
     # Several element types share a concept (battery, gauge), so map to a glyph.
-    col = "#7fe9c8"
+    # `col`/`scale` are the element's per-icon colour + size (defaults match the
+    # original fixed cyan, 1x look); the glyph is scaled about its (x, y) anchor.
     if t in ("batV", "batPct", "current", "mah", "battTemp", "battTimeRemaining"):
-        return ('<g stroke="{0}" stroke-width="3" fill="none">'
-                '<rect x="{1}" y="{2}" width="26" height="16" rx="2"/>'
-                '<rect x="{3}" y="{4}" width="3" height="8" fill="{0}"/></g>').format(col, x, y - 8, x + 26, y - 4)
-    if t in ("alt", "altRel", "rangefinder"):
-        return '<path d="M {1} {2} l 12 -22 l 12 22 Z" fill="{0}"/>'.format(col, x, y + 2)
-    if t in ("climb", "gload", "turnRate"):
-        return '<path d="M {1} {2} l 12 -20 l 12 20" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
-    if t in ("spd", "airspeed", "throttle", "cpuLoad", "dropRate"):
-        return '<path d="M {1} {2} a 14 14 0 0 1 28 0" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
-    if t in ("rcRssi", "radioRssi", "radioRemRssi", "radioNoise"):
-        return ('<g stroke="{0}" stroke-width="2" fill="none"><line x1="{1}" y1="{2}" x2="{1}" y2="{3}"/>'
-                '<path d="M {4} {3} a 10 10 0 0 1 14 0"/></g>').format(col, x + 9, y - 16, y, x + 2)
-    if t in ("windSpeed", "windDir", "baroTemp", "pressure", "vibe", "vibeClip"):
-        return '<path d="M {1} {2} q 8 -10 16 0 t 16 0" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 4)
-    if t in ("homeDist", "wpDist", "xtrack", "altError"):
-        return '<path d="M {1} {2} l 9 -12 l 9 12 v 10 h -18 Z" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 2)
-    if t in ("hdg", "gpsCourse"):
-        return ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="13"/>'
-                '<path d="M {1} {3} l 4 8 l -8 0 Z" fill="{0}" stroke="none"/></g>').format(col, x + 13, y - 4, y - 14)
-    if t in ("mode", "timer", "clock", "wpNum"):
-        return '<circle cx="{1}" cy="{2}" r="12" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x + 13, y - 4)
-    if t in ("gps", "hdop", "lat", "lon", "modemFix", "modemLat", "modemLon", "modemAlt"):
-        return ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="4" fill="{0}"/>'
-                '<path d="M {3} {4} a 10 10 0 0 1 16 0"/></g>').format(col, x + 13, y - 4, x + 5, y - 4)
-    if t == "armed":
-        return '<path d="M {1} {2} l 13 -6 l 13 6 v 10 l -13 8 l -13 -8 Z" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 14)
-    return '<circle cx="{1}" cy="{2}" r="3" fill="{0}"/>'.format(col, x + 10, y - 4)
+        g = ('<g stroke="{0}" stroke-width="3" fill="none">'
+             '<rect x="{1}" y="{2}" width="26" height="16" rx="2"/>'
+             '<rect x="{3}" y="{4}" width="3" height="8" fill="{0}"/></g>').format(col, x, y - 8, x + 26, y - 4)
+    elif t in ("alt", "altRel", "rangefinder"):
+        g = '<path d="M {1} {2} l 12 -22 l 12 22 Z" fill="{0}"/>'.format(col, x, y + 2)
+    elif t in ("climb", "gload", "turnRate"):
+        g = '<path d="M {1} {2} l 12 -20 l 12 20" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
+    elif t in ("spd", "airspeed", "throttle", "cpuLoad", "dropRate"):
+        g = '<path d="M {1} {2} a 14 14 0 0 1 28 0" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x, y)
+    elif t in ("rcRssi", "radioRssi", "radioRemRssi", "radioNoise"):
+        g = ('<g stroke="{0}" stroke-width="2" fill="none"><line x1="{1}" y1="{2}" x2="{1}" y2="{3}"/>'
+             '<path d="M {4} {3} a 10 10 0 0 1 14 0"/></g>').format(col, x + 9, y - 16, y, x + 2)
+    elif t in ("windSpeed", "windDir", "baroTemp", "pressure", "vibe", "vibeClip"):
+        g = '<path d="M {1} {2} q 8 -10 16 0 t 16 0" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 4)
+    elif t in ("homeDist", "wpDist", "xtrack", "altError"):
+        g = '<path d="M {1} {2} l 9 -12 l 9 12 v 10 h -18 Z" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 2)
+    elif t in ("hdg", "gpsCourse"):
+        g = ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="13"/>'
+             '<path d="M {1} {3} l 4 8 l -8 0 Z" fill="{0}" stroke="none"/></g>').format(col, x + 13, y - 4, y - 14)
+    elif t in ("mode", "timer", "clock", "wpNum"):
+        g = '<circle cx="{1}" cy="{2}" r="12" stroke="{0}" stroke-width="3" fill="none"/>'.format(col, x + 13, y - 4)
+    elif t in ("gps", "hdop", "lat", "lon", "modemFix", "modemLat", "modemLon", "modemAlt"):
+        g = ('<g stroke="{0}" stroke-width="2" fill="none"><circle cx="{1}" cy="{2}" r="4" fill="{0}"/>'
+             '<path d="M {3} {4} a 10 10 0 0 1 16 0"/></g>').format(col, x + 13, y - 4, x + 5, y - 4)
+    elif t == "armed":
+        g = '<path d="M {1} {2} l 13 -6 l 13 6 v 10 l -13 8 l -13 -8 Z" stroke="{0}" stroke-width="2" fill="none"/>'.format(col, x, y - 14)
+    else:
+        g = '<circle cx="{1}" cy="{2}" r="3" fill="{0}"/>'.format(col, x + 10, y - 4)
+    return _scaled(g, x, y, scale)
 
 
 def _scaled(content, cx, cy, scale):
@@ -380,8 +383,9 @@ def buildHudSvg(layout, fields):
         color = el.get("color") or g_color
         tx = x
         if el.get("icon"):
-            parts.append(_hud_icon(t, x, y))
-            tx = x + 42
+            icon_scale = el.get("iconScale") or 1
+            parts.append(_hud_icon(t, x, y, el.get("iconColor") or "#7fe9c8", icon_scale))
+            tx = x + 30 * icon_scale + 12  # clear the (scaled ~30-wide) glyph + a gap
         parts.append('<text x="{0}" y="{1:.0f}" fill="{2}" font-size="{3}" font-family="{4}">{5}</text>'.format(
             tx, y + size * 0.3, color, size, _hud_escape(font), _hud_escape(hudElementText(t, fields))))
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">' + "".join(parts) + '</svg>'
