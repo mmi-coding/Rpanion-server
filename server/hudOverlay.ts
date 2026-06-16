@@ -201,6 +201,38 @@ function validScale (v: any, def: number): number {
   return isFinite(n) ? +Math.min(5, Math.max(0.5, n)).toFixed(2) : def
 }
 
+// Artificial-horizon options, inspired by INAV's osd_ahi_style + osd_crosshairs_style
+// (https://github.com/iNavFlight/inav). `style` = the AHI (ladder / line / ticks);
+// `marker` = the centre "aircraft" symbol (the classic wings, a crosshair, etc.).
+const HORIZON_STYLES = ['ladder', 'line', 'ticks']
+const HORIZON_MARKERS = ['wings', 'crosshair', 'dot', 'caret', 'drone']
+
+function horizonOptions () {
+  return { styles: HORIZON_STYLES.slice(), markers: HORIZON_MARKERS.slice() }
+}
+
+// validate a graphic element's extra fields: a scale (all graphics), an optional
+// colour, and — for the horizon — its AHI style + aircraft marker + marker colour.
+function validateGraphic (type: string, e: any, d: any) {
+  const out: any = e
+    ? { type, enabled: !!e.enabled, icon: !!e.icon, x: clamp01(e.x), y: clamp01(e.y) }
+    : { type, enabled: d.enabled, x: d.x, y: d.y, icon: d.icon }
+  out.scale = validScale(e ? e.scale : undefined, GRAPHIC_DEFAULT_SCALE[type])
+  const color = validColor(e && e.color)
+  if (color) {
+    out.color = color
+  }
+  if (type === 'horizon') {
+    out.style = (e && HORIZON_STYLES.indexOf(e.style) !== -1) ? e.style : 'ladder'
+    out.marker = (e && HORIZON_MARKERS.indexOf(e.marker) !== -1) ? e.marker : 'wings'
+    const mc = validColor(e && e.markerColor)
+    if (mc) {
+      out.markerColor = mc
+    }
+  }
+  return out
+}
+
 function hudElements () {
   // catalog metadata the editor needs (placement comes from the saved layout).
   // `mock` is the value as it appears on the stream (WYSIWYG); `graphic` marks
@@ -270,11 +302,10 @@ function defaultHudLayout () {
   return {
     global: { ...DEFAULT_GLOBAL_STYLE },
     elements: HUD_ELEMENTS.map((e) => {
-      const out: any = { type: e.type, ...DEFAULT_PLACEMENT[e.type] }
       if (GRAPHIC_TYPES.has(e.type)) {
-        out.scale = GRAPHIC_DEFAULT_SCALE[e.type]
+        return validateGraphic(e.type, null, DEFAULT_PLACEMENT[e.type])
       }
-      return out
+      return { type: e.type, ...DEFAULT_PLACEMENT[e.type] }
     })
   }
 }
@@ -301,13 +332,13 @@ function validateHudLayout (layout: any) {
   const elements = HUD_ELEMENTS.map((cat) => {
     const e = known[cat.type]
     const d = DEFAULT_PLACEMENT[cat.type]
-    const out: any = e
-      ? { type: cat.type, enabled: !!e.enabled, icon: !!e.icon, x: clamp01(e.x), y: clamp01(e.y), ...validateElementStyle(e) }
-      : { type: cat.type, enabled: d.enabled, x: d.x, y: d.y, icon: d.icon }
     if (GRAPHIC_TYPES.has(cat.type)) {
-      out.scale = validScale(e ? e.scale : undefined, GRAPHIC_DEFAULT_SCALE[cat.type])
+      return validateGraphic(cat.type, e, d)
     }
-    return out
+    if (!e) {
+      return { type: cat.type, enabled: d.enabled, x: d.x, y: d.y, icon: d.icon }
+    }
+    return { type: cat.type, enabled: !!e.enabled, icon: !!e.icon, x: clamp01(e.x), y: clamp01(e.y), ...validateElementStyle(e) }
   })
   return { global: validateGlobalStyle(layout && layout.global), elements }
 }
@@ -326,4 +357,4 @@ function formatHudText (hud: HudData): string {
   return line1 + '\n' + line2 + '\n' + line3
 }
 
-export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }
+export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, horizonOptions, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }

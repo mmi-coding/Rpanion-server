@@ -748,6 +748,7 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
           assert.ok(res.body.layout && Array.isArray(res.body.layout.elements))
           assert.ok(res.body.layout.global && typeof res.body.layout.global.font === 'string')
           assert.ok(Array.isArray(res.body.elements) && res.body.elements.length > 10)
+          assert.ok(res.body.horizon && Array.isArray(res.body.horizon.styles) && Array.isArray(res.body.horizon.markers))
           done()
         } catch (e) { done(e) }
       }).catch(done)

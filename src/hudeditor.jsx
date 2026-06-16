@@ -29,6 +29,8 @@ class HudEditorPage extends basePage {
       selectedCamera: '',   // device value of the camera shown behind the HUD
       showCamera: false,    // toggle the live camera backdrop
       cameraError: false,   // the preview <img> failed to load (busy / no signal)
+      // artificial-horizon options (INAV-inspired): AHI styles + aircraft markers
+      horizonOpts: { styles: ['ladder', 'line', 'ticks'], markers: ['wings', 'crosshair', 'dot', 'caret', 'drone'] },
       selectedType: null, // element whose style is being edited
       dragType: null,
       message: null,
@@ -53,7 +55,8 @@ class HudEditorPage extends basePage {
         global: layout.global || this.state.global,
         fontList: (fontList && fontList.generics) ? fontList : this.state.fontList,
         cameras,
-        selectedCamera: cameras.length > 0 ? cameras[0].value : ''
+        selectedCamera: cameras.length > 0 ? cameras[0].value : '',
+        horizonOpts: (data.horizon && data.horizon.styles) ? data.horizon : this.state.horizonOpts
       });
       this.loadDone();
     });
@@ -257,28 +260,55 @@ class HudEditorPage extends basePage {
     return 'HUD Editor';
   }
 
-  // a live mini-preview for the shape-only (graphic) elements, so the canvas is
-  // WYSIWYG. The home arrow slowly rotates to show it tracks home like a compass.
-  renderGraphic(type, scale = 1) {
-    if (type === 'horizon') {
+  // the centre aircraft/crosshair marker mini-preview (matches video-server.py)
+  renderMarkerMini(marker, mc) {
+    if (marker === 'crosshair') {
+      return <g stroke={mc} strokeWidth="2" fill="none"><line x1="28" y1="25" x2="37" y2="25" /><line x1="53" y1="25" x2="62" y2="25" /><line x1="45" y1="8" x2="45" y2="17" /><line x1="45" y1="33" x2="45" y2="42" /></g>;
+    }
+    if (marker === 'dot') {
+      return <g><circle cx="45" cy="25" r="3" fill={mc} /><circle cx="45" cy="25" r="6.5" stroke={mc} strokeWidth="1.5" fill="none" /></g>;
+    }
+    if (marker === 'caret') {
+      return <path d="M36 20 L45 29 L54 20" fill="none" stroke={mc} strokeWidth="2.5" />;
+    }
+    if (marker === 'drone') {
+      return <g stroke={mc} strokeWidth="1.5" fill="none"><line x1="34" y1="14" x2="56" y2="36" /><line x1="34" y1="36" x2="56" y2="14" /><circle cx="34" cy="14" r="3" /><circle cx="56" cy="14" r="3" /><circle cx="34" cy="36" r="3" /><circle cx="56" cy="36" r="3" /></g>;
+    }
+    return <path d="M45 25 l -16 0 l 5 6 M45 25 l 16 0 l -5 6" stroke={mc} strokeWidth="2.5" fill="none" />;
+  }
+
+  // a live mini-preview for the shape-only (graphic) elements, reflecting the
+  // element's scale, style, marker and colours so the canvas stays WYSIWYG.
+  renderGraphic(e) {
+    const scale = e.scale || 1;
+    if (e.type === 'horizon') {
+      const color = e.color || '#00e0a0';
+      const style = e.style || 'ladder';
+      const ladder = [];
+      if (style === 'ladder') {
+        ladder.push(<line key="r1" x1="20" y1="15" x2="70" y2="15" stroke={color} strokeWidth="1.5" />);
+        ladder.push(<line key="r2" x1="20" y1="35" x2="70" y2="35" stroke={color} strokeWidth="1.5" />);
+      } else if (style === 'ticks') {
+        [[30, 13], [60, 13], [30, 31], [60, 31]].forEach(([tx, ty], i) => ladder.push(<line key={'t' + i} x1={tx} y1={ty} x2={tx} y2={ty + 6} stroke={color} strokeWidth="1.5" />));
+      }
       return (
         <svg width={90 * scale} height={50 * scale} viewBox="0 0 90 50" style={{ display: 'block' }}>
           <g transform="rotate(-14 45 25)">
-            <line x1="-30" y1="25" x2="120" y2="25" stroke="#00e0a0" strokeWidth="2.5" />
-            <line x1="20" y1="15" x2="70" y2="15" stroke="#00e0a0" strokeWidth="1.5" />
-            <line x1="20" y1="35" x2="70" y2="35" stroke="#00e0a0" strokeWidth="1.5" />
+            <line x1="-30" y1="25" x2="120" y2="25" stroke={color} strokeWidth="2.5" />
+            {ladder}
           </g>
-          <path d="M45 25 l -16 0 l 5 6 M45 25 l 16 0 l -5 6" stroke="#ffcf40" strokeWidth="2.5" fill="none" />
+          {this.renderMarkerMini(e.marker || 'wings', e.markerColor || '#ffcf40')}
         </svg>
       );
     }
-    if (type === 'compass') {
+    if (e.type === 'compass') {
+      const color = e.color || '#00e0a0';
       return (
         <svg width={120 * scale} height={26 * scale} viewBox="0 0 120 26" style={{ display: 'block' }}>
           {[['N', 20], ['30', 50], ['E', 80], ['60', 110]].map(([lbl, hx]) => (
             <g key={hx}>
-              <line x1={hx} y1="12" x2={hx} y2="20" stroke="#00e0a0" strokeWidth="1.5" />
-              <text x={hx} y="9" fill="#00e0a0" fontSize="9" fontFamily="monospace" textAnchor="middle">{lbl}</text>
+              <line x1={hx} y1="12" x2={hx} y2="20" stroke={color} strokeWidth="1.5" />
+              <text x={hx} y="9" fill={color} fontSize="9" fontFamily="monospace" textAnchor="middle">{lbl}</text>
             </g>
           ))}
           <path d="M60 26 l -6 -9 l 12 0 Z" fill="#ffcf40" />
@@ -286,10 +316,11 @@ class HudEditorPage extends basePage {
       );
     }
     // homeDir — rotating arrow
+    const arrowColor = e.color || '#ffcf40';
     return (
       <svg width={34 * scale} height={34 * scale} viewBox="0 0 34 34" className="hud-home-arrow" style={{ display: 'block' }}>
         <circle cx="17" cy="17" r="15" stroke="#00e0a0" strokeWidth="1.5" fill="none" opacity="0.5" />
-        <path d="M17 4 L9 28 L17 22 L25 28 Z" fill="#ffcf40" />
+        <path d="M17 4 L9 28 L17 22 L25 28 Z" fill={arrowColor} />
       </svg>
     );
   }
@@ -309,7 +340,7 @@ class HudEditorPage extends basePage {
       return (
         <div key={e.type} onMouseDown={this.startDrag(e.type)} data-eltype={e.type}
           style={{ ...baseStyle, border: '1px solid ' + (selected ? '#4fa3ff' : 'rgba(0,224,160,0.5)') }}>
-          {this.renderGraphic(e.type, e.scale || 1)}
+          {this.renderGraphic(e)}
         </div>
       );
     }
@@ -335,17 +366,45 @@ class HudEditorPage extends basePage {
     }
     const cat = this.catalogFor(type);
     if (cat.graphic) {
-      const gscale = (this.getEl(type) || {}).scale || 1;
+      const el = this.getEl(type) || {};
+      const gscale = el.scale || 1;
+      const isHorizon = type === 'horizon';
+      const defColor = type === 'homeDir' ? '#ffcf40' : '#00e0a0';
       return (
         <div style={{ border: '1px solid #2a3340', borderRadius: 4, padding: '8px 12px', marginBottom: 12 }}>
           <div style={{ marginBottom: 6 }}><b>{cat.label}</b> <span className="text-muted"><small>(graphic element — drag to position)</small></span></div>
-          <Form.Group>
-            <Form.Label className="mb-0"><small>Size<HelpTip text="Scale this graphic, 0.5–5×. Applies to the preview and the burned-in HUD." /></small></Form.Label>
-            <div className="d-flex align-items-center" style={{ gap: 10 }}>
-              <Form.Range min="0.5" max="5" step="0.1" value={gscale} onChange={ev => this.setElScale(type, parseFloat(ev.target.value))} data-testid="el-scale" style={{ width: 220 }} />
-              <span style={{ width: 40 }}>{gscale.toFixed(1)}×</span>
-            </div>
-          </Form.Group>
+          <Form className="d-flex flex-wrap align-items-end" style={{ gap: 14 }}>
+            <Form.Group>
+              <Form.Label className="mb-0"><small>Size<HelpTip text="Scale this graphic, 0.5–5×. Applies to the preview and the burned-in HUD." /></small></Form.Label>
+              <div className="d-flex align-items-center" style={{ gap: 8 }}>
+                <Form.Range min="0.5" max="5" step="0.1" value={gscale} onChange={ev => this.setElScale(type, parseFloat(ev.target.value))} data-testid="el-scale" style={{ width: 150 }} />
+                <span style={{ width: 36 }}>{gscale.toFixed(1)}×</span>
+              </div>
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="mb-0"><small>Colour<HelpTip text="Colour of this graphic (the horizon/compass lines, or the home arrow)." /></small></Form.Label>
+              <Form.Control size="sm" type="color" style={{ width: 48, padding: 2 }} value={el.color || defColor} onChange={ev => this.updateEl(type, { color: ev.target.value })} data-testid="el-gcolor" />
+            </Form.Group>
+            {isHorizon &&
+              <React.Fragment>
+                <Form.Group>
+                  <Form.Label className="mb-0"><small>Style<HelpTip text="Artificial-horizon style (INAV-inspired): pitch ladder, line only, or centre ticks." /></small></Form.Label>
+                  <Form.Select size="sm" value={el.style || 'ladder'} onChange={ev => this.updateEl(type, { style: ev.target.value })} data-testid="el-hstyle">
+                    {this.state.horizonOpts.styles.map(s => <option key={s} value={s}>{s}</option>)}
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group>
+                  <Form.Label className="mb-0"><small>Aircraft<HelpTip text="The centre aircraft / crosshair symbol (INAV crosshair styles)." /></small></Form.Label>
+                  <Form.Select size="sm" value={el.marker || 'wings'} onChange={ev => this.updateEl(type, { marker: ev.target.value })} data-testid="el-marker">
+                    {this.state.horizonOpts.markers.map(s => <option key={s} value={s}>{s}</option>)}
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group>
+                  <Form.Label className="mb-0"><small>Aircraft colour<HelpTip text="Colour of the centre aircraft symbol (was fixed yellow)." /></small></Form.Label>
+                  <Form.Control size="sm" type="color" style={{ width: 48, padding: 2 }} value={el.markerColor || '#ffcf40'} onChange={ev => this.updateEl(type, { markerColor: ev.target.value })} data-testid="el-mcolor" />
+                </Form.Group>
+              </React.Fragment>}
+          </Form>
         </div>
       );
     }
