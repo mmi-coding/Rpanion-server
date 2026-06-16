@@ -209,6 +209,21 @@ describe('HUD overlay helpers (#173)', function () {
       assert.ok(!('font' in hdg) && !('color' in hdg))
     })
 
+    it('#validateHudLayout() keeps valid per-icon colour + size overrides (clamped)', function () {
+      const out = hud.validateHudLayout({ elements: [
+        { type: 'alt', enabled: true, x: 0.8, y: 0.1, icon: true, iconColor: '#0af', iconScale: 2 },
+        { type: 'spd', enabled: true, x: 0.1, y: 0.1, icon: true, iconColor: 'red', iconScale: 99 }, // bad colour, over-range scale
+        { type: 'batV', enabled: true, x: 0.7, y: 0.9, icon: true, iconScale: 'big' } // NaN scale → dropped
+      ] })
+      const alt = out.elements.find(e => e.type === 'alt')
+      assert.deepEqual({ iconColor: alt.iconColor, iconScale: alt.iconScale }, { iconColor: '#0af', iconScale: 2 })
+      const spd = out.elements.find(e => e.type === 'spd')
+      assert.ok(!('iconColor' in spd)) // invalid colour dropped
+      assert.equal(spd.iconScale, 3) // clamped to the 3x max
+      const batV = out.elements.find(e => e.type === 'batV')
+      assert.ok(!('iconScale' in batV)) // non-numeric scale dropped (no override)
+    })
+
     it('#homeDistance() / #homeBearing() compute distance + bearing to home', function () {
       // ~1.11 km north of home (0.01° latitude)
       assert.ok(Math.abs(hud.homeDistance(37.0, -122.0, 37.01, -122.0) - 1112) < 5)

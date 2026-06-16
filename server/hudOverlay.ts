@@ -295,6 +295,16 @@ function validateElementStyle (e: any) {
   if (c) {
     s.color = c
   }
+  // icon overrides: an icon colour (default cyan) + a size multiplier (0.5–3×,
+  // default 1×). Kept only when present/valid, so an un-customised icon keeps the
+  // default look (cyan, text-height) the renderer falls back to.
+  const ic = validColor(e.iconColor)
+  if (ic) {
+    s.iconColor = ic
+  }
+  if (e.iconScale !== undefined && e.iconScale !== null && isFinite(Number(e.iconScale))) {
+    s.iconScale = +Math.min(3, Math.max(0.5, Number(e.iconScale))).toFixed(2)
+  }
   return s
 }
 

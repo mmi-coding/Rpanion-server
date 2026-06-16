@@ -193,6 +193,12 @@ class HudEditorPage extends basePage {
     this.updateEl(type, { scale: v });
   }
 
+  // set a text element's icon size multiplier (clamped 0.5–3×)
+  setElIconScale(type, value) {
+    const v = isNaN(value) ? 1 : Math.min(3, Math.max(0.5, value));
+    this.updateEl(type, { iconScale: v });
+  }
+
   setGlobal(patch) {
     this.setState({ global: { ...this.state.global, ...patch } });
   }
@@ -325,6 +331,54 @@ class HudEditorPage extends basePage {
     );
   }
 
+  // the small (~30-unit) telemetry glyph drawn just left of a text element's value,
+  // ported from _hud_icon() in video-server.py so the editor preview matches the
+  // burned-in HUD. Always cyan on the video (independent of the text colour); several
+  // element types share one concept (battery, gauge, satellite-fix, …) → one glyph.
+  renderIcon(type, color = '#7fe9c8', scale = 1) {
+    const c = color;
+    const wrap = (shape) => (
+      <svg className="hud-icon" viewBox="0 0 38 34"
+        style={{ height: (1.05 * scale) + 'em', width: 'auto', verticalAlign: 'middle', marginRight: '0.22em', overflow: 'visible' }}>
+        {shape}
+      </svg>
+    );
+    if (['batV', 'batPct', 'current', 'mah', 'battTemp', 'battTimeRemaining'].includes(type)) {
+      return wrap(<g stroke={c} strokeWidth="3" fill="none"><rect x="3" y="14" width="26" height="16" rx="2" /><rect x="29" y="18" width="3" height="8" fill={c} /></g>);
+    }
+    if (['alt', 'altRel', 'rangefinder'].includes(type)) {
+      return wrap(<path d="M3 24 l12 -22 l12 22 Z" fill={c} />);
+    }
+    if (['climb', 'gload', 'turnRate'].includes(type)) {
+      return wrap(<path d="M3 22 l12 -20 l12 20" stroke={c} strokeWidth="3" fill="none" />);
+    }
+    if (['spd', 'airspeed', 'throttle', 'cpuLoad', 'dropRate'].includes(type)) {
+      return wrap(<path d="M3 22 a14 14 0 0 1 28 0" stroke={c} strokeWidth="3" fill="none" />);
+    }
+    if (['rcRssi', 'radioRssi', 'radioRemRssi', 'radioNoise'].includes(type)) {
+      return wrap(<g stroke={c} strokeWidth="2" fill="none"><line x1="12" y1="6" x2="12" y2="22" /><path d="M5 22 a10 10 0 0 1 14 0" /></g>);
+    }
+    if (['windSpeed', 'windDir', 'baroTemp', 'pressure', 'vibe', 'vibeClip'].includes(type)) {
+      return wrap(<path d="M3 18 q8 -10 16 0 t 16 0" stroke={c} strokeWidth="2" fill="none" />);
+    }
+    if (['homeDist', 'wpDist', 'xtrack', 'altError'].includes(type)) {
+      return wrap(<path d="M3 20 l9 -12 l9 12 v10 h-18 Z" stroke={c} strokeWidth="2" fill="none" />);
+    }
+    if (['hdg', 'gpsCourse'].includes(type)) {
+      return wrap(<g stroke={c} strokeWidth="2" fill="none"><circle cx="16" cy="18" r="13" /><path d="M16 8 l4 8 l-8 0 Z" fill={c} stroke="none" /></g>);
+    }
+    if (['mode', 'timer', 'clock', 'wpNum'].includes(type)) {
+      return wrap(<circle cx="16" cy="18" r="12" stroke={c} strokeWidth="3" fill="none" />);
+    }
+    if (['gps', 'hdop', 'lat', 'lon', 'modemFix', 'modemLat', 'modemLon', 'modemAlt'].includes(type)) {
+      return wrap(<g stroke={c} strokeWidth="2" fill="none"><circle cx="16" cy="18" r="4" fill={c} /><path d="M8 18 a10 10 0 0 1 16 0" /></g>);
+    }
+    if (type === 'armed') {
+      return wrap(<path d="M3 8 l13 -6 l13 6 v10 l-13 8 l-13 -8 Z" stroke={c} strokeWidth="2" fill="none" />);
+    }
+    return wrap(<circle cx="13" cy="18" r="3" fill={c} />);
+  }
+
   renderChip(e) {
     const graphic = this.isGraphicEl(e.type);
     const selected = this.state.selectedType === e.type;
@@ -354,7 +408,7 @@ class HudEditorPage extends basePage {
           fontSize: 'calc(' + eff.size + ' / 1600 * 100cqw)',
           border: '1px solid ' + (selected ? '#4fa3ff' : 'rgba(255,255,255,0.35)')
         }}>
-        {(e.icon ? '◈ ' : '') + this.catalogFor(e.type).mock}
+        {e.icon && this.renderIcon(e.type, e.iconColor || '#7fe9c8', e.iconScale || 1)}{this.catalogFor(e.type).mock}
       </div>
     );
   }
@@ -436,6 +490,24 @@ class HudEditorPage extends basePage {
                 value={el.color || g.color} onChange={ev => this.setElStyle(type, 'color', ev.target.value)} data-testid="el-color" />
             </div>
           </Form.Group>
+          {el.icon &&
+            <React.Fragment>
+              <Form.Group>
+                <Form.Label className="mb-0"><small>Icon size<HelpTip text="Size of this field's icon, 0.5–3× the text height. Applies to the preview and the burned-in HUD." /></small></Form.Label>
+                <div className="d-flex align-items-center" style={{ gap: 8 }}>
+                  <Form.Range min="0.5" max="3" step="0.1" value={el.iconScale || 1} onChange={ev => this.setElIconScale(type, parseFloat(ev.target.value))} data-testid="el-iconscale" style={{ width: 110 }} />
+                  <span style={{ width: 30 }}>{(el.iconScale || 1).toFixed(1)}×</span>
+                </div>
+              </Form.Group>
+              <Form.Group>
+                <Form.Label className="mb-0"><small>Icon colour<HelpTip text="Colour of this field's icon. Defaults to cyan; tick to give it your own colour." /></small></Form.Label>
+                <div className="d-flex align-items-center" style={{ gap: 6 }}>
+                  <Form.Check type="checkbox" checked={el.iconColor !== undefined} onChange={ev => this.setElStyle(type, 'iconColor', ev.target.checked ? (el.iconColor || '#7fe9c8') : undefined)} data-testid="el-iconcolor-on" />
+                  <Form.Control size="sm" type="color" style={{ width: 48, padding: 2 }} disabled={el.iconColor === undefined}
+                    value={el.iconColor || '#7fe9c8'} onChange={ev => this.setElStyle(type, 'iconColor', ev.target.value)} data-testid="el-iconcolor" />
+                </div>
+              </Form.Group>
+            </React.Fragment>}
           <Button size="sm" variant="outline-secondary" onClick={() => this.clearElStyle(type)}>Use global</Button>
         </Form>
       </div>
@@ -502,7 +574,7 @@ class HudEditorPage extends basePage {
       <div style={{ maxWidth: 920 }}>
         <p><i>Arrange the graphic HUD: drag elements on the screen, pick which stats and icons to show, and style the text — each chip shows the value exactly as it will appear on the video.</i></p>
         <HelpSection title="About the HUD editor">
-          <p>This configures the <b>Graphic</b> Telemetry HUD (enable it on the Photo &amp; Video page, HUD Style = Graphic). The black area below represents your video frame, drawn with <b>mock data</b> so you see real-looking values. Drag an element to position it; tick <b>Show</b> to include a stat and <b>Icon</b> to draw its icon. Click an element to change its <b>font, size and colour</b> — or set those globally below. Press <b>Save</b> to apply — a running graphic stream updates live.</p>
+          <p>This configures the <b>Graphic</b> Telemetry HUD (enable it on the Photo &amp; Video page, HUD Style = Graphic). The black area below represents your video frame, drawn with <b>mock data</b> so you see real-looking values. Drag an element to position it; tick <b>Show</b> to include a stat and <b>Icon</b> to draw its icon. Click an element to change its <b>font, size and colour</b> — or set those globally below. For a field with its icon shown, you can also size and colour the <b>icon</b> independently (it defaults to cyan). Press <b>Save</b> to apply — a running graphic stream updates live.</p>
           <p>The <i>Artificial Horizon</i>, <i>Compass</i> and <i>Home arrow</i> are graphic elements (the home arrow rotates to point home like a compass). The <i>Modem GPS</i> elements show the SIM7600&apos;s own GNSS fix, available even with no flight controller connected.</p>
         </HelpSection>
 

@@ -236,6 +236,57 @@ seam via `fakeBin`), the `/api/hudfonts` routes in `index.io.test.js`, `_spawnEn
 in `videostream.test.js`, and the editor's font dropdown / `@font-face` injection
 / import / remove in `hudeditor.test.jsx`. Both suites stay 100/100/100/100.
 
+### Follow-up (shipped): editor draws the real per-field icons
+
+The editor canvas previewed every `icon:true` field with **one generic `◈`
+diamond** — so GPS, battery, home, altitude etc. were visually identical and the
+preview didn't match the burned-in video, where `video-server.py`'s `_hud_icon()`
+draws a distinct glyph per concept. The chip now renders the **actual glyph**.
+
+`renderIcon(type)` in `src/hudeditor.jsx` is a faithful JS port of `_hud_icon()`:
+the **same type groupings** (battery V/%/current/mAh/temp/time → battery; the
+satellite-fix dish for gps/hdop/lat/lon + the modem-GPS set; the house for
+home/WP distance; up-triangle for altitude; gauge arc for speed/throttle/load;
+compass dial for heading/course; antenna for RSSI/radio; shield for armed;
+waveform for wind/baro/vibration; circle for mode/timer/clock/WP; the small
+fallback dot), the **same cyan `#7fe9c8`** the video uses (so the icon is
+independent of the field's text colour, as on the device), drawn at ~the text
+height (`viewBox 0 0 38 34`, `height:1.05em`, vertical-centred). This mirrors how
+`renderGraphic` / `renderMarkerMini` already port the horizon / aircraft-marker
+SVGs — the canvas stays WYSIWYG. CSS/markup only; no telemetry or server logic
+touched. Each `_hud_icon()` group is covered by a `renderIcon` test
+(`hudeditor.test.jsx`); both suites stay 100/100/100/100. WSL-verified visually
+(the glyphs render balanced next to their mock values); the burned-in glyphs
+themselves were already on-device-verified for the OSD.
+
+### Follow-up (shipped): per-icon colour + size
+
+Icons were fixed cyan at the text height. Each icon-enabled field now carries
+optional **`iconColor`** + **`iconScale`** overrides (independent of the field's
+text colour/size), surfaced in the per-element style panel as an **Icon size**
+slider (0.5–3×) and an **Icon colour** picker (a checkbox to override the default
+cyan, mirroring the text-colour control).
+
+- `hudOverlay.ts` — `validateElementStyle` keeps `iconColor` (valid hex) and
+  `iconScale` (clamped 0.5–3×, 2-dp) only when present, so an un-customised icon
+  stores nothing and the renderer falls back to cyan / 1×.
+- `video-server.py` — `_hud_icon(t, x, y, col, scale)` draws the glyph in `col`
+  and wraps it in `_scaled(…, x, y, scale)` about its anchor; `buildHudSvg`
+  offsets the value text to `x + 30·scale + 12` so a bigger glyph never overlaps
+  the text (at 1× this is the original `x + 42`).
+- `hudeditor.jsx` — `renderIcon(type, color, scale)` applies both on the canvas
+  (glyph height `1.05·scale em`); a `setElIconScale` clamps the slider.
+
+Defaults are unchanged (cyan, 1×). Tested: `hudOverlay.test.js` (valid /
+invalid-colour / over-range + NaN scale), `hudeditor.test.jsx` (the controls
+drive `iconColor`/`iconScale` and the chip glyph's colour + height; clamp + NaN;
+hidden for non-icon fields). Both suites stay 100/100/100/100. **WSL-verified**:
+`buildHudSvg` rendered directly shows the custom colour, the `scale()` transform
+and the shifted text x (1376→1448 at 2×), with the default path unchanged
+(cyan, text x 1418); editor preview screenshotted across colours + 0.6–2× sizes.
+The burned-in scaled/coloured glyph is **needs-on-device** end-to-end through a
+real `rsvgoverlay` pipeline (added to `docs/ONDEVICE-CHECKLIST.md`).
+
 ## Verification — WSL-verified
 
 - `lint` 0 · `typecheck` 0 · `covback` **100/100/100/100** (997 passing) ·
