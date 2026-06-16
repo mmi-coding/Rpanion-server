@@ -12,7 +12,7 @@ export = function hudRoutes ({ authenticateToken, vManager, hudFonts }: { authen
 
   router.get('/api/hudlayout', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
-    res.send(JSON.stringify({ layout: vManager.getHudLayout(), elements: hudOverlay.hudElements() }))
+    res.send(JSON.stringify({ layout: vManager.getHudLayout(), elements: hudOverlay.hudElements(), horizon: hudOverlay.horizonOptions() }))
   })
 
   router.post('/api/hudlayout', authenticateToken, [check('layout').isObject()], (req: Request, res: Response) => {

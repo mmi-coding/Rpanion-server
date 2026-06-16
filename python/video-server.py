@@ -255,24 +255,53 @@ def _scaled(content, cx, cy, scale):
         cx, cy, scale, -cx, -cy, content)
 
 
-def _horizon_svg(cx, cy, f, scale=1):
+# centre "aircraft" markers for the artificial horizon (INAV crosshair-style choices)
+def _marker_svg(cx, cy, marker, color):
+    if marker == "crosshair":
+        return ('<g stroke="{c}" stroke-width="4" fill="none">'
+                '<line x1="{0}" y1="{cy}" x2="{1}" y2="{cy}"/><line x1="{2}" y1="{cy}" x2="{3}" y2="{cy}"/>'
+                '<line x1="{cx}" y1="{4}" x2="{cx}" y2="{5}"/><line x1="{cx}" y1="{6}" x2="{cx}" y2="{7}"/></g>').format(
+            cx - 46, cx - 16, cx + 16, cx + 46, cy - 46, cy - 16, cy + 16, cy + 46, c=color, cx=cx, cy=cy)
+    if marker == "dot":
+        return ('<circle cx="{cx}" cy="{cy}" r="7" fill="{c}"/>'
+                '<circle cx="{cx}" cy="{cy}" r="16" stroke="{c}" stroke-width="3" fill="none"/>').format(cx=cx, cy=cy, c=color)
+    if marker == "caret":
+        return '<path d="M {0} {1} L {2} {3} L {4} {1}" fill="none" stroke="{5}" stroke-width="5"/>'.format(
+            cx - 30, cy - 16, cx, cy + 10, cx + 30, color)
+    if marker == "drone":
+        rings = "".join('<circle cx="{0}" cy="{1}" r="9"/>'.format(px, py)
+                        for px, py in [(cx - 34, cy - 34), (cx + 34, cy - 34), (cx - 34, cy + 34), (cx + 34, cy + 34)])
+        return ('<g stroke="{c}" stroke-width="4" fill="none">'
+                '<line x1="{0}" y1="{1}" x2="{2}" y2="{3}"/><line x1="{0}" y1="{3}" x2="{2}" y2="{1}"/>{r}</g>').format(
+            cx - 34, cy - 34, cx + 34, cy + 34, c=color, r=rings)
+    # wings (classic, default)
+    return ('<path d="M {0} {1} l -70 0 l 20 22 M {0} {1} l 70 0 l -20 22" '
+            'stroke="{2}" stroke-width="5" fill="none"/>').format(cx, cy, color)
+
+
+def _horizon_svg(cx, cy, f, scale=1, style="ladder", color="#00e0a0", marker="wings", marker_color="#ffcf40"):
     roll = f.get("roll") or 0
     pitch = f.get("pitch") or 0
     ppd = 8
-    rungs = []
-    for d in (-20, -10, 10, 20):
-        ry = cy + d * ppd
-        rungs.append('<line x1="{0}" y1="{1}" x2="{2}" y2="{1}" stroke="#00e0a0" stroke-width="3"/>'.format(cx - 90, ry, cx + 90))
-        rungs.append('<text x="{0}" y="{1}" fill="#00e0a0" font-size="26" font-family="monospace">{2}</text>'.format(cx + 100, ry + 8, abs(d)))
+    extras = []
+    if style == "ladder":
+        for d in (-20, -10, 10, 20):
+            ry = cy + d * ppd
+            extras.append('<line x1="{0}" y1="{1}" x2="{2}" y2="{1}" stroke="{3}" stroke-width="3"/>'.format(cx - 90, ry, cx + 90, color))
+            extras.append('<text x="{0}" y="{1}" fill="{3}" font-size="26" font-family="monospace">{2}</text>'.format(cx + 100, ry + 8, abs(d), color))
+    elif style == "ticks":
+        for d in (-10, 10):
+            ry = cy + d * ppd
+            for tx in (cx - 30, cx + 30):
+                extras.append('<line x1="{0}" y1="{1}" x2="{0}" y2="{2}" stroke="{3}" stroke-width="3"/>'.format(tx, ry - 8, ry + 8, color))
+    # style == "line" → just the horizon line
     horizon = ('<g transform="rotate({0} {1} {2}) translate(0 {3})">'
-               '<line x1="{5}" y1="{2}" x2="{6}" y2="{2}" stroke="#00e0a0" stroke-width="4"/>'
-               '{4}</g>').format(-roll, cx, cy, pitch * ppd, "".join(rungs), cx - 1000, cx + 1000)
-    marker = ('<path d="M {0} {1} l -70 0 l 20 22 M {0} {1} l 70 0 l -20 22" '
-              'stroke="#ffcf40" stroke-width="5" fill="none"/>').format(cx, cy)
-    return _scaled(horizon + marker, cx, cy, scale)
+               '<line x1="{5}" y1="{2}" x2="{6}" y2="{2}" stroke="{7}" stroke-width="4"/>'
+               '{4}</g>').format(-roll, cx, cy, pitch * ppd, "".join(extras), cx - 1000, cx + 1000, color)
+    return _scaled(horizon + _marker_svg(cx, cy, marker, marker_color), cx, cy, scale)
 
 
-def _compass_svg(cx, cy, f, scale=1):
+def _compass_svg(cx, cy, f, scale=1, color="#00e0a0"):
     # a horizontal heading tape centred at cx,cy with a fixed pointer
     hdg = f.get("hdg")
     if hdg is None:
@@ -283,21 +312,21 @@ def _compass_svg(cx, cy, f, scale=1):
     for d in range(base - 60, base + 70, 10):
         hx = cx + (d - hdg) * ppd
         deg = d % 360
-        ticks.append('<line x1="{0}" y1="{1}" x2="{0}" y2="{2}" stroke="#00e0a0" stroke-width="2"/>'.format(hx, cy - 10, cy))
+        ticks.append('<line x1="{0}" y1="{1}" x2="{0}" y2="{2}" stroke="{3}" stroke-width="2"/>'.format(hx, cy - 10, cy, color))
         lbl = {0: "N", 90: "E", 180: "S", 270: "W"}.get(deg, str(deg))
-        ticks.append('<text x="{0}" y="{1}" fill="#00e0a0" font-size="22" font-family="monospace" text-anchor="middle">{2}</text>'.format(hx, cy - 16, lbl))
+        ticks.append('<text x="{0}" y="{1}" fill="{3}" font-size="22" font-family="monospace" text-anchor="middle">{2}</text>'.format(hx, cy - 16, lbl, color))
     pointer = '<path d="M {0} {1} l -8 -12 l 16 0 Z" fill="#ffcf40"/>'.format(cx, cy + 12)
     return _scaled('<g>' + "".join(ticks) + pointer + '</g>', cx, cy, scale)
 
 
-def _homedir_svg(cx, cy, f, scale=1):
+def _homedir_svg(cx, cy, f, scale=1, color="#ffcf40"):
     # an arrow pointing toward home, relative to the current heading
     homeDir = f.get("homeDir")
     hdg = f.get("hdg") or 0
     rel = 0 if homeDir is None else (homeDir - hdg)
     arrow = ('<g transform="rotate({0} {1} {2})">'
-             '<path d="M {1} {3} L {4} {5} L {6} {5} Z" fill="#ffcf40"/></g>').format(
-        rel, cx, cy, cy - 22, cx - 14, cy + 14, cx + 14)
+             '<path d="M {1} {3} L {4} {5} L {6} {5} Z" fill="{7}"/></g>').format(
+        rel, cx, cy, cy - 22, cx - 14, cy + 14, cx + 14, color)
     return _scaled(arrow, cx, cy, scale)
 
 
@@ -336,13 +365,15 @@ def buildHudSvg(layout, fields):
         y = (el.get("y") or 0) * 900
         scale = el.get("scale") or 1
         if t == "horizon":
-            parts.append(_horizon_svg(x, y, fields, scale))
+            parts.append(_horizon_svg(x, y, fields, scale, el.get("style") or "ladder",
+                                      el.get("color") or "#00e0a0", el.get("marker") or "wings",
+                                      el.get("markerColor") or "#ffcf40"))
             continue
         if t == "compass":
-            parts.append(_compass_svg(x, y, fields, scale))
+            parts.append(_compass_svg(x, y, fields, scale, el.get("color") or "#00e0a0"))
             continue
         if t == "homeDir":
-            parts.append(_homedir_svg(x, y, fields, scale))
+            parts.append(_homedir_svg(x, y, fields, scale, el.get("color") or "#ffcf40"))
             continue
         font = el.get("font") or g_font
         size = int(el.get("size") or g_size)

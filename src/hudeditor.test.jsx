@@ -48,7 +48,7 @@ const videoDevices = {
 
 function fetchWith (extra = {}) {
   return mockFetch({
-    '/api/hudlayout': { layout: { global, elements }, elements: catalog },
+    '/api/hudlayout': { layout: { global, elements }, elements: catalog, horizon: { styles: ['ladder', 'line', 'ticks'], markers: ['wings', 'crosshair', 'dot', 'caret', 'drone'] } },
     '/api/hudfonts': fontList,
     '/api/videodevices': videoDevices,
     ...extra
@@ -206,6 +206,53 @@ describe('#HudEditorPage()', function () {
     // a graphic with no layout entry → the scale panel still renders (defaults)
     act(() => { getRef().setState({ selectedType: 'compass', elements: getRef().state.elements.filter(e => e.type !== 'compass') }) })
     expect(page.container.querySelector('[data-testid="el-scale"]')).toBeTruthy()
+    page.unmount()
+  })
+
+  test('horizon: AHI style, aircraft marker and both colours are editable', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    act(() => { getRef().setState({ selectedType: 'horizon' }) })
+    selectValue(page.container.querySelector('[data-testid="el-hstyle"]'), 'line')
+    expect(getRef().getEl('horizon').style).toBe('line')
+    selectValue(page.container.querySelector('[data-testid="el-marker"]'), 'drone')
+    expect(getRef().getEl('horizon').marker).toBe('drone')
+    page.setValue(page.container.querySelector('[data-testid="el-gcolor"]'), '#112233')
+    expect(getRef().getEl('horizon').color).toBe('#112233')
+    page.setValue(page.container.querySelector('[data-testid="el-mcolor"]'), '#445566')
+    expect(getRef().getEl('horizon').markerColor).toBe('#445566')
+    // the chip reflects the drone marker (rotor circles)
+    expect(page.container.querySelector('[data-eltype="horizon"] svg').querySelectorAll('circle').length).toBeGreaterThan(0)
+    page.unmount()
+  })
+
+  test('renderGraphic reflects every marker + style variant and the compass/home colour', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    for (const marker of ['wings', 'crosshair', 'dot', 'caret', 'drone']) {
+      act(() => { getRef().updateEl('horizon', { marker }) })
+      expect(page.container.querySelector('[data-eltype="horizon"] svg')).toBeTruthy()
+    }
+    act(() => { getRef().updateEl('horizon', { style: 'ticks' }) })
+    act(() => { getRef().updateEl('horizon', { style: 'line' }) })
+    // non-horizon graphics take a colour too
+    act(() => { getRef().updateEl('compass', { color: '#abcdef' }) })
+    act(() => { getRef().updateEl('homeDir', { color: '#fedcba' }) })
+    expect(page.container.querySelector('[data-eltype="homeDir"] svg path[fill="#fedcba"]')).toBeTruthy()
+    // a non-horizon graphic's panel has Size + Colour but no style/marker controls
+    act(() => { getRef().setState({ selectedType: 'compass' }) })
+    expect(page.container.querySelector('[data-testid="el-gcolor"]')).toBeTruthy()
+    expect(page.container.querySelector('[data-testid="el-hstyle"]')).toBeFalsy()
+    // the home arrow's panel renders too (covers the homeDir default-colour branch)
+    act(() => { getRef().setState({ selectedType: 'homeDir' }) })
+    expect(page.container.querySelector('[data-testid="el-gcolor"]')).toBeTruthy()
+    page.unmount()
+  })
+
+  test('a malformed horizon-options response falls back to the built-in lists', async function () {
+    const { page, getRef } = renderEd(() => fetchWith({ '/api/hudlayout': { layout: { global, elements }, elements: catalog, horizon: {} } }))
+    await page.flush()
+    expect(getRef().state.horizonOpts.styles).toContain('ladder') // kept the default
     page.unmount()
   })
 

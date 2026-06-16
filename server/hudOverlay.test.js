@@ -151,6 +151,31 @@ describe('HUD overlay helpers (#173)', function () {
       assert.equal(hud.validateHudLayout({ elements: [{ type: 'horizon', enabled: true, x: 0.5, y: 0.5, scale: 'big' }] }).elements.find(e => e.type === 'horizon').scale, 1.8)
     })
 
+    it('#horizonOptions() lists the AHI styles + aircraft markers', function () {
+      const o = hud.horizonOptions()
+      assert.deepEqual(o.styles, ['ladder', 'line', 'ticks'])
+      assert.ok(o.markers.includes('wings') && o.markers.includes('crosshair') && o.markers.includes('drone'))
+    })
+
+    it('#validateHudLayout() validates the horizon style / marker / colours + graphic colour', function () {
+      // defaults: ladder + wings
+      const def = hud.defaultHudLayout().elements.find(e => e.type === 'horizon')
+      assert.equal(def.style, 'ladder')
+      assert.equal(def.marker, 'wings')
+      // valid choices pass through
+      const ok = hud.validateHudLayout({ elements: [{ type: 'horizon', enabled: true, x: 0.5, y: 0.5, style: 'line', marker: 'drone', color: '#0af', markerColor: '#f50' }] }).elements.find(e => e.type === 'horizon')
+      assert.deepEqual({ style: ok.style, marker: ok.marker, color: ok.color, markerColor: ok.markerColor }, { style: 'line', marker: 'drone', color: '#0af', markerColor: '#f50' })
+      // invalid style/marker → defaults; invalid colours dropped
+      const bad = hud.validateHudLayout({ elements: [{ type: 'horizon', enabled: true, x: 0.5, y: 0.5, style: 'spaceship', marker: 'ufo', color: 'red', markerColor: 'green' }] }).elements.find(e => e.type === 'horizon')
+      assert.equal(bad.style, 'ladder')
+      assert.equal(bad.marker, 'wings')
+      assert.ok(!('color' in bad) && !('markerColor' in bad))
+      // a colour validates on the compass too (no style/marker for non-horizon graphics)
+      const comp = hud.validateHudLayout({ elements: [{ type: 'compass', enabled: true, x: 0.5, y: 0.1, color: '#abc' }] }).elements.find(e => e.type === 'compass')
+      assert.equal(comp.color, '#abc')
+      assert.ok(!('style' in comp) && !('marker' in comp))
+    })
+
     it('#validateHudLayout() normalises the global text style', function () {
       // valid values pass through
       const ok = hud.validateHudLayout({ global: { font: 'serif', size: 50, color: '#0af' }, elements: [] })
