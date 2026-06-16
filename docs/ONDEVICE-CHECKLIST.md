@@ -379,17 +379,38 @@ dedicated to the FC, the Pi reaches the ground via **`wlan0` / LTE / WireGuard**
 reconfig from a wlan0/VPN session or the local console — applying it over an
 `eth0`-based SSH drops that session.
 
-- [ ] Cable `eth0` directly to the Pixhawk 6X Ethernet port (point-to-point, or via a switch)
-- [ ] Give `eth0` a static IP on the FC subnet (NetworkManager profile is **`netplan-eth0`** on this box). `never-default` + empty gateway keep the default route on wlan0/LTE:
+**VERIFIED end-to-end (Pi 4 + Pixhawk 6X, 2026-06-16)** — link came up *Connected, Fixed
+Wing APM, live GPS fix*. The steps as actually performed, with the gotchas hit:
+
+- [x] Cable `eth0` directly to the Pixhawk 6X Ethernet port (point-to-point).
+- [x] **eth0 static on the FC subnet — via netplan, NOT `nmcli con mod`.** This box is
+  netplan-managed (NM keyfiles regenerate from `/etc/netplan/*.yaml`), so an `nmcli con mod`
+  on `netplan-eth0` does **not** persist a reboot. Edit the eth0 netplan file
+  (`90-NM-75a1216a-…yaml`) and reload *without* an NM restart (keeps the WiFi mgmt session up):
   ```
-  sudo nmcli con mod netplan-eth0 ipv4.method manual \
-    ipv4.addresses 192.168.144.10/24 ipv4.gateway "" ipv4.never-default yes
-  sudo nmcli con up netplan-eth0
+  # under  ethernets: eth0:   set —
+  dhcp4: false
+  dhcp6: false
+  addresses: [192.168.144.10/24]     # no gateway4 → default route stays on wlan0/LTE
+  # then:
+  sudo netplan generate && sudo nmcli connection reload && sudo nmcli connection up netplan-eth0
   ```
-  (confirm `sudo nmcli connection modify` has polkit rights under the service user — see Feature #19)
-- [ ] On the Pixhawk 6X (Mission Planner / MAVProxy), reboot after `NET_ENABLE`, then again after setting TYPE/IP/PORT:
-  - `NET_ENABLE=1`, `NET_NETMASK=24` (leave the FC IP at its `192.168.144.14` default, gw `192.168.144.1`)
-  - a free port slot `Px`: `NET_Px_TYPE=1` (UDP client), `NET_Px_PROTOCOL=2` (MAVLink2), `NET_Px_IP0..3=192.168.144.10` (the Pi), `NET_Px_PORT=14550`
-- [ ] In the webUI FC page → *Add a Link*: Input Type = **UDP Server**, UDP Input Port = **14550** → the link card shows the 6X connected (vehicle type/FW, packets climbing)
-- [ ] Reachability sanity: `ping -I eth0 192.168.144.14` from the Pi hits the FC; management (SSH/webUI) still works over wlan0/VPN with `eth0` off the LAN
+- [x] **Pixhawk 6X params (Mission Planner, search `NET_`):** `NET_ENABLE=1` → **reboot**
+  (the rest of `NET_*` only appears after this) → set the rest → **reboot again**:
+  - **`NET_DHCP=0` ← mandatory.** Left on, the FC finds no DHCP server on the point-to-point
+    link and falls back to a link-local `169.254.x.x` address — telemetry still arrives but the
+    GCS→FC **return path breaks**. Then set `NET_IPADDR0..3=192.168.144.14`, `NET_NETMASK=24`.
+  - a free port slot `Px`: `NET_Px_TYPE=1` (UDP client), `NET_Px_PROTOCOL=2` (MAVLink2),
+    `NET_Px_IP0..3=192.168.144.10` (the Pi), `NET_Px_PORT=14550`
+- [x] **webUI FC page → Add a Link: UDP Server, port 14550.** GOTCHA: this input port must
+  **not** equal the shared **UDP Server (broadcast)** port (defaults to `14550`). Both on one
+  port → mavlink-router exits *"Address already in use"* → the link silently shows
+  *Not connected, 0 packets*. Disable the broadcast UDP Server or move it off 14550; use the
+  TCP Server (5760) or a UDP Client output for a GCS.
+- [x] Reachability: `ping 192.168.144.14` from the Pi → 0% loss (~0.1 ms); FC streams MAVLink
+  `192.168.144.14:62510 → 192.168.144.10:14550` (confirmed with `tcpdump`). `arp-scan`/`tcpdump`
+  were `apt install`ed on the Pi during bring-up (handy for finding the FC's actual IP/MAC).
+- [ ] **Persistence across a Pi reboot (not yet verified):** reboot the Pi → `eth0` returns
+  static `192.168.144.10`, WiFi reconnects (power-save off), and the FC link re-establishes
+  with no intervention.
 - [ ] Confirm telemetry bandwidth/latency over Ethernet vs the UART baseline (the main reason to use it)

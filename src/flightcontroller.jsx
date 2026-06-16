@@ -192,11 +192,12 @@ class FCPage extends basePage {
           <p>For a flight controller with an Ethernet port (e.g. Holybro Pixhawk 6X, CubePilot CubeRed) running <b>ArduPilot 4.5+</b>, you can take telemetry over Ethernet instead of a serial UART &mdash; far higher bandwidth. The flight controller sends its MAVLink stream to this device as a <b>UDP client</b>, and this device receives it with a <b>UDP Server</b> link.</p>
           <ol style={{ paddingLeft: '1.2em' }}>
             <li>On this device, give <code>eth0</code> a static IP on the same subnet as the flight controller. ArduPilot uses the <code>192.168.144.0/24</code> subnet by default, so use e.g. <code>192.168.144.10</code> / <code>255.255.255.0</code>. Avoid <code>.14</code> (the FC default) and <code>.11</code> (reserved for Herelink); no gateway is needed on this link.</li>
-            <li>Add a link above: set <b>Input Type</b> to <b>UDP Server</b> and pick a <b>UDP Input Port</b> (e.g. <code>14550</code>).</li>
-            <li>On the flight controller, set the parameters below, then reboot (once after <code>NET_ENABLE</code> to reveal the rest, and again after changing <code>TYPE</code> / <code>IP</code> / <code>PORT</code>). <code>Px</code> is any free network-port slot (<code>P1</code>, <code>P2</code>, &hellip;):
+            <li>Add a link above: set <b>Input Type</b> to <b>UDP Server</b> and pick a <b>UDP Input Port</b> (e.g. <code>14550</code>). <b>This port must be unique</b> &mdash; see the warning below.</li>
+            <li>On the flight controller (Mission Planner full parameter list, search <code>NET_</code>): set <code>NET_ENABLE = 1</code> and <b>reboot</b> &mdash; the other <code>NET_*</code> params only appear after that &mdash; then set the rest and <b>reboot again</b>. <code>Px</code> is any free network-port slot (<code>P1</code>, <code>P2</code>, &hellip;):
               <ul style={{ paddingLeft: '1.2em', marginTop: '4px' }}>
-                <li><code>NET_ENABLE = 1</code></li>
-                <li><code>NET_NETMASK = 24</code> &mdash; leave the FC IP at its <code>192.168.144.14</code> default</li>
+                <li><code>NET_ENABLE = 1</code> (then reboot)</li>
+                <li><code>NET_DHCP = 0</code> &mdash; <b>must be off.</b> If left on, the FC finds no DHCP server on the point-to-point link and falls back to a link-local <code>169.254.x.x</code> address instead of its static IP &mdash; telemetry still arrives but the return path (GCS&nbsp;&rarr;&nbsp;FC commands) breaks</li>
+                <li><code>NET_IPADDR0..3 = 192.168.144.14</code>, <code>NET_NETMASK = 24</code> (the FC&apos;s static IP on this subnet)</li>
                 <li><code>NET_Px_TYPE = 1</code> (UDP Client)</li>
                 <li><code>NET_Px_PROTOCOL = 2</code> (MAVLink2)</li>
                 <li><code>NET_Px_IP0..3</code> = this device&apos;s IP (<code>192.168.144.10</code>)</li>
@@ -204,6 +205,7 @@ class FCPage extends basePage {
               </ul>
             </li>
           </ol>
+          <p><b>If the link stays &quot;Not connected &mdash; 0 packets&quot;</b> even though the FC is sending: the <b>UDP Input Port</b> above must not collide with the shared <b>UDP Server</b> (broadcast) port under <i>Telemetry Destinations</i> (which defaults to <code>14550</code>). Two endpoints on the same port make the router exit with <i>&quot;Address already in use&quot;</i>. Keep the input on the FC&apos;s port and either disable the broadcast UDP Server or move it off <code>14550</code>; connect a ground station via the <b>TCP Server</b> (<code>5760</code>) or a <b>UDP Client</b> output instead. If the FC pings only at a <code>169.254.x.x</code> address, <code>NET_DHCP</code> is still <code>1</code>.</p>
           <p>See ArduPilot&apos;s <a href="https://ardupilot.org/copter/docs/common-network.html" target="_blank" rel="noreferrer">Ethernet / Network Setup</a> docs for full details.</p>
         </HelpSection>
 
@@ -283,7 +285,7 @@ class FCPage extends basePage {
                 </div>
               </div>
               <br />
-              <h3>UDP Server <HelpTip text="Lets one GCS connect to this device's IP:port (broadcast). Binds a fixed port, so it carries the first link only." /></h3>
+              <h3>UDP Server <HelpTip text="Lets one GCS connect to this device's IP:port (broadcast). Binds a fixed port, so it carries the first link only. Must NOT equal a UDP-Server input link's port (e.g. an Ethernet FC on 14550) — two endpoints on one port make the router fail to start ('Address already in use')." /></h3>
               <div className="form-group row">
                 <label className="col-sm-4 col-form-label">Enable UDP Server</label>
                 <div className="col-sm-8">
