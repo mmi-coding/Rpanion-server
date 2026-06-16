@@ -413,4 +413,15 @@ Wing APM, live GPS fix*. The steps as actually performed, with the gotchas hit:
 - [ ] **Persistence across a Pi reboot (not yet verified):** reboot the Pi → `eth0` returns
   static `192.168.144.10`, WiFi reconnects (power-save off), and the FC link re-establishes
   with no intervention.
+
+## Feature 35: MAVLink Inspector (webUI live FC telemetry)
+
+WSL-verified via unit/UI tests with mocked snapshots; needs a real FC stream on
+device. See docs/MAVLINK-INSPECTOR.md.
+
+- [ ] With an FC link connected (e.g. the Pixhawk 6X over Ethernet/UDP), open **Flight → MAVLink Inspector** → the **summary** shows live attitude / speed / GPS / battery / status that track the vehicle (tilt it, change throttle)
+- [ ] The **inspector** lists the messages the FC actually streams (HEARTBEAT, ATTITUDE, VFR_HUD, SYS_STATUS, GPS_RAW_INT, GLOBAL_POSITION_INT, RC_CHANNELS, ESC_STATUS, …) with plausible **rates** (Hz); expanding a row shows its raw fields
+- [ ] Stop the FC stream (unplug/standby) → affected messages show the **stale** badge within ~5 s; reconnect → they refresh
+- [ ] The name **filter** narrows the list; the page works with **no video stream running** (independent of the HUD)
+- [ ] Pi Zero 2 W: the 1 Hz snapshot emit + decode adds no meaningful CPU at the FC's stream rate
 - [ ] Confirm telemetry bandwidth/latency over Ethernet vs the UART baseline (the main reason to use it)

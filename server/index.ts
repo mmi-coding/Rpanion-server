@@ -28,6 +28,7 @@ const CellularTuning = require('./cellularTuning')
 const DynamicDns = require('./dynamicDns')
 const NetworkPriority = require('./networkPriority')
 const TelemetryInjector = require('./telemetryInjector')
+const MavTelemetry = require('./mavTelemetry')
 
 const settings = require('settings-store')
 
@@ -78,6 +79,8 @@ const secondaryStreams = new (require('./secondaryStreams'))(settings, vManager)
 // let the camera protocol (VIDEO_STREAM_INFORMATION) advertise the secondaries too
 vManager.secondaryStreams = secondaryStreams
 const fcManager = new fcManagerClass(settings)
+// live store of every MAVLink message from the FC, for the webUI inspector
+const mavTelemetry = new MavTelemetry()
 const logManager = new flightLogger()
 const ntripClient = new ntrip(settings)
 const cloud = new cloudManager(settings)
@@ -326,6 +329,7 @@ fcManager.eventEmitter.on('gotMessage', (packet: any, data: any, link: any) => {
     ntripClient.onMavPacket(packet, data)
     vManager.onMavPacket(packet, data)
     camSwitcher.onMavPacket(packet, data)
+    mavTelemetry.onMessage(packet, data)
     // ask the FC to stream RC_CHANNELS (2 Hz), once, if the camera switcher
     // needs it — requested from the link whose vehicle we first locked onto
     if (camSwitcher.getSettings().enabled && !camSwitcher.streamRequested &&
@@ -464,6 +468,7 @@ io.on('connection', function () {
     io.sockets.emit('LTEStatus', lteModem.getStatus())
     io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
     io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
+    io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
   }, 1000)
 })
 
