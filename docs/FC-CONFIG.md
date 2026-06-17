@@ -88,12 +88,12 @@ GetNodeInfo responses were truncated so names never resolved, and we wrongly bla
 the FC. **Verified on-device (2026-06-17):** the GUI-parity rework (sweep one bus at
 a time, no filter) resolves **names + versions on both buses** (e.g.
 `org.ardupilot.HolybroG4_GPS` on CAN1, `com.vimdrones.…` servo hub on CAN1) — the
-truncation was our filter, not the FC. A minor residual remains: longer names can
-still come back slightly truncated because the FC occasionally drops a forwarded
-frame and the decoder doesn't yet validate the transfer CRC (so it keeps the first
-partial response); the fix is transfer-CRC validation + retry. A node with no
-resolved name still shows its id/health/mode/uptime. See
-docs/reports/feature-37-dronecan-nodes.md.
+truncation was our filter, not the FC. Multi-frame GetNodeInfo responses are now
+**transfer-CRC-validated** (CRC-16-CCITT seeded with the GetNodeInfo data-type
+signature `0xee468a8121c46a9e`), so a response corrupted by an occasional dropped
+forwarded frame is rejected and retried — node names are therefore **either correct
+or absent, never garbled**. A node with no resolved name still shows its
+id/health/mode/uptime. See docs/reports/feature-37-dronecan-nodes.md.
 
 The alternative transport — **SLCAN** (the *other* way Mission Planner's DroneCAN
 GUI connects) — was also investigated and is **not viable from the companion over

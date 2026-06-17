@@ -179,20 +179,27 @@ GetNodeInfo truncation was **caused by our own `CAN_FILTER_MODIFY` / combined-lo
 bug, not the flight controller** — removing the filter and forwarding one stable bus
 at a time lets GetNodeInfo complete, exactly as the reference GUI does.
 
-**Residual (minor):** longer names can still come back **truncated/garbled**
-(`com.vimdrones.srv-hub-4ch-p…`, `org.ardupilot:0`) — the FC's CAN-forward path
-(ArduPilot issue #28187) still drops the occasional forwarded frame mid-transfer, and
-because the decoder does **no transfer-CRC validation** it accepts the first (possibly
-partial) GetNodeInfo response and then stops retrying that node, so a bad name sticks.
-The clean fix is to validate the 2-byte DroneCAN transfer CRC (CRC-16-CCITT seeded
-with the GetNodeInfo data-type signature), reject corrupt/incomplete reassemblies, and
-keep retrying until a CRC-valid response arrives. Discovery/health/mode/uptime were
-never affected.
+**Residual fixed — transfer-CRC validation (2026-06-17).** Two names initially came
+back **truncated/garbled** (`com.vimdrones.srv-hub-4ch-p…`, `org.ardupilot:0`): the
+FC's CAN-forward path (ArduPilot issue #28187) still drops the occasional forwarded
+frame mid-transfer, and the decoder did **no transfer-CRC validation** — it accepted
+the first (possibly partial) reassembled GetNodeInfo response and then stopped
+retrying, so a bad name stuck. Now the 2-byte DroneCAN transfer CRC is verified:
+**CRC-16-CCITT** (poly `0x1021`, init `0xffff`; check value `0x29b1`) seeded with the
+**GetNodeInfo data-type signature `0xee468a8121c46a9e`** (libcanard
+`UAVCAN_PROTOCOL_GETNODEINFO_SIGNATURE`, fed little-endian — matches pydronecan's
+`crc16_from_bytes(payload, initial=base_crc)`). A CRC mismatch ⇒ the transfer is
+discarded, the node stays nameless, and GetNodeInfo is **retried** within that bus's
+dwell until a clean response arrives. Net effect: a node name is now **either correct
+or absent — never garbled**. (Sources: pydronecan `dronecan/dsdl/common.py` CRC-16,
+`dronecan/transport.py` transfer-CRC seeding; libcanard signature constant.)
+Discovery/health/mode/uptime were never affected.
 
 ## Needs-on-device (remaining)
 
 Appended to `docs/ONDEVICE-CHECKLIST.md`: confirm NodeStatus **health/mode bit
 decoding** on a non-OK node (UAVCAN v0 MSB-first) vs Mission Planner; no adverse
 effect on the live bus. Node discovery on **both** CAN buses and name resolution are
-now verified on-device (see above). Remaining: optionally add **transfer-CRC
-validation + retry** so longer names don't come back truncated.
+verified on-device (see above). Transfer-CRC validation + retry is now implemented —
+confirm on-device that the previously-garbled names (`com.vimdrones.…`, the CAN2 node)
+now resolve **cleanly** (or stay blank — never garbled).
