@@ -672,6 +672,20 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
         } catch (e) { done(e) }
       }).catch(done)
     })
+
+    it('200 — handles a body-less POST (the Scan button sends no body / Content-Type)', function (done) {
+      // regression: the webUI Scan button POSTs with no body, so express.json()
+      // leaves req.body undefined — reading req.body.buses must not 500
+      const scan = sinon.stub(hooks.droneCan, 'scan')
+      request('POST', '/api/FCDroneCANScan', {}).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.deepEqual(res.body.buses, [0, 1])
+          assert.ok(scan.calledOnce)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
   })
 
   describe('GET /api/FCDroneCANNodes', function () {

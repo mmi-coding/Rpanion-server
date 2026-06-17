@@ -20,9 +20,11 @@ export = function fcConfigRoutes ({ authenticateToken, fcParams, droneCan }: { a
     res.send(JSON.stringify(fcParams.getOverview()))
   })
 
-  // start a DroneCAN scan (CAN forwarding) on the given buses (default 0 + 1)
+  // start a DroneCAN scan (CAN forwarding) on the given buses (default 0 + 1).
+  // The webUI Scan button POSTs with no body, so express.json() leaves req.body
+  // undefined — optional-chain it (reading req.body.buses outright 500s, #feature-37).
   router.post('/api/FCDroneCANScan', authenticateToken, (req: Request, res: Response) => {
-    const buses = Array.isArray(req.body.buses) ? req.body.buses.map((b: any) => parseInt(b)).filter((b: number) => b >= 0 && b <= 7) : [0, 1]
+    const buses = Array.isArray(req.body?.buses) ? req.body.buses.map((b: any) => parseInt(b)).filter((b: number) => b >= 0 && b <= 7) : [0, 1]
     droneCan.scan(buses)
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify({ scanning: true, buses }))
