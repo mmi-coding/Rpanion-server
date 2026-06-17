@@ -50,8 +50,8 @@ screen uses.
 - `mavlink/mavManager.test.js` — `sendCanForward` / `sendCanFrame` msgid bytes.
 - `server/flightController.test.js` — `canForward`/`sendCanFrame` primary-link
   routing (no-link / no-mavManager paths).
-- `server/index.io.test.js` — `POST /api/FCDroneCANScan` (+ default + filter),
-  `GET /api/FCDroneCANNodes`.
+- `server/index.io.test.js` — `POST /api/FCDroneCANScan` (+ default + filter +
+  body-less regression: the Scan button sends no body), `GET /api/FCDroneCANNodes`.
 - `src/fcconfig.test.jsx` — scan button POST + scanning state, `DroneCANNodes`
   socket populates the table (incl. em-dash fallbacks), scan-error modal.
 - Both suites remain **100/100/100/100**; `typecheck` + `lint` clean.
@@ -79,6 +79,14 @@ remaining FC-side limitation:
 - **Fixed — only reassemble GetNodeInfo responses addressed to us.** The autopilot
   also polls GetNodeInfo; its responses share the node's source id, so under one
   reassembly key they interleaved with ours. Now filter on `dest == OUR_NODE_ID`.
+- **Fixed — the Scan button 500'd (empty-body POST).** Clicking **Scan DroneCAN
+  bus** returned *"Unexpected token '<' … is not valid JSON"*: the button POSTs with
+  no body, so `express.json()` left `req.body` undefined and the route's
+  `req.body.buses` threw → Express's `<!DOCTYPE html>` 500 page → the frontend's
+  `r.json()` failed. Initial bring-up missed it because forwarding/decoding was
+  driven via the API *with* a JSON body (and both backend tests + the mocked
+  frontend test sent one). Now `req.body?.buses`; a body-less regression test was
+  added. The default `[0, 1]` bus list already covered the empty case.
 - **Works:** node discovery, health/mode/uptime (live, ticking), and CAN bus
   config — validated against the real node.
 - **Limitation (root-caused) — GetNodeInfo names don't resolve on this FC.** With
