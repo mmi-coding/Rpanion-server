@@ -84,11 +84,16 @@ would otherwise corrupt reassembly). Backend: `server/droneCan.ts`
 **Names/versions status.** An earlier build forwarded buses in a single (buggy)
 loop — which, given the one-bus-at-a-time FC behaviour, meant only the *last* bus
 was ever live — and applied `CAN_FILTER_MODIFY`. Under that build, multi-frame
-GetNodeInfo responses were truncated (tail frames dropped) so names never resolved.
-The GUI-parity rework (sweep one bus at a time, no filter) is the like-for-like
-match to the tool that *does* resolve names; whether names now resolve on this FC
-is re-verified on-device — see docs/reports/feature-37-dronecan-nodes.md for the
-current result. A node with no resolved name still shows its id/health/mode/uptime.
+GetNodeInfo responses were truncated so names never resolved, and we wrongly blamed
+the FC. **Verified on-device (2026-06-17):** the GUI-parity rework (sweep one bus at
+a time, no filter) resolves **names + versions on both buses** (e.g.
+`org.ardupilot.HolybroG4_GPS` on CAN1, `com.vimdrones.…` servo hub on CAN1) — the
+truncation was our filter, not the FC. A minor residual remains: longer names can
+still come back slightly truncated because the FC occasionally drops a forwarded
+frame and the decoder doesn't yet validate the transfer CRC (so it keeps the first
+partial response); the fix is transfer-CRC validation + retry. A node with no
+resolved name still shows its id/health/mode/uptime. See
+docs/reports/feature-37-dronecan-nodes.md.
 
 The alternative transport — **SLCAN** (the *other* way Mission Planner's DroneCAN
 GUI connects) — was also investigated and is **not viable from the companion over

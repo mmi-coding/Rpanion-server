@@ -89,7 +89,8 @@ remaining FC-side limitation:
   added. The default `[0, 1]` bus list already covered the empty case.
 - **Works:** node discovery, health/mode/uptime (live, ticking), and CAN bus
   config — validated against the real node.
-- **Limitation (root-caused) — GetNodeInfo names don't resolve on this FC.** With
+- **Limitation (SUPERSEDED — see "GUI-parity rework" below; names DO resolve once
+  the filter is removed and one bus is forwarded at a time). [Original note:]** With
   all of the above (filter active, dest-filtered to our responses, tiny traffic),
   every multi-frame GetNodeInfo response is still truncated: we receive the first
   1–3 frames with clean, non-interleaved per-transfer-id sequences but **never an
@@ -125,11 +126,12 @@ code shipped — this was a feasibility spike that did **not** pan out):
   hardfault, ArduPilot issue #30055); the `CAN_FRAME` forward path itself is a known
   rough edge (ArduPilot issue #28187).
 
-**Conclusion:** DroneCAN node **names/versions are not obtainable from the companion
-over the Ethernet link on this FC** via either transport. For names/params, use
-Mission Planner's DroneCAN GUI over a **USB/serial SLCAN** connection (bench). If a
-future test shows MP's "SLCan Mode" working over Ethernet/VPN, capture its exact
-`SERIAL_CONTROL`/param sequence and revisit — our DroneCAN decoder is ready to reuse.
+**Conclusion (SUPERSEDED by the GUI-parity rework below).** This concluded names
+were unobtainable over the link — but that was an artefact of *our* filter + combined
+bus loop, not SLCAN-vs-CAN-forward. The `mavcan` (CAN-over-MAVLink) transport we
+already use **does** resolve names once it's driven like the reference tool (one bus,
+no filter); SLCAN was never needed. The SLCAN findings above remain valid as a record
+of why that *other* transport isn't viable over Ethernet, but it's moot now.
 
 ## GUI-parity rework — sweep one bus at a time, no filter (2026-06-17)
 
@@ -162,15 +164,35 @@ Sources (primary): DroneCAN spec §4.3 *MAVLink bus transport layer*; pydronecan
 `AP_CANManager/AP_MAVLinkCAN.cpp` (single `callback_bus`, filter-id bit extraction);
 ArduPilot DroneCAN GUI docs + Mission Planner DroneCAN/UAVCAN setup (per-port buttons).
 
-**This re-opens the names question.** The earlier "names never resolve — FC-side
-limitation" conclusion was reached *with* the combined-loop bug and the filter both
-present. Now that the scan is a like-for-like match to the tool that does resolve
-names, whether GetNodeInfo completes on this FC is to be re-verified on-device (see
-the checklist below). Discovery/health/mode/uptime were never in doubt.
+**Verified on-device (2026-06-17) — names DO resolve; the earlier "FC-side
+limitation" conclusion was wrong.** After the rework the same FC enumerated nodes on
+**both** buses with names + versions:
+
+```
+10  · CAN2   org.ardupilot:0                  OK  Operational  3677 s  1.0 / 1.0
+123 · CAN1   com.vimdrones.srv-hub-4ch-p      OK  Operational  3648 s  1.9 / 5.127
+125 · CAN1   org.ardupilot.HolybroG4_GPS      OK  Operational  3646 s  1.7 / 4.29
+```
+
+(The CAN2 ESC is absent only because it was unpowered.) So the multi-frame
+GetNodeInfo truncation was **caused by our own `CAN_FILTER_MODIFY` / combined-loop
+bug, not the flight controller** — removing the filter and forwarding one stable bus
+at a time lets GetNodeInfo complete, exactly as the reference GUI does.
+
+**Residual (minor):** longer names can still come back **truncated/garbled**
+(`com.vimdrones.srv-hub-4ch-p…`, `org.ardupilot:0`) — the FC's CAN-forward path
+(ArduPilot issue #28187) still drops the occasional forwarded frame mid-transfer, and
+because the decoder does **no transfer-CRC validation** it accepts the first (possibly
+partial) GetNodeInfo response and then stops retrying that node, so a bad name sticks.
+The clean fix is to validate the 2-byte DroneCAN transfer CRC (CRC-16-CCITT seeded
+with the GetNodeInfo data-type signature), reject corrupt/incomplete reassemblies, and
+keep retrying until a CRC-valid response arrives. Discovery/health/mode/uptime were
+never affected.
 
 ## Needs-on-device (remaining)
 
 Appended to `docs/ONDEVICE-CHECKLIST.md`: confirm NodeStatus **health/mode bit
-decoding** on a non-OK node (UAVCAN v0 MSB-first) vs Mission Planner; confirm
-behaviour with a node on **CAN bus 2**; no adverse effect on the live bus. (Node
-names are a known FC-side limitation — not expected to resolve.)
+decoding** on a non-OK node (UAVCAN v0 MSB-first) vs Mission Planner; no adverse
+effect on the live bus. Node discovery on **both** CAN buses and name resolution are
+now verified on-device (see above). Remaining: optionally add **transfer-CRC
+validation + retry** so longer names don't come back truncated.
