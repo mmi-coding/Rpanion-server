@@ -1,7 +1,13 @@
 const assert = require('assert')
 const sinon = require('sinon')
 const DroneCANMonitor = require('./droneCan')
-const { parseCanId, parseTail, decodeNodeStatus, decodeNodeInfo, Reassembler } = DroneCANMonitor
+const { parseCanId, parseTail, decodeNodeStatus, decodeNodeInfo, Reassembler, crc16, getNodeInfoCrcOk } = DroneCANMonitor
+
+// prefix a GetNodeInfo body with its valid 2-byte transfer CRC (LE), as the FC does
+function withCrc (body) {
+  const c = crc16(body, crc16(DroneCANMonitor.GETNODEINFO_SIG))
+  return [c & 0xff, (c >> 8) & 0xff, ...body]
+}
 
 const CAN_FRAME = 386 // common.CanFrame.MSG_ID
 const PKT = { header: { msgid: CAN_FRAME } }
@@ -91,13 +97,26 @@ describe('DroneCAN', function () {
     assert.equal(decodeNodeInfo([1, 2, 3]), null)
   })
 
+  it('crc16 is CRC-16-CCITT (check value 0x29b1 for "123456789")', function () {
+    assert.equal(crc16([...'123456789'].map((c) => c.charCodeAt(0))), 0x29b1)
+  })
+
+  it('getNodeInfoCrcOk validates the transfer CRC (and rejects short/corrupt transfers)', function () {
+    const transfer = withCrc(nodeInfoPayload('org.test'))
+    assert.equal(getNodeInfoCrcOk(transfer), true)
+    const corrupt = transfer.slice()
+    corrupt[corrupt.length - 1] ^= 0xff // flip a payload byte → CRC no longer matches
+    assert.equal(getNodeInfoCrcOk(corrupt), false)
+    assert.equal(getNodeInfoCrcOk([0x00, 0x01]), false) // too short to hold CRC + body
+  })
+
   it('Reassembler handles single + multi frame and drops bad frames', function () {
     const r = new Reassembler()
-    assert.deepEqual(r.accept('k', [1, 2, 3], parseTail(0xC0)), [1, 2, 3]) // single-frame
-    // multi-frame: SOT(crc,crc,a) → cont(b) → EOT(c)
+    assert.deepEqual(r.accept('k', [1, 2, 3], parseTail(0xC0)), { bytes: [1, 2, 3], multiframe: false }) // single-frame
+    // multi-frame: SOT(crc,crc,a) → cont(b) → EOT(c); CRC kept for the caller to verify
     assert.equal(r.accept('m', [0xAA, 0xBB, 1], parseTail(0x80 | 0)), null) // SOT, toggle0
     assert.equal(r.accept('m', [2], parseTail(0x20 | 0)), null) // cont, toggle1
-    assert.deepEqual(r.accept('m', [3], parseTail(0x40 | 0)), [1, 2, 3]) // EOT, toggle0 → CRC stripped
+    assert.deepEqual(r.accept('m', [3], parseTail(0x40 | 0)), { bytes: [0xAA, 0xBB, 1, 2, 3], multiframe: true }) // EOT, toggle0
     // continuation with no start → null
     assert.equal(r.accept('z', [9], parseTail(0x00)), null)
     // transfer-id mismatch drops the in-progress transfer
@@ -185,7 +204,7 @@ describe('DroneCAN', function () {
   it('GetNodeInfo response fills the node name + versions', function () {
     const m = new DroneCANMonitor(fc)
     m.onCanFrame(PKT, frame(msgId(25, 341), 0, [...nodeStatusBody(0, 0, 0, 1, 0), 0xC0]))
-    const payload = [0xAA, 0xBB, ...nodeInfoPayload('org.ardupilot.gps')] // 2-byte CRC + body
+    const payload = withCrc(nodeInfoPayload('org.ardupilot.gps')) // valid 2-byte transfer CRC + body
     for (const f of chunkToFrames(svcRespId(25, 127, 1), payload, 3)) {
       m.onCanFrame(PKT, f)
     }
@@ -196,6 +215,21 @@ describe('DroneCAN', function () {
     assert.equal(n.uniqueId.length, 32)
   })
 
+  it('a corrupt multi-frame GetNodeInfo (bad transfer CRC) is rejected so the name is not set', function () {
+    const m = new DroneCANMonitor(fc)
+    m.onCanFrame(PKT, frame(msgId(25, 341), 1, [...nodeStatusBody(0, 0, 0, 1, 0), 0xC0])) // node seen on bus 1
+    const payload = withCrc(nodeInfoPayload('org.ardupilot.gps'))
+    payload[payload.length - 2] ^= 0xff // drop/garble a payload byte → CRC mismatch
+    for (const f of chunkToFrames(svcRespId(25, 127, 1), payload, 3)) {
+      m.onCanFrame(PKT, f)
+    }
+    assert.equal(m.getNodes()[0].name, undefined) // reassembled but CRC-rejected → still nameless
+    // …and the node is still eligible for a GetNodeInfo retry on its bus
+    m.buses = [1]
+    m._forward()
+    assert.ok(fc.sendCanFrame.called)
+  })
+
   it('maps an unknown NodeStatus mode to a numeric fallback', function () {
     const m = new DroneCANMonitor(fc)
     m.onCanFrame(PKT, frame(msgId(7, 341), 0, [...nodeStatusBody(0, 5, 0, 1, 0), 0xC0])) // mode 5 (unmapped)
@@ -204,7 +238,7 @@ describe('DroneCAN', function () {
 
   it('a GetNodeInfo response with no prior NodeStatus still creates the node', function () {
     const m = new DroneCANMonitor(fc)
-    const payload = [0xAA, 0xBB, ...nodeInfoPayload('org.lone.node')]
+    const payload = withCrc(nodeInfoPayload('org.lone.node'))
     for (const f of chunkToFrames(svcRespId(60, 127, 1), payload, 0)) {
       m.onCanFrame(PKT, f)
     }

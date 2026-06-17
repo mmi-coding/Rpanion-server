@@ -14,6 +14,9 @@ const { common } = require('node-mavlink')
 const CAN_FRAME_MSGID: number = common.CanFrame.MSG_ID // 386
 const NODESTATUS_DTID = 341 // uavcan.protocol.NodeStatus (message)
 const GETNODEINFO_DTID = 1 // uavcan.protocol.GetNodeInfo (service)
+// uavcan.protocol.GetNodeInfo data-type signature 0xee468a8121c46a9e, little-endian
+// (libcanard UAVCAN_PROTOCOL_GETNODEINFO_SIGNATURE) — seeds the transfer CRC below
+const GETNODEINFO_SIG = [0x9e, 0x6a, 0xc4, 0x21, 0x81, 0x8a, 0x46, 0xee]
 const OUR_NODE_ID = 127 // this monitor's DroneCAN node id (GCS convention)
 const PRIORITY = 30 // low priority for our service requests
 const CAN_EFF_FLAG = 0x80000000 // extended-frame flag in the MAVLink CAN_FRAME id
@@ -44,6 +47,30 @@ function parseTail (b: number): any {
 
 function readU32LE (b: number[], o: number): number {
   return ((b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0)
+}
+
+// CRC-16-CCITT (poly 0x1021, init 0xffff, no reflection) — the DroneCAN/UAVCAN v0
+// transfer CRC. Check value 0x29b1 for "123456789".
+function crc16 (bytes: number[], crc: number = 0xffff): number {
+  for (const b of bytes) {
+    crc = (crc ^ (b << 8)) & 0xffff
+    for (let i = 0; i < 8; i++) {
+      crc = (crc & 0x8000) ? (((crc << 1) ^ 0x1021) & 0xffff) : ((crc << 1) & 0xffff)
+    }
+  }
+  return crc
+}
+
+// A multi-frame GetNodeInfo response is prefixed with a 2-byte transfer CRC =
+// CRC-16 over the data-type signature (LE) then the message bytes. Validating it
+// rejects transfers corrupted by a dropped forwarded frame (which yields a
+// truncated/garbled name) so the node stays nameless and is retried.
+function getNodeInfoCrcOk (transfer: number[]): boolean {
+  if (transfer.length < 3) {
+    return false
+  }
+  const expected = (transfer[0] | (transfer[1] << 8)) >>> 0
+  return crc16(transfer.slice(2), crc16(GETNODEINFO_SIG)) === expected
 }
 
 // uavcan.protocol.NodeStatus payload (7 bytes); bit fields are MSB-first per UAVCAN v0
@@ -94,9 +121,9 @@ class Reassembler {
     this.transfers = {}
   }
 
-  accept (key: string, body: number[], tail: any): number[] | null {
+  accept (key: string, body: number[], tail: any): { bytes: number[], multiframe: boolean } | null {
     if (tail.sot && tail.eot) {
-      return body // single-frame transfer, no CRC prefix
+      return { bytes: body, multiframe: false } // single-frame transfer, no transfer CRC
     }
     if (tail.sot) {
       this.transfers[key] = { chunks: [body], toggle: tail.toggle, transferId: tail.transferId }
@@ -116,8 +143,8 @@ class Reassembler {
       return null
     }
     delete this.transfers[key]
-    const all = ([] as number[]).concat(...t.chunks)
-    return all.slice(2) // strip the 2-byte transfer CRC
+    // multi-frame: the leading 2 bytes are the transfer CRC (caller validates + strips)
+    return { bytes: ([] as number[]).concat(...t.chunks), multiframe: true }
   }
 }
 
@@ -223,11 +250,17 @@ class DroneCANMonitor {
         return
       }
       this.stats.nodeInfo++
-      const payload = this.reasm.accept('s:' + cid.source, body, tail)
-      if (payload !== null) {
-        const info = decodeNodeInfo(payload)
-        if (info !== null) {
-          this._mergeInfo(cid.source, info)
+      const res = this.reasm.accept('s:' + cid.source, body, tail)
+      if (res !== null) {
+        // GetNodeInfo responses are multi-frame and carry a transfer CRC; verify it
+        // so a dropped frame (→ partial/garbled name) is rejected, leaving the node
+        // nameless to be retried, instead of a wrong name sticking
+        const payload = res.multiframe ? (getNodeInfoCrcOk(res.bytes) ? res.bytes.slice(2) : null) : res.bytes
+        if (payload !== null) {
+          const info = decodeNodeInfo(payload)
+          if (info !== null) {
+            this._mergeInfo(cid.source, info)
+          }
         }
       }
     } else {
@@ -235,9 +268,9 @@ class DroneCANMonitor {
         return // only NodeStatus broadcasts
       }
       this.stats.nodeStatus++
-      const payload = this.reasm.accept('m:' + cid.source, body, tail)
-      if (payload !== null) {
-        const st = decodeNodeStatus(payload)
+      const res = this.reasm.accept('m:' + cid.source, body, tail)
+      if (res !== null) {
+        const st = decodeNodeStatus(res.bytes) // NodeStatus is single-frame (no CRC)
         if (st !== null) {
           this._mergeStatus(cid.source, data.bus, st)
         }
@@ -294,5 +327,8 @@ class DroneCANMonitor {
 ;(DroneCANMonitor as any).decodeNodeStatus = decodeNodeStatus
 ;(DroneCANMonitor as any).decodeNodeInfo = decodeNodeInfo
 ;(DroneCANMonitor as any).Reassembler = Reassembler
+;(DroneCANMonitor as any).crc16 = crc16
+;(DroneCANMonitor as any).getNodeInfoCrcOk = getNodeInfoCrcOk
+;(DroneCANMonitor as any).GETNODEINFO_SIG = GETNODEINFO_SIG
 
 export = DroneCANMonitor
