@@ -93,6 +93,36 @@ remaining FC-side limitation:
   synthetic multi-frame responses. Names are therefore not retrievable via CAN
   forwarding on this FC; discovery/health/uptime/bus-config are the useful output.
 
+## SLCAN-via-MAVLink investigation (names — not viable over Ethernet, 2026-06-17)
+
+To get reliable names we tried the second documented route — SLCAN, which is what
+Mission Planner's DroneCAN GUI uses (a raw CAN tunnel, no 20-frame forward buffer).
+Findings, all spiked on-device via pymavlink/node-mavlink against TCP `5760` (no
+code shipped — this was a feasibility spike that did **not** pan out):
+
+- **SLCAN-over-USB is bench-only** and was ruled out: it needs the FC USB cable to
+  the Pi (`ttyACM1`), which the deployment (FC-over-Ethernet + LTE) doesn't have.
+- **SLCAN-via-MAVLink** (preferred; tunnels SLCAN ASCII over `SERIAL_CONTROL`)
+  **returned zero `SERIAL_CONTROL` replies** over the Ethernet link across ~7
+  attempts — node-mavlink + pymavlink, correctly targeted to the FC, `EXCLUSIVE`,
+  polling, with `CAN_SLCAN_CPORT=1` and `CAN_SLCAN_SERNUM=0` set live. The receive
+  path is healthy (heartbeats + PARAM_VALUE acks flow), so the FC simply isn't
+  engaging the tunnel.
+- **Root cause (likely fundamental):** SLCAN attaches to a *serial* port; our link
+  is **Ethernet (a NET port, no serial id)**, and with USB unplugged SLCAN on the
+  dead SERIAL0 never produces traffic. `CAN_SLCAN_SERNUM` is **non-persistent**
+  (live readback `0`, but `-1` after a reboot) — it's designed for a live serial
+  session, not an Ethernet tunnel.
+- ArduPilot quirks confirmed along the way: avoid `SERIALx_PROTOCOL=22` (arming
+  hardfault, ArduPilot issue #30055); the `CAN_FRAME` forward path itself is a known
+  rough edge (ArduPilot issue #28187).
+
+**Conclusion:** DroneCAN node **names/versions are not obtainable from the companion
+over the Ethernet link on this FC** via either transport. For names/params, use
+Mission Planner's DroneCAN GUI over a **USB/serial SLCAN** connection (bench). If a
+future test shows MP's "SLCan Mode" working over Ethernet/VPN, capture its exact
+`SERIAL_CONTROL`/param sequence and revisit — our DroneCAN decoder is ready to reuse.
+
 ## Needs-on-device (remaining)
 
 Appended to `docs/ONDEVICE-CHECKLIST.md`: confirm NodeStatus **health/mode bit

@@ -86,6 +86,14 @@ enough to fit, and we only reassemble responses addressed to us (the autopilot
 also polls GetNodeInfo; its responses share the node's source id and would
 otherwise corrupt reassembly).
 
+The alternative transport — **SLCAN** (what Mission Planner's DroneCAN GUI uses) —
+was also investigated and is **not viable from the companion over Ethernet** on
+this FC: SLCAN-over-USB is bench-only (needs the FC USB cable), and
+SLCAN-via-MAVLink (`SERIAL_CONTROL` tunnel) returned no response over the Ethernet
+link in testing — SLCAN binds to a *serial* port and our link is a NET port. So for
+node **names/params**, use Mission Planner's DroneCAN GUI over a USB/serial SLCAN
+connection (bench). Full details: docs/reports/feature-37-dronecan-nodes.md.
+
 ## Notes & limits
 
 - **Read-only.** This feature only *reads* parameters and enumerates nodes. A
