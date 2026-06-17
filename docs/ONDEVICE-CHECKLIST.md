@@ -454,3 +454,7 @@ off-by-one and added CAN_FILTER_MODIFY; see docs/FC-CONFIG.md + the feature repo
 - [ ] **NodeStatus health/mode bit decoding**: on a node in a non-OK state, health/mode read correctly (UAVCAN v0 MSB-first) — cross-check Mission Planner
 - [ ] Node on **CAN bus 2** appears (the node-map is keyed by id only; if the same id exists on both buses, last-seen wins — revisit keying by bus+id if needed)
 - [ ] With no DroneCAN device on the bus, a scan finds nothing and the page says so (no crash/hang)
+
+### DroneCAN node parameters (feature-38)
+- [x] **Click a node → read its parameters (param.GetSet).** Verified on-device (2026-06-18) that request injection, multi-byte frame injection, addressing and response routing all work end-to-end: our request is byte-identical to pydronecan (`0x1E0BFDFF` / `00 00 c0`), and a multi-byte GetNodeInfo probe over the param-scan path was answered back to us (`125→127`). The request reaches the node and the path round-trips.
+- [ ] **Populated parameter table against a GetSet-capable node.** On this drone *no* node answers `param.GetSet` (optional service): the Holybro GPS (node 125, AP_Periph) and Vimdrones servo hub (node 123) reply to GetNodeInfo but send **zero GetSet frames**; the autopilot node can't be read this way (no loopback of self-injected frames). Re-test against a node that implements GetSet (DroneCAN ESC / power module / airspeed) to confirm end-to-end decode of real int/float/bool/string params + min/max + multi-page enumeration.
