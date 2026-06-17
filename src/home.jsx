@@ -70,14 +70,18 @@ class Home extends basePage {
   }
 
   // Helper method to determine status variant (color)
+  // Only genuinely active/connected states are green. Negative states are matched
+  // first because 'inactive' contains 'active' and 'disconnected'/'not connected'
+  // contain 'connected' — checking success first would turn those green.
   getStatusVariant (status) {
     if (typeof status === 'string') {
-      if (status.toLowerCase().includes('active') || status.toLowerCase().includes('connected')) {
-        return 'success'
-      } else if (status.toLowerCase().includes('error') || status.toLowerCase().includes('failed')) {
+      const s = status.toLowerCase()
+      if (s.includes('error') || s.includes('failed')) {
         return 'danger'
-      } else if (status.toLowerCase().includes('not') || status.toLowerCase().includes('no')) {
+      } else if (s.includes('inactive') || s.includes('disconnect') || s.includes('not') || s.includes('no')) {
         return 'secondary'
+      } else if (s.includes('active') || s.includes('connected')) {
+        return 'success'
       }
     }
     return 'warning'
@@ -119,11 +123,11 @@ class Home extends basePage {
         <p>Welcome to the Rpanion-server home page. Real-time system status is updated every second.</p>
         
         <Row className="mb-4">
-          <Col md={6} className="mb-3">
-            <Card>
+          <Col md={6}>
+            <Card className="mb-3">
               <Card.Header>
                 <h5 className="mb-0">
-                  MAVLink Connection 
+                  MAVLink Connection
                   <Badge bg={this.getStatusVariant(this.state.FCStatus.conStatus)} className="ms-2">
                     {this.state.FCStatus.conStatus}
                   </Badge>
@@ -136,10 +140,22 @@ class Home extends basePage {
                 <p><strong>Firmware:</strong> {this.state.FCStatus.FW} {this.state.FCStatus.fcVersion}</p>
               </Card.Body>
             </Card>
-          </Col>
 
-          <Col md={6} className="mb-3">
-            <Card>
+            <Card className="mb-3">
+              <Card.Header>
+                <h5 className="mb-0">
+                  PPP Connection
+                  <Badge bg={this.getStatusVariant(this.state.PPPStatus)} className="ms-2">
+                    {this.state.PPPStatus.includes('Active') ? 'Active' : 'Inactive'}
+                  </Badge>
+                </h5>
+              </Card.Header>
+              <Card.Body>
+                <p>{this.state.PPPStatus}</p>
+              </Card.Body>
+            </Card>
+
+            <Card className="mb-3">
               <Card.Header>
                 <h5 className="mb-0">
                   NTRIP Connection
@@ -154,56 +170,8 @@ class Home extends basePage {
             </Card>
           </Col>
 
-          <Col md={6} className="mb-3">
-            <Card>
-              <Card.Header>
-                <h5 className="mb-0">
-                  PPP Connection
-                  <Badge bg={this.getStatusVariant(this.state.PPPStatus)} className="ms-2">
-                    {this.state.PPPStatus.includes('Active') ? 'Active' : 'Inactive'}
-                  </Badge>
-                </h5>
-              </Card.Header>
-              <Card.Body>
-                <p>{this.state.PPPStatus}</p>
-              </Card.Body>
-            </Card>
-          </Col>
-
-          <Col md={6} className="mb-3">
-            <Card>
-              <Card.Header>
-                <h5 className="mb-0">
-                  Camera
-                  <Badge bg={cameraBadgeVariant} className="ms-2">
-                    {cameraBadgeLabel}
-                  </Badge>
-                </h5>
-              </Card.Header>
-              <Card.Body>
-                <p>{videoStatus}</p>
-              </Card.Body>
-            </Card>
-          </Col>
-
-          <Col md={6} className="mb-3">
-            <Card>
-              <Card.Header>
-                <h5 className="mb-0">
-                  Log Conversion
-                  <Badge bg={this.getStatusVariant(this.state.LogConversionStatus)} className="ms-2">
-                    {this.state.LogConversionStatus === 'N/A' ? 'N/A' : (this.state.LogConversionStatus.includes('Active') ? 'Active' : 'Inactive')}
-                  </Badge>
-                </h5>
-              </Card.Header>
-              <Card.Body>
-                <p>{this.state.LogConversionStatus}</p>
-              </Card.Body>
-            </Card>
-          </Col>
-
-          <Col md={6} className="mb-3">
-            <Card>
+          <Col md={6}>
+            <Card className="mb-3">
               <Card.Header>
                 <h5 className="mb-0">System</h5>
               </Card.Header>
@@ -216,6 +184,34 @@ class Home extends basePage {
                     <p><strong>Uptime:</strong> {Math.floor(this.state.systemStatus.uptimeSec / 3600)}h {Math.floor((this.state.systemStatus.uptimeSec % 3600) / 60)}m</p>
                   </>
                 ) : <p>—</p>}
+              </Card.Body>
+            </Card>
+
+            <Card className="mb-3">
+              <Card.Header>
+                <h5 className="mb-0">
+                  Camera
+                  <Badge bg={cameraBadgeVariant} className="ms-2">
+                    {cameraBadgeLabel}
+                  </Badge>
+                </h5>
+              </Card.Header>
+              <Card.Body>
+                <p>{videoStatus}</p>
+              </Card.Body>
+            </Card>
+
+            <Card className="mb-3">
+              <Card.Header>
+                <h5 className="mb-0">
+                  Log Conversion
+                  <Badge bg={this.getStatusVariant(this.state.LogConversionStatus)} className="ms-2">
+                    {this.state.LogConversionStatus === 'N/A' ? 'N/A' : (this.state.LogConversionStatus.includes('Active') ? 'Active' : 'Inactive')}
+                  </Badge>
+                </h5>
+              </Card.Header>
+              <Card.Body>
+                <p>{this.state.LogConversionStatus}</p>
               </Card.Body>
             </Card>
           </Col>

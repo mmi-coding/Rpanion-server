@@ -195,10 +195,16 @@ html.gs-theme ::-webkit-scrollbar-thumb {
 html.gs-theme ::-webkit-scrollbar-thumb:hover { background: var(--gs-amber-lo); background-clip: content-box; }
 
 /* ── 3 · Shell layout ───────────────────────────────────────────────────── */
-html.gs-theme #wrapper { min-height: 100vh; align-items: stretch; }
+/* App-shell: the shell is locked to the viewport and never scrolls; the sidebar
+   rail stays put while the content pane scrolls on its own. This keeps the rail
+   (and its first item, Home) always visible — a scrolling document used to push
+   the sticky rail up and clip the top nav item. */
+html.gs-theme #wrapper { height: 100vh; height: 100dvh; overflow: hidden; align-items: stretch; }
 html.gs-theme .page-content-wrapper {
   flex: 1 1 auto;
   min-width: 0;            /* let mono/pre blocks scroll instead of pushing layout */
+  min-height: 0;           /* allow the pane to shrink below content height so it, not the body, scrolls */
+  overflow-y: auto;        /* page content scrolls here; the sidebar rail stays fixed */
   display: flex;
   flex-direction: column;
 }
@@ -277,6 +283,10 @@ html.gs-theme #sidebar-toggle:focus-visible {
 }
 
 html.gs-theme #sidebar-items { flex: 1 1 auto; overflow-y: auto; padding-top: 0.85rem; }
+/* The list is a flex column; without this its rows shrink to fit instead of
+   scrolling, squashing items (e.g. Home collapsed to a clipped "..") when the
+   nav is taller than the rail. Keep every row at its natural height and scroll. */
+html.gs-theme #sidebar-items > * { flex-shrink: 0; }
 
 /* Nav items */
 html.gs-theme #sidebar-items .list-group-item {
@@ -302,6 +312,12 @@ html.gs-theme #sidebar-items .list-group-item.active {
 html.gs-theme #sidebar-items .list-group-item.active::before {
   content: "❯"; margin-right: 0.5rem; font-size: 0.7rem; color: var(--gs-amber); vertical-align: 1px;
 }
+/* Sub-menu items sit under a category heading: indented further and lighter
+   weight (kept off .active so the selected item stays emphasised). */
+html.gs-theme #sidebar-items .gs-navgroup-items .list-group-item { padding-left: 2.1rem; }
+html.gs-theme #sidebar-items .gs-navgroup-items .list-group-item:not(.active) { font-weight: 300; }
+html.gs-theme #sidebar-items .gs-navgroup-items .list-group-item:hover,
+html.gs-theme #sidebar-items .gs-navgroup-items .list-group-item:focus-visible { padding-left: 2.35rem; }
 html.gs-theme #readonly-badge { font-family: var(--gs-font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
 
 /* Collapsible nav categories */
@@ -311,14 +327,14 @@ html.gs-theme .gs-navgroup-header {
   background: transparent; border: 0; cursor: pointer;
   padding: 0.7rem 1.1rem 0.3rem;
   color: var(--gs-text-faint);
-  font-family: var(--gs-font-display); font-weight: 600; font-size: 0.65rem;
-  letter-spacing: 0.14em; text-transform: uppercase;
+  font-family: var(--gs-font-display); font-weight: 700; font-size: 0.92rem;
+  letter-spacing: 0.08em; text-transform: uppercase;
   transition: color .15s ease;
 }
 html.gs-theme .gs-navgroup-header:hover,
 html.gs-theme .gs-navgroup-header:focus-visible { color: var(--gs-text-dim); outline: none; }
 html.gs-theme .gs-navgroup-chevron {
-  display: inline-block; width: 0.7rem; font-size: 0.6rem; color: var(--gs-text-faint);
+  display: inline-block; width: 0.8rem; font-size: 0.72rem; color: var(--gs-text-faint);
   transition: transform .18s ease;
 }
 html.gs-theme .gs-navgroup-items { overflow: hidden; max-height: 32rem; transition: max-height .25s ease; }

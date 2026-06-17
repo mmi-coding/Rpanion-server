@@ -333,6 +333,73 @@ describe('#homePage()', function () {
   })
 
   // -------------------------------------------------------------------------
+  // Regression: negative states must NOT be green (#badge-color)
+  // 'inactive' contains 'active' and 'disconnected'/'not connected' contain
+  // 'connected' — only genuinely active/connected states may be success/green.
+  // -------------------------------------------------------------------------
+  const cardBadge = (page, headerText) => {
+    const card = [...page.container.querySelectorAll('.card')]
+      .find(c => c.textContent.includes(headerText))
+    return card.querySelector('.badge')
+  }
+
+  test('FCStatus "Not connected" badge is secondary, not success', async function () {
+    mockFetch({})
+    const page = renderPage(<Home />)
+    await page.flush()
+    // Default state conStatus is 'Not connected'
+    const badge = cardBadge(page, 'MAVLink Connection')
+    expect(badge.textContent).toContain('Not connected')
+    expect(badge.className).toContain('bg-secondary')
+    expect(badge.className).not.toContain('bg-success')
+    page.unmount()
+  })
+
+  test('PPPStatus "Disconnected" badge is secondary, not success', async function () {
+    mockFetch({})
+    const page = renderPage(<Home />)
+    await page.flush()
+    act(() => {
+      lastSocket().fire('PPPStatus', 'Disconnected')
+    })
+    const badge = cardBadge(page, 'PPP Connection')
+    expect(badge.textContent).toContain('Inactive')
+    expect(badge.className).toContain('bg-secondary')
+    expect(badge.className).not.toContain('bg-success')
+    page.unmount()
+  })
+
+  test('NTRIPStatus "Not active" badge is secondary, not success', async function () {
+    mockFetch({})
+    const page = renderPage(<Home />)
+    await page.flush()
+    act(() => {
+      lastSocket().fire('NTRIPStatus', 'Not active')
+    })
+    const badge = cardBadge(page, 'NTRIP Connection')
+    expect(badge.textContent).toContain('Inactive')
+    expect(badge.className).toContain('bg-secondary')
+    expect(badge.className).not.toContain('bg-success')
+    page.unmount()
+  })
+
+  test('FCStatus "Connected" badge stays success/green', async function () {
+    mockFetch({})
+    const page = renderPage(<Home />)
+    await page.flush()
+    act(() => {
+      lastSocket().fire('FCStatus', {
+        conStatus: 'Connected',
+        numpackets: 0, byteRate: 0, vehType: '', FW: '', fcVersion: ''
+      })
+    })
+    const badge = cardBadge(page, 'MAVLink Connection')
+    expect(badge.className).toContain('bg-success')
+    expect(badge.className).not.toContain('bg-secondary')
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
   // getStatusVariant: non-string input → warning (branch 0 false path)
   // -------------------------------------------------------------------------
   test('getStatusVariant: non-string number → warning variant (branch 0 false)', async function () {
