@@ -428,14 +428,16 @@ device. See docs/MAVLINK-INSPECTOR.md.
 
 ## Feature 36: FC Configuration overview (read-only)
 
-WSL-verified via unit/UI tests with synthetic params + telemetry; needs a real FC
-parameter download on device. See docs/FC-CONFIG.md.
+WSL-verified via unit/UI tests; **API verified on-device 2026-06-17** against a
+connected ArduPlane FC (Pixhawk over Ethernet/UDP, sysid 1/1) via the live
+`FCParamRefresh`/`FCConfigOverview` endpoints. See docs/FC-CONFIG.md.
 
-- [ ] With an FC link connected (e.g. the Pixhawk 6X over Ethernet/UDP), open **Flight → FC Configuration**, click **Refresh parameters** → the progress bar runs `downloading` and settles on `complete`; note the param count and how long it took (Ethernet/USB vs a telemetry radio)
-- [ ] **Sensors** lists the FC's real sensors (gyro/accel/compass/baro/GPS, plus 2nd IMU/compass if fitted) with correct enabled/healthy state; tilt/cover to confirm health tracks
-- [ ] **Serial peripherals** matches the FC's `SERIALx_PROTOCOL`/`_BAUD` (cross-check Mission Planner) — GPS, RC, ESC telem, etc. decode to the right names; unmapped values fall back to `Protocol N`
-- [ ] **Servo outputs** matches `SERVOx_FUNCTION` on a known airframe (motors/control surfaces), shows live PWM from `SERVO_OUTPUT_RAW`, and min/max/reversed
-- [ ] **CAN / DroneCAN**: the CAN bus config (driver/protocol/bitrate) matches `CAN_*`; **verify whether any DroneCAN nodes appear** — MAVLink `UAVCAN_NODE_STATUS/INFO` may not stream without CAN forwarding, so confirm real behaviour and whether the best-effort node table is useful or should be gated
-- [ ] On the **Flight Controller** page, the **Ethernet (`NET_`) parameters** card matches the FC's `NET_*` (enable/DHCP/IP/netmask/gateway + per-port type/protocol/IP/port) against Mission Planner
-- [ ] **Partial/failed paths:** pull the link mid-download → state settles `partial` (re-request of gaps attempted) without hanging; with no FC connected, Refresh shows `failed` and the "No flight controller responded" note
+- [x] Full download ran `downloading → complete` = **1112/1112 params in ~21 s** over the Ethernet/UDP link; the watchdog kept `received` climbing steadily to `total`
+- [x] **Sensors** decoded from `SYS_STATUS`: Gyro/Accel/Compass/Baro enabled+healthy; GPS/Battery/AHRS/Pre-arm enabled-but-unhealthy (bench: no GPS lock/EKF not ready); Logging present-but-disabled
+- [x] **Serial peripherals** matched the FC: SERIAL3 GPS @ 230400, SERIAL4 Rangefinder, SERIAL5 RCIN, others MAVLink2/None with correct bauds
+- [x] **Servo outputs** matched a fixed-wing: Aileron/Elevator/Throttle/Rudder/Flap with live PWM from `SERVO_OUTPUT_RAW` (e.g. 1534/1277/1000), min/max ranges, Elevator reversed
+- [x] **CAN**: CAN1 & CAN2 both DroneCAN @ 1 Mbps (from `CAN_*`). **DroneCAN node list was empty** — the FC did not forward `UAVCAN_NODE_STATUS/INFO` over MAVLink, confirming the documented best-effort caveat (full enumeration needs CAN forwarding; consider gating the node table or adding `MAV_CMD_CAN_FORWARD` in a follow-up)
+- [x] **Ethernet (`NET_`) parameters** matched the bring-up: enable=1, dhcp=0, `192.168.144.14/24`, gw `192.168.144.1`, P1 UDP Client MAVLink2 → `192.168.144.10:14550`
+- [ ] Visual check in a browser: the **FC Configuration** page + the FC page's **NET** card render the above; tilt/cover the FC to watch sensor health/servo PWM track live; **Refresh** re-runs
+- [ ] **Partial/failed paths:** pull the link mid-download → state settles `partial` without hanging; with no FC connected, Refresh shows `failed` + the "No flight controller responded" note
 - [ ] Pi Zero 2 W: the one-shot full param download + 1 Hz `FCParamStatus` adds no meaningful CPU
