@@ -102,15 +102,47 @@ SLCAN-via-MAVLink (`SERIAL_CONTROL` tunnel) returned no response over the Ethern
 link — SLCAN binds to a *serial* port and our link is a NET port. The `mavcan`
 (CAN-over-MAVLink) path used here is the transport that works over our link.
 
+## DroneCAN node parameters (click a node)
+
+**Click any node row** to read that node's **parameters** live from the device —
+exactly what a ground station shows when you open a node. This enumerates
+`uavcan.protocol.param.GetSet` (data-type id **11**) by index: we send a read
+request for index 0, 1, 2, … (each request carries an *empty* value — a pure read,
+never a write) until the node returns an **empty name**, which marks the end of the
+list. Each response gives the parameter's **name, current value, default, min and
+max**. The table streams in live (`DroneCANNodeParams` socket.io event) and shows a
+running count + state (reading / complete / stopped).
+
+It is **read-only by construction**: the request value union is always *empty*, so
+no `param.GetSet` ever sets anything; there is no write path in the code. Because
+the FC forwards one bus at a time, opening a node **takes over forwarding for that
+node's bus** (pausing any node sweep) until enumeration finishes.
+
+GetSet uses **bit-level DSDL** unlike the byte-aligned NodeStatus/GetNodeInfo
+messages, but `param.GetSet.Response` is deliberately byte-aligned (each `Value`/
+`NumericValue` union is prefixed with `void5`/`void6` padding so tag + payload land
+on byte boundaries), so the decoder reads it with plain byte operations. The
+request encoder and response decoder were verified **byte-for-byte against
+pydronecan** (the reference implementation) for int / float / bool / string / empty
+parameters. Multi-frame GetSet responses are **transfer-CRC-validated** (CRC-16-CCITT
+seeded with the GetSet data-type signature `0xa7b622f939d1a4d5`) — a response
+corrupted by a dropped forwarded frame is rejected and the index re-requested.
+Responses are correlated to the outstanding request by **transfer id** (UAVCAN
+service responses echo the request's), so a late duplicate from a retried index
+can't be mis-attributed. A stalled index is retried up to 10×; the sweep is bounded
+at 2000 indices. Backend: `server/droneCan.ts` (`scanParams` + the GetSet codec).
+
 ## Notes & limits
 
-- **Read-only.** This feature only *reads* parameters and enumerates nodes. A
-  future feature can add `PARAM_SET` + an editor on top of the same `fcParams` cache.
+- **Read-only.** This feature only *reads* — FC parameters, DroneCAN nodes and
+  DroneCAN node parameters. No `PARAM_SET`, no `param.GetSet` write: a future feature
+  could add an editor on top of the same caches.
 - **Sensors / servo PWM are a snapshot** taken when the overview is fetched (after
   a download completes or on a manual refresh), not a continuous live feed.
-- **DroneCAN decoding is lenient** (no transfer-CRC validation) — fine for a
-  read-only monitor; only NodeStatus + GetNodeInfo are handled (enough to
-  enumerate). If no DroneCAN devices are on the bus, the scan simply finds nothing.
+- **DroneCAN messages handled:** NodeStatus + GetNodeInfo (node list) and
+  `param.GetSet` (node parameters). Multi-frame GetNodeInfo and GetSet responses are
+  **transfer-CRC-validated**; single-frame NodeStatus carries no CRC. If no DroneCAN
+  devices are on the bus, the scan simply finds nothing.
 - Serial-protocol and servo-function enums cover the common ArduPilot values with
   a numeric fallback (`Protocol 999`, `Function 12345`) for anything unmapped.
 
@@ -124,3 +156,8 @@ link — SLCAN binds to a *serial* port and our link is a NET port. The `mavcan`
 - `POST /api/FCDroneCANScan` — start a DroneCAN scan (optional body `{ buses: [0,1] }`).
 - `GET /api/FCDroneCANNodes` — current nodes `{ scanning, nodes[] }`.
 - socket.io `DroneCANNodes` — `{ scanning, nodes }`, pushed every second.
+- `POST /api/FCDroneCANNodeParams` — start a read-only parameter enumeration for one
+  node (body `{ node, bus }`, range-checked); `400` if missing/out of range.
+- `GET /api/FCDroneCANNodeParams` — current enumeration
+  `{ active, nodeId, bus, scanning, done, error, params[] }`.
+- socket.io `DroneCANNodeParams` — same shape, pushed every second.

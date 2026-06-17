@@ -482,6 +482,7 @@ io.on('connection', function () {
     io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
     io.sockets.emit('FCParamStatus', fcParams.getProgress())
     io.sockets.emit('DroneCANNodes', { scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() })
+    io.sockets.emit('DroneCANNodeParams', droneCan.getParamScan())
   }, 1000)
 })
 

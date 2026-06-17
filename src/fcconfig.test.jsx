@@ -106,6 +106,100 @@ describe('#FCConfigPage()', function () {
     page.unmount()
   })
 
+  // helper: render with a node already discovered, ready to click
+  async function pageWithNode(extraFetch = {}) {
+    const stub = mockFetch({ '/api/FCConfigOverview': fullOverview, 'POST /api/FCDroneCANNodeParams': { scanning: true, node: 125, bus: 0 }, ...extraFetch })
+    const page = renderPage(<FCConfigPage />)
+    await page.flush()
+    act(() => {
+      lastSocket().fire('DroneCANNodes', { scanning: false, stats: { frames: 5 }, nodes: [
+        { id: 125, bus: 0, name: 'com.vimdrones.gps', health: 'OK', mode: 'Operational', uptimeSec: 5, swVersion: '1.0', hwVersion: '2.0' }
+      ] })
+    })
+    return { stub, page }
+  }
+  const nodeRow = (page) => [...page.container.querySelectorAll('tr')].find(r => r.textContent.includes('com.vimdrones.gps'))
+
+  test('clicking a node row POSTs a param read and shows the requesting state', async function () {
+    const { stub, page } = await pageWithNode()
+    page.click(nodeRow(page))
+    await page.flush()
+    expect(stub.mock.calls.some(c => c[0] === '/api/FCDroneCANNodeParams' && c[1]?.method === 'POST')).toBe(true)
+    expect(page.container.textContent).toContain('Requesting parameters…') // dcParams still null until the push
+    page.unmount()
+  })
+
+  test('a DroneCANNodeParams push renders the parameter table (values, defaults, bounds, bool/null formatting)', async function () {
+    const { page } = await pageWithNode()
+    page.click(nodeRow(page))
+    await page.flush()
+    act(() => {
+      lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, bus: 0, scanning: false, done: true, error: null, params: [
+        { index: 0, name: 'GPS_TYPE', type: 'int', value: 5, defaultValue: 1, min: 0, max: 22 },
+        { index: 1, name: 'GPS_AUTO', type: 'bool', value: true, defaultValue: false, min: null, max: null }
+      ] })
+    })
+    const txt = page.container.textContent
+    expect(txt).toContain('2 parameters · complete')
+    expect(txt).toContain('GPS_TYPE')
+    expect(txt).toContain('GPS_AUTO')
+    expect(txt).toContain('true') // boolean value formatted
+    // a push for a different node is ignored (stale), leaving the table intact
+    act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 999, scanning: false, done: true, error: null, params: [{ index: 0, name: 'OTHER', type: 'int', value: 1, defaultValue: 0, min: 0, max: 1 }] }) })
+    expect(page.container.textContent).not.toContain('OTHER')
+    expect(page.container.textContent).toContain('GPS_TYPE')
+    page.unmount()
+  })
+
+  test('param table shows reading / empty / stopped states', async function () {
+    const { page } = await pageWithNode()
+    page.click(nodeRow(page))
+    await page.flush()
+    // scanning, no params yet
+    act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, scanning: true, done: false, error: null, params: [] }) })
+    expect(page.container.textContent).toContain('Waiting for the node to respond…')
+    // finished with no params
+    act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, scanning: false, done: true, error: null, params: [] }) })
+    expect(page.container.textContent).toContain('This node reported no parameters')
+    // stopped with an error
+    act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, scanning: false, done: true, error: 'timeout', params: [] }) })
+    expect(page.container.textContent).toContain('stopped (timeout)')
+    page.unmount()
+  })
+
+  test('clicking an expanded node row again collapses it', async function () {
+    const { page } = await pageWithNode()
+    page.click(nodeRow(page))
+    await page.flush()
+    act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, scanning: false, done: true, error: null, params: [{ index: 0, name: 'GPS_TYPE', type: 'int', value: 5, defaultValue: 1, min: 0, max: 22 }] }) })
+    expect(page.container.textContent).toContain('GPS_TYPE')
+    page.click(nodeRow(page)) // collapse
+    await page.flush()
+    expect(page.container.textContent).not.toContain('GPS_TYPE')
+    page.unmount()
+  })
+
+  test('DroneCANNodeParams pushes are ignored when no node is expanded or the push is inactive', async function () {
+    const { page } = await pageWithNode()
+    // nothing expanded → ignored (no crash, no table)
+    act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, scanning: false, done: true, error: null, params: [{ index: 0, name: 'GPS_TYPE', type: 'int', value: 5, defaultValue: 1, min: 0, max: 22 }] }) })
+    expect(page.container.textContent).not.toContain('GPS_TYPE')
+    // expand, then an inactive push (the idle once-a-second emit) is ignored
+    page.click(nodeRow(page))
+    await page.flush()
+    act(() => { lastSocket().fire('DroneCANNodeParams', { active: false, nodeId: null, scanning: false, done: false, error: null, params: [] }) })
+    expect(page.container.textContent).toContain('Requesting parameters…') // unchanged
+    page.unmount()
+  })
+
+  test('node param read error surfaces in the error modal', async function () {
+    const { page } = await pageWithNode({ 'POST /api/FCDroneCANNodeParams': () => { throw new Error('param boom') } })
+    page.click(nodeRow(page))
+    await page.flush()
+    expect(document.body.textContent).toContain('param boom')
+    page.unmount()
+  })
+
   test('shows per-section placeholders when params exist but groups are empty', async function () {
     mockFetch({ '/api/FCConfigOverview': emptySections })
     const page = renderPage(<FCConfigPage />)

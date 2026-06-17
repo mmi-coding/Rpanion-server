@@ -703,6 +703,57 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
     })
   })
 
+  describe('POST /api/FCDroneCANNodeParams', function () {
+    it('200 — starts a parameter enumeration for a node on its bus', function (done) {
+      const scanParams = sinon.stub(hooks.droneCan, 'scanParams')
+      request('POST', '/api/FCDroneCANNodeParams', { body: { node: 125, bus: 0 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.scanning, true)
+          assert.deepEqual({ n: res.body.node, b: res.body.bus }, { n: 125, b: 0 })
+          assert.ok(scanParams.calledOnceWith(125, 0))
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('400 — rejects a missing/out-of-range node or bus', function (done) {
+      const scanParams = sinon.stub(hooks.droneCan, 'scanParams')
+      request('POST', '/api/FCDroneCANNodeParams', { body: { node: 200, bus: 0 } }).then(function (res) {
+        try {
+          assert.equal(res.status, 400)
+          assert.ok(res.body.error)
+          assert.ok(scanParams.notCalled)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('400 — rejects a body-less POST', function (done) {
+      sinon.stub(hooks.droneCan, 'scanParams')
+      request('POST', '/api/FCDroneCANNodeParams', {}).then(function (res) {
+        try {
+          assert.equal(res.status, 400)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('GET /api/FCDroneCANNodeParams', function () {
+    it('200 — returns the current parameter-enumeration state', function (done) {
+      sinon.stub(hooks.droneCan, 'getParamScan').returns({ active: true, nodeId: 125, bus: 0, scanning: false, done: true, error: null, params: [{ index: 0, name: 'GPS_TYPE', type: 'int', value: 5, defaultValue: 1, min: 0, max: 22 }] })
+      request('GET', '/api/FCDroneCANNodeParams').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.nodeId, 125)
+          assert.equal(res.body.params[0].name, 'GPS_TYPE')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
   // =========================================================================
   // /api/FCAddLink, /api/FCRemoveLink, /api/FCOptions
   // =========================================================================

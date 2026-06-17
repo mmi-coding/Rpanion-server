@@ -26,7 +26,9 @@ class FCConfigPage extends basePage {
       progress: { state: 'idle', received: 0, total: 0 },
       dcNodes: [],
       dcScanning: false,
-      dcStats: null
+      dcStats: null,
+      dcParamNode: null, // node id whose parameters are expanded (null = none)
+      dcParams: null     // { nodeId, bus, scanning, done, error, params } for that node
     }
 
     // live download progress, pushed once a second by the backend
@@ -41,6 +43,13 @@ class FCConfigPage extends basePage {
     // live DroneCAN node list, pushed once a second while a scan is active
     this.socket.on('DroneCANNodes', function (msg) {
       this.setState({ dcNodes: msg.nodes, dcScanning: msg.scanning, dcStats: msg.stats });
+    }.bind(this));
+    // live parameter-enumeration state for the expanded node (pushed once a second)
+    this.socket.on('DroneCANNodeParams', function (msg) {
+      // ignore pushes for a node other than the one currently expanded (stale/late)
+      if (this.state.dcParamNode !== null && msg.active && msg.nodeId === this.state.dcParamNode) {
+        this.setState({ dcParams: msg });
+      }
     }.bind(this));
     this.socket.on('reconnect', function () {
       this.componentDidMount();
@@ -75,6 +84,33 @@ class FCConfigPage extends basePage {
     fetch('/api/FCDroneCANScan', { method: 'POST', headers: { Authorization: `Bearer ${this.state.token}` } })
       .then(response => response.json())
       .catch(error => this.setState({ error: error.message }));
+  }
+
+  // expand a node row and read its parameters (or collapse if already open). The FC
+  // forwards one bus at a time, so opening a node takes over from the node scan.
+  handleNodeParams = (node) => {
+    if (this.state.dcParamNode === node.id) {
+      this.setState({ dcParamNode: null, dcParams: null }); // collapse
+      return;
+    }
+    // expand now; the per-second DroneCANNodeParams push fills in the values (clear any
+    // previous node's params so they don't flash under the newly expanded row)
+    this.setState({ dcParamNode: node.id, dcParams: null });
+    fetch('/api/FCDroneCANNodeParams', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.state.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node: node.id, bus: node.bus })
+    })
+      .then(response => response.json())
+      .catch(error => this.setState({ error: error.message }));
+  }
+
+  // a parameter value/bound for display: booleans as true/false, nulls (an empty
+  // union, e.g. min/max not applicable to a bool or string) as an em dash
+  fmtParam = (v) => {
+    if (v === null || v === undefined) { return '—'; }
+    if (typeof v === 'boolean') { return v ? 'true' : 'false'; }
+    return String(v);
   }
 
   renderContent() {
@@ -217,7 +253,7 @@ class FCConfigPage extends basePage {
               </tbody>
             </Table>
           )}
-          <h6 className="mt-3">DroneCAN nodes</h6>
+          <h6 className="mt-3">DroneCAN nodes<HelpTip text="Click a node row to read its parameters live from the device (uavcan.protocol.param.GetSet) — name, current value, default, and min/max — the same list a ground station shows when you open a node. Read-only: it only reads, never writes. Because the FC forwards one bus at a time, opening a node pauses the node sweep until enumeration finishes." /></h6>
           <div style={{ marginBottom: '8px' }}>
             <Button size="sm" onClick={this.handleScanDroneCAN} disabled={this.state.dcScanning}>
               {this.state.dcScanning ? 'Scanning…' : 'Scan DroneCAN bus'}
@@ -235,21 +271,65 @@ class FCConfigPage extends basePage {
             <Table striped bordered hover size="sm" className="mb-0">
               <thead><tr><th>Node</th><th>Name</th><th>Health</th><th>Mode</th><th>Uptime</th><th>SW/HW</th></tr></thead>
               <tbody>
-                {this.state.dcNodes.map(n => (
-                  <tr key={n.id}>
-                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.id}{n.bus !== undefined ? ' · CAN' + (n.bus + 1) : ''}</td>
-                    <td>{n.name || '—'}</td>
-                    <td>{n.health || '—'}</td>
-                    <td>{n.mode || '—'}</td>
-                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.uptimeSec === undefined ? '—' : n.uptimeSec + ' s'}</td>
-                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.swVersion ? n.swVersion : '—'}{n.hwVersion ? ' / ' + n.hwVersion : ''}</td>
-                  </tr>
-                ))}
+                {this.state.dcNodes.map(n => {
+                  const open = this.state.dcParamNode === n.id;
+                  return (
+                    <React.Fragment key={n.id}>
+                      <tr onClick={() => this.handleNodeParams(n)} style={{ cursor: 'pointer' }} title="Click to read this node's parameters">
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{open ? '▾ ' : '▸ '}{n.id}{n.bus !== undefined ? ' · CAN' + (n.bus + 1) : ''}</td>
+                        <td>{n.name || '—'}</td>
+                        <td>{n.health || '—'}</td>
+                        <td>{n.mode || '—'}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.uptimeSec === undefined ? '—' : n.uptimeSec + ' s'}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.swVersion ? n.swVersion : '—'}{n.hwVersion ? ' / ' + n.hwVersion : ''}</td>
+                      </tr>
+                      {open && <tr><td colSpan={6} style={{ padding: 0 }}>{this.renderNodeParams(n)}</td></tr>}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </Table>
           )}
         </Card.Body>
       </Card>
+    );
+  }
+
+  // the expanded parameter list for one node — values read live over GetSet
+  renderNodeParams(node) {
+    const ps = this.state.dcParams;
+    // no state yet, or state is for a different node → still requesting
+    if (ps === null || ps.nodeId !== node.id) {
+      return <p className="mb-0 p-2"><small className="text-muted">Requesting parameters…</small></p>;
+    }
+    const params = ps.params; // always an array (from getParamScan / the socket push)
+    return (
+      <div className="p-2">
+        <div style={{ marginBottom: '6px' }}>
+          <small className="text-muted" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {params.length} parameter{params.length === 1 ? '' : 's'}
+            {ps.scanning ? ' · reading…' : (ps.error ? ` · stopped (${ps.error})` : ' · complete')}
+          </small>
+        </div>
+        {params.length === 0 ? (
+          <p className="mb-0"><small className="text-muted">{ps.scanning ? 'Waiting for the node to respond…' : 'This node reported no parameters.'}</small></p>
+        ) : (
+          <Table striped bordered hover size="sm" className="mb-0">
+            <thead><tr><th>Parameter</th><th>Value</th><th>Default</th><th>Min</th><th>Max</th></tr></thead>
+            <tbody>
+              {params.map(prm => (
+                <tr key={prm.index}>
+                  <td>{prm.name}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{this.fmtParam(prm.value)}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{this.fmtParam(prm.defaultValue)}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{this.fmtParam(prm.min)}</td>
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{this.fmtParam(prm.max)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </div>
     );
   }
 }

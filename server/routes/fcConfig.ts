@@ -36,5 +36,27 @@ export = function fcConfigRoutes ({ authenticateToken, fcParams, droneCan }: { a
     res.send(JSON.stringify({ scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() }))
   })
 
+  // start a read-only parameter enumeration (uavcan.protocol.param.GetSet) for one
+  // DroneCAN node on its bus — the values a ground station shows when you open a node.
+  // Reuses the same CAN-forwarding path as the node scan (one bus at a time), so this
+  // takes over forwarding until it finishes. node/bus are required and range-checked.
+  router.post('/api/FCDroneCANNodeParams', authenticateToken, (req: Request, res: Response) => {
+    const node = parseInt(req.body?.node)
+    const bus = parseInt(req.body?.bus)
+    res.setHeader('Content-Type', 'application/json')
+    if (!(node >= 1 && node <= 127) || !(bus >= 0 && bus <= 7)) {
+      res.status(400).send(JSON.stringify({ error: 'node (1-127) and bus (0-7) are required' }))
+      return
+    }
+    droneCan.scanParams(node, bus)
+    res.send(JSON.stringify({ scanning: true, node, bus }))
+  })
+
+  // current parameter-enumeration state (also pushed on the DroneCANNodeParams event)
+  router.get('/api/FCDroneCANNodeParams', authenticateToken, (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify(droneCan.getParamScan()))
+  })
+
   return router
 }

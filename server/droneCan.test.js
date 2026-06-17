@@ -2,6 +2,7 @@ const assert = require('assert')
 const sinon = require('sinon')
 const DroneCANMonitor = require('./droneCan')
 const { parseCanId, parseTail, decodeNodeStatus, decodeNodeInfo, Reassembler, crc16, getNodeInfoCrcOk } = DroneCANMonitor
+const { decodeGetSetResponse, encodeGetSetRequestByIndex, getSetCrcOk } = DroneCANMonitor
 
 // prefix a GetNodeInfo body with its valid 2-byte transfer CRC (LE), as the FC does
 function withCrc (body) {
@@ -47,6 +48,27 @@ function chunkToFrames (id, payloadWithCrc, tid) {
     idx++
   }
   return frames
+}
+
+// ---- GetSet (parameter) helpers ----
+const GETSET = 11 // uavcan.protocol.param.GetSet service type id
+// little-endian int64 bytes for a (possibly BigInt) value
+function i64 (v) { const a = []; let x = BigInt(v); for (let k = 0; k < 8; k++) { a.push(Number(x & 0xffn)); x >>= 8n } return a }
+// a decodable int-parameter GetSet.Response payload: int value, int default 0, empty max/min, name
+function intParamPayload (name, val) {
+  return [0x01, ...i64(val), 0x01, ...i64(0), 0x00, 0x00, ...[...name].map((c) => c.charCodeAt(0))]
+}
+// prefix a multi-frame GetSet transfer with its valid 2-byte transfer CRC (LE)
+function withCrcGetSet (body) {
+  const c = crc16(body, crc16(DroneCANMonitor.GETSET_SIG))
+  return [c & 0xff, (c >> 8) & 0xff, ...body]
+}
+// CAN frames for a GetSet response transfer with transfer-id tid (responses echo the
+// request's tid). ≤7-byte payloads are single-frame (no transfer CRC); larger ones
+// are multi-frame and carry the CRC, exactly as a node would send them.
+function gsFrames (source, payload, tid) {
+  const id = svcRespId(source, 127, GETSET)
+  return payload.length <= 7 ? chunkToFrames(id, payload, tid) : chunkToFrames(id, withCrcGetSet(payload), tid)
 }
 
 describe('DroneCAN', function () {
@@ -276,5 +298,199 @@ describe('DroneCAN', function () {
     m.onCanFrame(PKT, frame(msgId(50, 341), 0, [...nodeStatusBody(0, 0, 0, 1, 0), 0xC0]))
     m.onCanFrame(PKT, frame(msgId(11, 341), 0, [...nodeStatusBody(0, 0, 0, 1, 0), 0xC0]))
     assert.deepEqual(m.getNodes().map((n) => n.id), [11, 50])
+  })
+
+  // ---- uavcan.protocol.param.GetSet codec (vectors verified against pydronecan) ----
+
+  it('encodeGetSetRequestByIndex packs uint13 index + empty value (pydronecan vectors)', function () {
+    assert.deepEqual(encodeGetSetRequestByIndex(0), [0x00, 0x00])
+    assert.deepEqual(encodeGetSetRequestByIndex(1), [0x01, 0x00])
+    assert.deepEqual(encodeGetSetRequestByIndex(37), [0x25, 0x00])
+    assert.deepEqual(encodeGetSetRequestByIndex(255), [0xff, 0x00])
+    assert.deepEqual(encodeGetSetRequestByIndex(8191), [0xff, 0xf8]) // all 13 index bits set
+  })
+
+  it('decodeGetSetResponse decodes int/real/bool/string/end-of-list (pydronecan vectors)', function () {
+    const h = (s) => s.trim().split(/\s+/).map((x) => parseInt(x, 16))
+    assert.deepEqual(decodeGetSetResponse(h('01 05 00 00 00 00 00 00 00 01 01 00 00 00 00 00 00 00 01 16 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 00 47 50 53 5f 54 59 50 45')),
+      { name: 'GPS_TYPE', type: 'int', value: 5, defaultValue: 1, min: 0, max: 22 })
+    assert.deepEqual(decodeGetSetResponse(h('02 00 00 c0 3f 02 00 00 80 3f 02 00 00 20 41 02 00 00 00 00 47 50 53 5f 52 41 54 45')),
+      { name: 'GPS_RATE', type: 'real', value: 1.5, defaultValue: 1, min: 0, max: 10 })
+    assert.deepEqual(decodeGetSetResponse(h('03 01 03 00 00 00 47 50 53 5f 41 55 54 4f')),
+      { name: 'GPS_AUTO', type: 'bool', value: true, defaultValue: false, min: null, max: null })
+    assert.deepEqual(decodeGetSetResponse(h('04 05 68 65 6c 6c 6f 04 00 00 00 4e 4f 54 45')),
+      { name: 'NOTE', type: 'string', value: 'hello', defaultValue: '', min: null, max: null })
+    assert.equal(decodeGetSetResponse(h('00 00 00 00')).name, '') // empty name = end of list
+  })
+
+  it('decodeGetSetResponse keeps out-of-safe-range int64 as a string, signed negatives, and float ±inf', function () {
+    const big = decodeGetSetResponse([0x01, ...i64(9223372036854775807n), 0x00, 0x00, 0x00, ...[...'BIG'].map((c) => c.charCodeAt(0))])
+    assert.equal(big.value, '9223372036854775807') // beyond Number.MAX_SAFE_INTEGER → string
+    const neg = decodeGetSetResponse([0x01, ...i64(-5), 0x00, 0x00, 0x00, ...[...'NEG'].map((c) => c.charCodeAt(0))])
+    assert.equal(neg.value, -5) // two's-complement, in safe range → number
+    const inf = decodeGetSetResponse([0x02, 0x00, 0x00, 0x80, 0x7f, 0x00, 0x00, 0x00, ...[...'INF'].map((c) => c.charCodeAt(0))])
+    assert.equal(inf.value, Infinity) // non-finite float32 passes through unrounded
+  })
+
+  it('decodeGetSetResponse returns null on any truncated/invalid union', function () {
+    const nulls = [
+      [], // value union: empty buffer
+      [0x01, 1], // value int64 truncated
+      [0x02, 0], // value float32 truncated
+      [0x03], // value bool truncated
+      [0x04], // value string: missing length byte
+      [0x04, 0x05, 1], // value string: length runs past the buffer
+      [0x05], // value: undefined union tag
+      [0x00, 0x01, 1], // default value int64 truncated
+      [0x00, 0x00], // max numeric: missing byte
+      [0x00, 0x00, 0x01, 1], // max numeric int64 truncated
+      [0x00, 0x00, 0x02, 1], // max numeric float32 truncated
+      [0x00, 0x00, 0x03], // max numeric: undefined union tag
+      [0x00, 0x00, 0x00], // min numeric: missing byte
+      [0x00, 0x00, 0x00, 0x01, 1] // min numeric int64 truncated
+    ]
+    nulls.forEach((p, i) => assert.equal(decodeGetSetResponse(p), null, 'null case ' + i))
+  })
+
+  it('getSetCrcOk validates the GetSet transfer CRC (and rejects short/corrupt)', function () {
+    const t = withCrcGetSet(intParamPayload('A', 1))
+    assert.equal(getSetCrcOk(t), true)
+    const bad = t.slice(); bad[bad.length - 1] ^= 0xff
+    assert.equal(getSetCrcOk(bad), false)
+    assert.equal(getSetCrcOk([0x00]), false) // too short
+  })
+
+  // ---- parameter enumeration over CAN forwarding ----
+
+  it('scanParams forwards the node bus, reads index 0, stores the param and auto-requests the next', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    assert.equal(m.paramScan.scanning, true)
+    assert.ok(fc.canForward.calledWith(0))
+    assert.equal(fc.sendCanFrame.callCount, 1)
+    assert.deepEqual(fc.sendCanFrame.getCall(0).args[2], [0x00, 0x00, 0xc0]) // read index 0 + SOT|EOT|tid0
+    for (const f of gsFrames(125, intParamPayload('GPS_TYPE', 5), 0)) { m.onCanFrame(PKT, f) }
+    const ps = m.getParamScan()
+    assert.equal(ps.active, true)
+    assert.equal(ps.nodeId, 125)
+    assert.equal(ps.bus, 0)
+    assert.equal(ps.params.length, 1)
+    assert.deepEqual({ n: ps.params[0].name, v: ps.params[0].value, d: ps.params[0].defaultValue, i: ps.params[0].index }, { n: 'GPS_TYPE', v: 5, d: 0, i: 0 })
+    assert.equal(fc.sendCanFrame.callCount, 2) // next index auto-requested
+    assert.deepEqual(fc.sendCanFrame.getCall(1).args[2], [0x01, 0x00, 0xc1]) // read index 1 + tid1
+    m.stopParams()
+  })
+
+  it('an empty-name response ends the enumeration', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    for (const f of gsFrames(125, [0, 0, 0, 0], 0)) { m.onCanFrame(PKT, f) } // end-of-list, tid0
+    const ps = m.getParamScan()
+    assert.equal(ps.scanning, false)
+    assert.equal(ps.done, true)
+    assert.equal(ps.error, null)
+    assert.equal(m.paramForwardTimer, null)
+  })
+
+  it('a superseded (wrong transfer-id) response is ignored', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0) // outstanding request tid0
+    for (const f of gsFrames(125, intParamPayload('A', 1), 0)) { m.onCanFrame(PKT, f) } // answers index0 → now awaiting tid1
+    assert.equal(m.getParamScan().params.length, 1)
+    for (const f of gsFrames(125, intParamPayload('A', 1), 0)) { m.onCanFrame(PKT, f) } // late duplicate (tid0) → ignored
+    assert.equal(m.getParamScan().params.length, 1)
+    m.stopParams()
+  })
+
+  it('a corrupt multi-frame response (bad transfer CRC) is ignored and the scan keeps going', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    const payload = withCrcGetSet(intParamPayload('A', 1))
+    payload[payload.length - 1] ^= 0xff // garble the name → CRC mismatch
+    for (const f of chunkToFrames(svcRespId(125, 127, GETSET), payload, 0)) { m.onCanFrame(PKT, f) }
+    assert.equal(m.getParamScan().params.length, 0)
+    assert.equal(m.getParamScan().scanning, true)
+    m.stopParams()
+  })
+
+  it('a CRC-valid but undecodable response is ignored', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    for (const f of gsFrames(125, [0x01, 0, 0, 0, 0, 0, 0, 0], 0)) { m.onCanFrame(PKT, f) } // int64 value, 1 byte short
+    assert.equal(m.getParamScan().params.length, 0)
+    m.stopParams()
+  })
+
+  it('an incomplete (still-in-progress) transfer is held, not decoded', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    m.onCanFrame(PKT, gsFrames(125, intParamPayload('A', 1), 0)[0]) // only the first (SOT) frame
+    assert.equal(m.getParamScan().params.length, 0)
+    m.stopParams()
+  })
+
+  it('_paramTick re-arms forwarding and retries; a stalled node gives up after MAX_PARAM_TRIES', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    fc.canForward.resetHistory(); fc.sendCanFrame.resetHistory()
+    clock.tick(1000) // one tick: re-arm + re-request the current index
+    assert.ok(fc.canForward.calledWith(0))
+    assert.ok(fc.sendCanFrame.called)
+    clock.tick(20000) // exceed the retry budget with no response
+    const ps = m.getParamScan()
+    assert.equal(ps.scanning, false)
+    assert.equal(ps.done, true)
+    assert.equal(ps.error, 'timeout')
+    assert.equal(m.paramForwardTimer, null)
+  })
+
+  it('the index sweep is bounded at MAX_PARAM_INDEX', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    m.paramScan.index = 2000 // MAX_PARAM_INDEX
+    m.paramScan.expectTid = 0
+    fc.sendCanFrame.resetHistory()
+    for (const f of gsFrames(125, intParamPayload('LAST', 1), 0)) { m.onCanFrame(PKT, f) }
+    const ps = m.getParamScan()
+    assert.equal(ps.done, true)
+    assert.equal(ps.scanning, false)
+    assert.equal(fc.sendCanFrame.callCount, 0) // did not request past the cap
+  })
+
+  it('starting a param scan stops a running node scan (single forwarded bus)', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scan([0, 1])
+    assert.equal(m.scanning, true)
+    m.scanParams(125, 0)
+    assert.equal(m.scanning, false)
+    assert.equal(m.forwardTimer, null)
+    assert.equal(m.paramScan.nodeId, 125)
+    m.scanParams(123, 1) // a second param scan supersedes the first
+    assert.equal(m.paramScan.nodeId, 123)
+    m.stopParams()
+  })
+
+  it('starting a node scan stops an in-progress param scan', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scanParams(125, 0)
+    assert.notEqual(m.paramForwardTimer, null)
+    m.scan([0])
+    assert.equal(m.paramForwardTimer, null)
+    m.stop()
+  })
+
+  it('getParamScan reports an inactive state before any scan', function () {
+    const m = new DroneCANMonitor(fc)
+    assert.deepEqual(m.getParamScan(), { active: false, nodeId: null, bus: null, scanning: false, done: false, error: null, params: [] })
+  })
+
+  it('GetSet responses are ignored with no active scan or for a different node', function () {
+    const m = new DroneCANMonitor(fc)
+    for (const f of gsFrames(125, intParamPayload('A', 1), 0)) { m.onCanFrame(PKT, f) } // no scan → ignored
+    assert.equal(m.getParamScan().active, false)
+    m.scanParams(125, 0)
+    for (const f of gsFrames(99, intParamPayload('A', 1), 0)) { m.onCanFrame(PKT, f) } // wrong source → ignored
+    assert.equal(m.getParamScan().params.length, 0)
+    m.stopParams()
   })
 })
