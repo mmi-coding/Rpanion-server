@@ -82,9 +82,6 @@ const SENSORS: Array<{ key: string, label: string, bit: number }> = [
   { key: 'prearm', label: 'Pre-arm Check', bit: 268435456 }
 ]
 
-const UAVCAN_HEALTH: NumMap = { 0: 'OK', 1: 'Warning', 2: 'Error', 3: 'Critical' }
-const UAVCAN_MODE: NumMap = { 0: 'Operational', 1: 'Initialization', 2: 'Maintenance', 3: 'Software update', 7: 'Offline' }
-
 type Getter = (name: string) => number | undefined
 
 // bit test that is safe for bits ≥ 2^31 (JS bitwise '&' is 32-bit signed)
@@ -176,30 +173,9 @@ function decodeServos (get: Getter, servoRaw: any): any[] {
   return out
 }
 
-// Best-effort DroneCAN node readout from telemetry. MAVLink UAVCAN_NODE_STATUS
-// carries no node id and mavTelemetry keeps only the latest of each message, so
-// this shows the most-recent node only — full enumeration needs CAN forwarding
-// (flagged needs-on-device).
-function decodeNodes (byName: any): any[] {
-  const st = byName.UAVCAN_NODE_STATUS
-  const info = byName.UAVCAN_NODE_INFO
-  if (st === undefined && info === undefined) {
-    return []
-  }
-  const node: any = {}
-  if (st !== undefined) {
-    node.health = mapEnum(UAVCAN_HEALTH, Number(st.health), 'Health')
-    node.mode = mapEnum(UAVCAN_MODE, Number(st.mode), 'Mode')
-    node.uptimeSec = Number(st.uptimeSec)
-  }
-  if (info !== undefined) {
-    node.name = String(info.name)
-    node.swVersion = Number(info.swVersionMajor) + '.' + Number(info.swVersionMinor)
-  }
-  return [node]
-}
-
-function decodeCan (get: Getter, byName: any): any {
+// CAN bus configuration from parameters. The live DroneCAN *node* list comes from
+// server/droneCan.ts (CAN forwarding) — params only describe the buses/drivers.
+function decodeCan (get: Getter): any {
   const ports = []
   for (let n = 1; n <= 3; n++) {
     const driver = get('CAN_P' + n + '_DRIVER')
@@ -216,7 +192,7 @@ function decodeCan (get: Getter, byName: any): any {
     }
     drivers.push({ n: d, protocol: proto, protocolName: mapEnum(CAN_PROTOCOL, proto, 'Protocol') })
   }
-  return { ports, drivers, nodes: decodeNodes(byName) }
+  return { ports, drivers }
 }
 
 function decodeNet (get: Getter): any {
@@ -380,7 +356,7 @@ class FCParams {
       sensors: decodeSensors(byName.SYS_STATUS),
       serial: decodeSerial(get),
       servos: decodeServos(get, byName.SERVO_OUTPUT_RAW),
-      can: decodeCan(get, byName),
+      can: decodeCan(get),
       net: decodeNet(get)
     }
   }

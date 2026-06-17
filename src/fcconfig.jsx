@@ -23,7 +23,10 @@ class FCConfigPage extends basePage {
     this.state = {
       ...this.state,
       overview: null,
-      progress: { state: 'idle', received: 0, total: 0 }
+      progress: { state: 'idle', received: 0, total: 0 },
+      dcNodes: [],
+      dcScanning: false,
+      dcStats: null
     }
 
     // live download progress, pushed once a second by the backend
@@ -34,6 +37,10 @@ class FCConfigPage extends basePage {
       if ((msg.state === 'complete' || msg.state === 'partial') && prevState !== msg.state) {
         this.fetchOverview();
       }
+    }.bind(this));
+    // live DroneCAN node list, pushed once a second while a scan is active
+    this.socket.on('DroneCANNodes', function (msg) {
+      this.setState({ dcNodes: msg.nodes, dcScanning: msg.scanning, dcStats: msg.stats });
     }.bind(this));
     this.socket.on('reconnect', function () {
       this.componentDidMount();
@@ -60,6 +67,13 @@ class FCConfigPage extends basePage {
     fetch('/api/FCParamRefresh', { method: 'POST', headers: { Authorization: `Bearer ${this.state.token}` } })
       .then(response => response.json())
       .then(data => this.setState({ progress: { state: data.state, received: data.received, total: data.total } }))
+      .catch(error => this.setState({ error: error.message }));
+  }
+
+  handleScanDroneCAN = () => {
+    this.setState({ dcScanning: true });
+    fetch('/api/FCDroneCANScan', { method: 'POST', headers: { Authorization: `Bearer ${this.state.token}` } })
+      .then(response => response.json())
       .catch(error => this.setState({ error: error.message }));
   }
 
@@ -203,19 +217,32 @@ class FCConfigPage extends basePage {
               </tbody>
             </Table>
           )}
-          <h6>DroneCAN nodes</h6>
-          {can.nodes.length === 0 ? (
-            <p className="mb-0"><small className="text-muted">No DroneCAN nodes seen on the MAVLink stream. Full node enumeration needs CAN forwarding from the FC — verify on-device.</small></p>
+          <h6 className="mt-3">DroneCAN nodes</h6>
+          <div style={{ marginBottom: '8px' }}>
+            <Button size="sm" onClick={this.handleScanDroneCAN} disabled={this.state.dcScanning}>
+              {this.state.dcScanning ? 'Scanning…' : 'Scan DroneCAN bus'}
+            </Button>
+            <HelpTip text="Ask the flight controller to forward its CAN bus over MAVLink and enumerate live DroneCAN nodes (id, name, health, versions). Runs for a few seconds; safe and read-only (it only sends standard GetNodeInfo requests)." />
+            {this.state.dcStats && this.state.dcStats.frames > 0 && (
+              <small className="text-muted" style={{ marginLeft: '8px', fontVariantNumeric: 'tabular-nums' }}>
+                bus traffic: {this.state.dcStats.frames} frames · {this.state.dcStats.nodeStatus} status · {this.state.dcStats.nodeInfo} info replies
+              </small>
+            )}
+          </div>
+          {this.state.dcNodes.length === 0 ? (
+            <p className="mb-0"><small className="text-muted">{this.state.dcScanning ? 'Scanning the bus for DroneCAN nodes…' : 'No DroneCAN nodes found yet — click Scan DroneCAN bus. (Nothing will appear if no DroneCAN devices are on the bus.)'}</small></p>
           ) : (
             <Table striped bordered hover size="sm" className="mb-0">
-              <thead><tr><th>Name</th><th>Health</th><th>Mode</th><th>Uptime</th></tr></thead>
+              <thead><tr><th>Node</th><th>Name</th><th>Health</th><th>Mode</th><th>Uptime</th><th>SW/HW</th></tr></thead>
               <tbody>
-                {can.nodes.map((n, i) => (
-                  <tr key={i}>
+                {this.state.dcNodes.map(n => (
+                  <tr key={n.id}>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.id}{n.bus !== undefined ? ' · CAN' + (n.bus + 1) : ''}</td>
                     <td>{n.name || '—'}</td>
                     <td>{n.health || '—'}</td>
                     <td>{n.mode || '—'}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.uptimeSec === undefined ? '—' : n.uptimeSec + ' s'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.swVersion ? n.swVersion : '—'}{n.hwVersion ? ' / ' + n.hwVersion : ''}</td>
                   </tr>
                 ))}
               </tbody>

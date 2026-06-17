@@ -285,6 +285,25 @@ class FCDetails {
     }
   }
 
+  // ---- DroneCAN scan (FC Configuration page) — primary link only ----
+  canForward (bus: number) {
+    if (this.links.length > 0 && this.links[0].m !== null) {
+      this.links[0].m.sendCanForward(bus)
+    }
+  }
+
+  canFilter (bus: number, ids: number[]) {
+    if (this.links.length > 0 && this.links[0].m !== null) {
+      this.links[0].m.sendCanFilter(bus, ids)
+    }
+  }
+
+  sendCanFrame (bus: number, id: number, data: number[]) {
+    if (this.links.length > 0 && this.links[0].m !== null) {
+      this.links[0].m.sendCanFrame(bus, id, data)
+    }
+  }
+
   // ---- MAVLink fan-out (index.ts wires camera / RTCM / heartbeat through here) ----
   sendRTCMMessage (msg: any, seq: any) {
     for (let i = 0; i < this.links.length; i++) {

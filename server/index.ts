@@ -30,6 +30,7 @@ const NetworkPriority = require('./networkPriority')
 const TelemetryInjector = require('./telemetryInjector')
 const MavTelemetry = require('./mavTelemetry')
 const FCParams = require('./fcParams')
+const DroneCANMonitor = require('./droneCan')
 
 const settings = require('settings-store')
 
@@ -84,6 +85,8 @@ const fcManager = new fcManagerClass(settings)
 const mavTelemetry = new MavTelemetry()
 // FC parameter cache + full-download orchestration, for the FC Configuration page
 const fcParams = new FCParams(fcManager, mavTelemetry)
+// DroneCAN node enumeration via CAN forwarding, for the FC Configuration page
+const droneCan = new DroneCANMonitor(fcManager)
 const logManager = new flightLogger()
 const ntripClient = new ntrip(settings)
 const cloud = new cloudManager(settings)
@@ -334,6 +337,7 @@ fcManager.eventEmitter.on('gotMessage', (packet: any, data: any, link: any) => {
     camSwitcher.onMavPacket(packet, data)
     mavTelemetry.onMessage(packet, data)
     fcParams.onMessage(packet, data)
+    droneCan.onCanFrame(packet, data)
     // ask the FC to stream RC_CHANNELS (2 Hz), once, if the camera switcher
     // needs it — requested from the link whose vehicle we first locked onto
     if (camSwitcher.getSettings().enabled && !camSwitcher.streamRequested &&
@@ -446,8 +450,8 @@ app.use('/media', express.static(MEDIA_ROOT))
 // Flight controller routes (extracted to ./routes/flightController.js)
 app.use(require('./routes/flightController')({ authenticateToken, fcManager }))
 
-// FC Configuration page routes (parameter download + decoded overview)
-app.use(require('./routes/fcConfig')({ authenticateToken, fcParams }))
+// FC Configuration page routes (parameter download + decoded overview + DroneCAN scan)
+app.use(require('./routes/fcConfig')({ authenticateToken, fcParams, droneCan }))
 
 io.engine.use((req: any, res: any, next: any) => {
   const isHandshake = req._query.sid === undefined
@@ -477,6 +481,7 @@ io.on('connection', function () {
     io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
     io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
     io.sockets.emit('FCParamStatus', fcParams.getProgress())
+    io.sockets.emit('DroneCANNodes', { scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() })
   }, 1000)
 })
 
@@ -528,6 +533,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 ;(app as any).testHooks = {
   fcManager,
   fcParams,
+  droneCan,
   vManager,
   secondaryStreams,
   ntripClient,

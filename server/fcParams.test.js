@@ -241,9 +241,6 @@ describe('FCParams', function () {
     assert.equal(ov.can.ports[1].bitrate, null)
     assert.equal(ov.can.drivers[0].protocolName, 'DroneCAN')
     assert.equal(ov.can.drivers[1].protocolName, 'Protocol 555')
-    assert.equal(ov.can.nodes[0].name, 'ESC 1')
-    assert.equal(ov.can.nodes[0].health, 'OK')
-    assert.equal(ov.can.nodes[0].mode, 'Operational')
 
     // NET
     assert.equal(ov.net.present, true)
@@ -266,7 +263,6 @@ describe('FCParams', function () {
     assert.deepEqual(ov.serial, [])
     assert.deepEqual(ov.can.ports, [])
     assert.deepEqual(ov.can.drivers, [])
-    assert.deepEqual(ov.can.nodes, [])
     assert.equal(ov.net.present, false)
     assert.equal(ov.net.ip, null)
   })
@@ -275,21 +271,5 @@ describe('FCParams', function () {
     const fc = new FCParams({}, fakeTelem([{ name: 'SYS_STATUS', fields: {} }]))
     const ov = fc.getOverview()
     assert.deepEqual(ov.sensors, []) // NaN bitmasks → 0 → no sensors present
-  })
-
-  it('decodes a DroneCAN node from status-only telemetry', function () {
-    const fc = new FCParams({}, fakeTelem([{ name: 'UAVCAN_NODE_STATUS', fields: { health: 2, mode: 7, uptimeSec: 5 } }]))
-    const ov = fc.getOverview()
-    assert.equal(ov.can.nodes[0].health, 'Error')
-    assert.equal(ov.can.nodes[0].mode, 'Offline')
-    assert.equal(ov.can.nodes[0].name, undefined)
-  })
-
-  it('decodes a DroneCAN node from info-only telemetry', function () {
-    const fc = new FCParams({}, fakeTelem([{ name: 'UAVCAN_NODE_INFO', fields: { name: 'GPS', swVersionMajor: 4, swVersionMinor: 5 } }]))
-    const ov = fc.getOverview()
-    assert.equal(ov.can.nodes[0].name, 'GPS')
-    assert.equal(ov.can.nodes[0].swVersion, '4.5')
-    assert.equal(ov.can.nodes[0].health, undefined)
   })
 })

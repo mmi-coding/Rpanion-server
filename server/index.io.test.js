@@ -635,7 +635,7 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
     it('200 — returns the decoded overview', function (done) {
       sinon.stub(hooks.fcParams, 'getOverview').returns({
         state: 'complete', received: 2, total: 2,
-        sensors: [], serial: [], servos: [], can: { ports: [], drivers: [], nodes: [] }, net: { present: false }
+        sensors: [], serial: [], servos: [], can: { ports: [], drivers: [] }, net: { present: false }
       })
       request('GET', '/api/FCConfigOverview').then(function (res) {
         try {
@@ -644,6 +644,47 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
           assert.equal(res.body.net.present, false)
           done()
         } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('POST /api/FCDroneCANScan', function () {
+    it('200 — starts a scan on the given buses (out-of-range filtered)', function (done) {
+      const scan = sinon.stub(hooks.droneCan, 'scan')
+      request('POST', '/api/FCDroneCANScan', { body: { buses: [0, 1, 99] } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.scanning, true)
+          assert.deepEqual(res.body.buses, [0, 1])
+          assert.ok(scan.calledOnce)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('200 — defaults to buses 0 and 1 when none given', function (done) {
+      sinon.stub(hooks.droneCan, 'scan')
+      request('POST', '/api/FCDroneCANScan', { body: {} }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.deepEqual(res.body.buses, [0, 1])
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('GET /api/FCDroneCANNodes', function () {
+    it('200 — returns the node list + scanning flag', function (done) {
+      sinon.stub(hooks.droneCan, 'getNodes').returns([{ id: 11, name: 'org.test', health: 'OK' }])
+      hooks.droneCan.scanning = true
+      request('GET', '/api/FCDroneCANNodes').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.scanning, true)
+          assert.equal(res.body.nodes[0].id, 11)
+          done()
+        } catch (e) { done(e) } finally { hooks.droneCan.scanning = false }
       }).catch(done)
     })
   })

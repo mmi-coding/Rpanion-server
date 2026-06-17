@@ -24,13 +24,12 @@ const fullOverview = {
   ],
   can: {
     ports: [{ n: 1, driver: 1, bitrate: 1000000 }],
-    drivers: [{ n: 1, protocol: 1, protocolName: 'DroneCAN' }],
-    nodes: [{ name: 'ESC 1', health: 'OK', mode: 'Operational', uptimeSec: 1234 }]
+    drivers: [{ n: 1, protocol: 1, protocolName: 'DroneCAN' }]
   },
   net: { present: false }
 }
 
-const emptySections = { state: 'partial', received: 3, total: 5, sensors: [], serial: [], servos: [], can: { ports: [], drivers: [], nodes: [] }, net: { present: false } }
+const emptySections = { state: 'partial', received: 3, total: 5, sensors: [], serial: [], servos: [], can: { ports: [], drivers: [] }, net: { present: false } }
 
 describe('#FCConfigPage()', function () {
   beforeEach(() => { localStorage.clear() })
@@ -56,17 +55,54 @@ describe('#FCConfigPage()', function () {
     expect(txt).toContain('MAVLink2')
     expect(txt).toContain('Motor1')
     expect(txt).toContain('Aileron')
-    expect(txt).toContain('DroneCAN')
-    expect(txt).toContain('ESC 1')
-    expect(txt).toContain('1234 s')
+    expect(txt).toContain('DroneCAN') // CAN driver protocol (bus config)
+    expect(txt).toContain('Scan DroneCAN bus') // node scan control
     page.unmount()
   })
 
-  test('renders a DroneCAN node with missing fields as em dashes', async function () {
-    mockFetch({ '/api/FCConfigOverview': { state: 'complete', received: 1, total: 1, sensors: [], serial: [], servos: [], can: { ports: [], drivers: [], nodes: [{}] }, net: { present: false } } })
+  test('Scan DroneCAN bus button POSTs a scan and reflects scanning state', async function () {
+    const stub = mockFetch({ '/api/FCConfigOverview': fullOverview, 'POST /api/FCDroneCANScan': { scanning: true, buses: [0, 1] } })
     const page = renderPage(<FCConfigPage />)
     await page.flush()
-    expect(page.container.textContent).toContain('Health') // node table rendered (header)
+    const btn = [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Scan DroneCAN bus'))
+    page.click(btn)
+    await page.flush()
+    expect(stub.mock.calls.some(c => c[0] === '/api/FCDroneCANScan' && c[1]?.method === 'POST')).toBe(true)
+    expect(page.container.textContent).toContain('Scanning the bus') // scanning placeholder (button also shows 'Scanning…')
+    page.unmount()
+  })
+
+  test('DroneCAN scan error surfaces in the error modal', async function () {
+    mockFetch({ '/api/FCConfigOverview': fullOverview, 'POST /api/FCDroneCANScan': () => { throw new Error('scan boom') } })
+    const page = renderPage(<FCConfigPage />)
+    await page.flush()
+    const btn = [...page.container.querySelectorAll('button')].find(b => b.textContent.includes('Scan DroneCAN bus'))
+    page.click(btn)
+    await page.flush()
+    expect(document.body.textContent).toContain('scan boom')
+    page.unmount()
+  })
+
+  test('DroneCANNodes socket event populates the live node table + bus-traffic stats', async function () {
+    mockFetch({ '/api/FCConfigOverview': fullOverview })
+    const page = renderPage(<FCConfigPage />)
+    await page.flush()
+    expect(page.container.textContent).toContain('No DroneCAN nodes found yet') // dcStats null → no stats line
+    // stats present but no frames yet → still no bus-traffic line
+    act(() => { lastSocket().fire('DroneCANNodes', { scanning: true, nodes: [], stats: { frames: 0, nodeStatus: 0, nodeInfo: 0 } }) })
+    expect(page.container.textContent).not.toContain('bus traffic')
+    // frames flowing + nodes present
+    act(() => {
+      lastSocket().fire('DroneCANNodes', { scanning: true, stats: { frames: 142, nodeStatus: 7, nodeInfo: 1 }, nodes: [
+        { id: 11, bus: 0, name: 'org.ardupilot.gps', health: 'OK', mode: 'Operational', uptimeSec: 42, swVersion: '1.2', hwVersion: '3.4' },
+        { id: 50, name: '' } // no bus / health / mode / uptime / versions → all em-dash fallbacks
+      ] })
+    })
+    const txt = page.container.textContent
+    expect(txt).toContain('bus traffic: 142 frames')
+    expect(txt).toContain('org.ardupilot.gps')
+    expect(txt).toContain('CAN1') // bus 0 → CAN1
+    expect(txt).toContain('1.2 / 3.4') // sw/hw versions
     page.unmount()
   })
 
@@ -79,7 +115,7 @@ describe('#FCConfigPage()', function () {
     expect(txt).toContain('No serial port parameters found')
     expect(txt).toContain('No assigned servo outputs')
     expect(txt).toContain('No CAN parameters found')
-    expect(txt).toContain('No DroneCAN nodes seen')
+    expect(txt).toContain('No DroneCAN nodes found yet')
     page.unmount()
   })
 

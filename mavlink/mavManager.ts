@@ -383,6 +383,55 @@ class mavManager {
     this.sendData(msg)
   }
 
+  sendCanForward (bus: number) {
+    // ask the FC to tunnel a CAN bus's frames to us over MAVLink (CAN_FRAME).
+    // Forwarding lapses after ~5 s on the FC, so the caller re-sends this while
+    // a DroneCAN scan is active (#feature-37). NOTE: MAV_CMD_CAN_FORWARD param1 is
+    // 1-based on ArduPilot (bus = param1 - 1; param1 0 disables), so add 1.
+    const cmd = new common.CanForwardCommand()
+    cmd.targetSystem = this.targetSystem
+    cmd.targetComponent = this.targetComponent
+    cmd.bus = bus + 1
+    cmd.confirmation = 0
+    this.sendData(cmd)
+  }
+
+  sendCanFilter (bus: number, ids: number[]) {
+    // restrict which CAN frames the FC forwards (CAN_FILTER_MODIFY) so its small
+    // (~20-frame) forward buffer isn't saturated by bus traffic — multi-frame
+    // DroneCAN responses (e.g. GetNodeInfo) are otherwise truncated. ArduPilot
+    // bus is 1-based here too, and the ids list must be sorted (binary search).
+    const msg = new common.CanFilterModify()
+    msg.targetSystem = this.targetSystem
+    msg.targetComponent = this.targetComponent
+    msg.bus = bus + 1
+    msg.operation = common.CanFilterOp.REPLACE
+    const sorted = ids.slice().sort((a, b) => a - b).slice(0, 16)
+    msg.numIds = sorted.length
+    const padded = new Array(16).fill(0)
+    sorted.forEach((v, i) => { padded[i] = v })
+    msg.ids = padded
+    this.sendData(msg)
+  }
+
+  sendCanFrame (bus: number, id: number, data: number[]) {
+    // inject one CAN frame onto a forwarded bus (used to send DroneCAN service
+    // requests, e.g. GetNodeInfo). `id` carries the 29-bit DroneCAN ID with the
+    // extended-frame flag already set by the caller.
+    const frame = new common.CanFrame()
+    frame.targetSystem = this.targetSystem
+    frame.targetComponent = this.targetComponent
+    frame.bus = bus
+    frame.id = id
+    frame.len = data.length
+    const padded = new Array(8).fill(0)
+    for (let i = 0; i < data.length && i < 8; i++) {
+      padded[i] = data[i]
+    }
+    frame.data = padded
+    this.sendData(frame)
+  }
+
   sendSetMessageInterval (msgId: number, intervalUsec: number) {
     // ask the FC to stream a specific message at a fixed interval
     // (MAV_CMD_SET_MESSAGE_INTERVAL). intervalUsec = -1 disables, 0 = default rate

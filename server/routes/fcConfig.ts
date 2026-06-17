@@ -4,7 +4,7 @@
 const { Router } = require('express')
 import type { Request, Response } from 'express'
 
-export = function fcConfigRoutes ({ authenticateToken, fcParams }: { authenticateToken: any; fcParams: any }) {
+export = function fcConfigRoutes ({ authenticateToken, fcParams, droneCan }: { authenticateToken: any; fcParams: any; droneCan: any }) {
   const router = Router()
 
   // start a fresh full parameter download; returns whether a FC was available
@@ -18,6 +18,20 @@ export = function fcConfigRoutes ({ authenticateToken, fcParams }: { authenticat
   router.get('/api/FCConfigOverview', authenticateToken, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify(fcParams.getOverview()))
+  })
+
+  // start a DroneCAN scan (CAN forwarding) on the given buses (default 0 + 1)
+  router.post('/api/FCDroneCANScan', authenticateToken, (req: Request, res: Response) => {
+    const buses = Array.isArray(req.body.buses) ? req.body.buses.map((b: any) => parseInt(b)).filter((b: number) => b >= 0 && b <= 7) : [0, 1]
+    droneCan.scan(buses)
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ scanning: true, buses }))
+  })
+
+  // current DroneCAN node list (also pushed live on the DroneCANNodes socket event)
+  router.get('/api/FCDroneCANNodes', authenticateToken, (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/json')
+    res.send(JSON.stringify({ scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() }))
   })
 
   return router

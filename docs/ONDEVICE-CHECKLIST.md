@@ -441,3 +441,16 @@ connected ArduPlane FC (Pixhawk over Ethernet/UDP, sysid 1/1) via the live
 - [ ] Visual check in a browser: the **FC Configuration** page + the FC page's **NET** card render the above; tilt/cover the FC to watch sensor health/servo PWM track live; **Refresh** re-runs
 - [ ] **Partial/failed paths:** pull the link mid-download → state settles `partial` without hanging; with no FC connected, Refresh shows `failed` + the "No flight controller responded" note
 - [ ] Pi Zero 2 W: the one-shot full param download + 1 Hz `FCParamStatus` adds no meaningful CPU
+
+## Feature 37: DroneCAN node enumeration (feature/dronecan-nodes)
+
+WSL-verified via unit tests with synthetic CAN frames. **API-verified on-device
+2026-06-17** (ArduPlane FC over Ethernet) — found + fixed the CAN_FORWARD
+off-by-one and added CAN_FILTER_MODIFY; see docs/FC-CONFIG.md + the feature report.
+
+- [x] **Scan DroneCAN bus** discovers a live node (id, **health OK / mode Operational / uptime** ticking live) and shows the CAN bus config — confirmed against a real node
+- [x] `MAV_CMD_CAN_FORWARD` / `CAN_FILTER_MODIFY` **bus indexing** is 1-based on ArduPilot (`bus = param1-1`); fixed to send `bus+1`. CAN_FILTER cut forwarded traffic ~45× (1224→~27 frames/scan)
+- [x] **GetNodeInfo names/versions — root-caused as an FC-side limitation (won't fix here).** Every multi-frame GetNodeInfo response is truncated (first 1–3 frames, never an end-of-transfer frame), so names don't resolve. Confirmed FC-side: reproduces identically over **USB and Ethernet**, dest-filtered to our responses, at tiny traffic, with clean non-interleaved per-transfer-id sequences. The FC drops the tail of each burst (CAN RX-FIFO / forward queue). Our decoder is correct (unit-tested vs full synthetic responses). Fixed two real bugs along the way (CAN_FORWARD off-by-one; reassembly now filters to responses addressed to us)
+- [ ] **NodeStatus health/mode bit decoding**: on a node in a non-OK state, health/mode read correctly (UAVCAN v0 MSB-first) — cross-check Mission Planner
+- [ ] Node on **CAN bus 2** appears (the node-map is keyed by id only; if the same id exists on both buses, last-seen wins — revisit keying by bus+id if needed)
+- [ ] With no DroneCAN device on the bus, a scan finds nothing and the page says so (no crash/hang)

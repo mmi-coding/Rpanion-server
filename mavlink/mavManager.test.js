@@ -243,6 +243,95 @@ describe('MAVLink Functions', function () {
     })
   })
 
+  it('#canForwardSend()', function (done) {
+    const m = new mavManager(2, '127.0.0.1', 15000)
+    const udpStream = udp.createSocket('udp4')
+
+    m.eventEmitter.on('linkready', () => {
+      m.sendCanForward(1)
+    })
+
+    udpStream.on('message', (msg) => {
+      try {
+        assert.equal(msg[0], 0xFD)
+        assert.equal(msg[7], 76) // COMMAND_LONG (MAV_CMD_CAN_FORWARD)
+        m.close()
+        udpStream.close()
+        done()
+      } catch (e) {
+        m.close()
+        udpStream.close()
+        done(e)
+      }
+    })
+
+    udpStream.send(Buffer.from([0xfd, 0x06]), 15000, '127.0.0.1', (error) => {
+      if (error) {
+        console.error(error)
+      }
+    })
+  })
+
+  it('#canFrameSend()', function (done) {
+    const m = new mavManager(2, '127.0.0.1', 15000)
+    const udpStream = udp.createSocket('udp4')
+
+    m.eventEmitter.on('linkready', () => {
+      m.sendCanFrame(0, 0x80001234, [0xC0])
+    })
+
+    udpStream.on('message', (msg) => {
+      try {
+        assert.equal(msg[0], 0xFD)
+        assert.equal(msg[7], 0x82) // CAN_FRAME msgid 386 = 0x182, low byte
+        assert.equal(msg[8], 0x01)
+        m.close()
+        udpStream.close()
+        done()
+      } catch (e) {
+        m.close()
+        udpStream.close()
+        done(e)
+      }
+    })
+
+    udpStream.send(Buffer.from([0xfd, 0x06]), 15000, '127.0.0.1', (error) => {
+      if (error) {
+        console.error(error)
+      }
+    })
+  })
+
+  it('#canFilterSend()', function (done) {
+    const m = new mavManager(2, '127.0.0.1', 15000)
+    const udpStream = udp.createSocket('udp4')
+
+    m.eventEmitter.on('linkready', () => {
+      m.sendCanFilter(0, [341, 1])
+    })
+
+    udpStream.on('message', (msg) => {
+      try {
+        assert.equal(msg[0], 0xFD)
+        assert.equal(msg[7], 0x84) // CAN_FILTER_MODIFY msgid 388 = 0x184, low byte
+        assert.equal(msg[8], 0x01)
+        m.close()
+        udpStream.close()
+        done()
+      } catch (e) {
+        m.close()
+        udpStream.close()
+        done(e)
+      }
+    })
+
+    udpStream.send(Buffer.from([0xfd, 0x06]), 15000, '127.0.0.1', (error) => {
+      if (error) {
+        console.error(error)
+      }
+    })
+  })
+
   it('#heartbeatSend()', function (done) {
     const m = new mavManager(2, '127.0.0.1', 15000)
     const udpStream = udp.createSocket('udp4')
