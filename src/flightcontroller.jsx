@@ -3,11 +3,13 @@ import Table from 'react-bootstrap/Table';
 import Card from 'react-bootstrap/Card';
 import Accordion from 'react-bootstrap/Accordion';
 import Form from 'react-bootstrap/Form';
+import Badge from 'react-bootstrap/Badge';
 
 import React from 'react'
 
 import basePage from './basePage.jsx';
 import { HelpTip, HelpSection } from './components/Help.jsx'
+import { onoff, stateVariant } from './fcConfigShared'
 
 import './css/styles.css';
 
@@ -40,11 +42,21 @@ class FCPage extends basePage {
       enableUDPB: false,
       UDPBPort: 14550,
       enableDSRequest: false,
-      doLogging: false
+      doLogging: false,
+      // FC Ethernet (NET_*) parameters, decoded read-only (see FC Configuration page)
+      netOverview: null,
+      paramProgress: { state: 'idle', received: 0, total: 0 }
     }
 
     this.socket.on('FCStatus', function (msg) {
       this.setState({ FCStatus: msg });
+    }.bind(this));
+    this.socket.on('FCParamStatus', function (msg) {
+      const prevState = this.state.paramProgress.state;
+      this.setState({ paramProgress: msg });
+      if ((msg.state === 'complete' || msg.state === 'partial') && prevState !== msg.state) {
+        this.fetchNetOverview();
+      }
     }.bind(this));
     this.socket.on('reconnect', function () {
       this.componentDidMount();
@@ -61,6 +73,22 @@ class FCPage extends basePage {
       });
     });
     fetch(`/api/FCOutputs`, {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() });
+    this.fetchNetOverview();
+  }
+
+  // ---- FC Ethernet (NET_*) parameters (shares the FC Configuration backend) ----
+  fetchNetOverview = () => {
+    fetch('/api/FCConfigOverview', {headers: {Authorization: `Bearer ${this.state.token}`}})
+      .then(response => response.json())
+      .then(data => this.setState({ netOverview: data.net, paramProgress: { state: data.state, received: data.received, total: data.total } }))
+      .catch(error => this.setState({ error: error.message }));
+  }
+
+  refreshNetParams = () => {
+    fetch('/api/FCParamRefresh', {method: 'POST', headers: {Authorization: `Bearer ${this.state.token}`}})
+      .then(response => response.json())
+      .then(data => this.setState({ paramProgress: { state: data.state, received: data.received, total: data.total } }))
+      .catch(error => this.setState({ error: error.message }));
   }
 
   // ---- add-link form handlers ----
@@ -178,6 +206,60 @@ class FCPage extends basePage {
     );
   }
 
+  // Read-only view of the FC's Ethernet (NET_*) parameters, downloaded via the
+  // FC Configuration backend. Helps confirm the FC end of the Ethernet setup
+  // described above without opening Mission Planner.
+  renderNetParams() {
+    const net = this.state.netOverview;
+    const p = this.state.paramProgress;
+    return (
+      <Card className="mb-3">
+        <Card.Header>
+          <h5 className="mb-0">Ethernet (<code>NET_</code>) parameters<HelpTip text="The flight controller's live network settings, read from its NET_* parameters. Read-only here — change them on the FC (e.g. Mission Planner) and click Refresh to update. Only populated on ArduPilot 4.5+ with NET_ENABLE=1." /></h5>
+        </Card.Header>
+        <Card.Body>
+          <div style={{ marginBottom: '8px' }}>
+            <Button size="sm" onClick={this.refreshNetParams} disabled={p.state === 'downloading'}>Refresh from FC</Button>
+            <HelpTip text="Download the full parameter set from the connected flight controller to read its NET_* values. Disabled while a download is running." />
+            <span style={{ marginLeft: '8px' }}><Badge bg={stateVariant(p.state)}>{p.state}</Badge></span>
+            {p.total > 0 && <span style={{ marginLeft: '8px', fontVariantNumeric: 'tabular-nums' }}>{p.received} / {p.total}</span>}
+          </div>
+          {(net === null || !net.present) ? (
+            <p className="mb-0"><i>{net === null ? 'No parameters downloaded yet — click Refresh from FC.' : 'No NET_ parameters set on this flight controller.'}</i></p>
+          ) : (
+            <>
+              <Table size="sm" borderless className="mb-2">
+                <tbody>
+                  <tr><td className="text-muted" style={{ width: '40%' }}>Enabled</td><td>{onoff(net.enable)}</td></tr>
+                  <tr><td className="text-muted">DHCP</td><td>{onoff(net.dhcp)}</td></tr>
+                  <tr><td className="text-muted">IP address</td><td>{net.ip || '—'}</td></tr>
+                  <tr><td className="text-muted">Netmask</td><td>{net.netmask === null ? '—' : '/' + net.netmask}</td></tr>
+                  <tr><td className="text-muted">Gateway</td><td>{net.gateway || '—'}</td></tr>
+                </tbody>
+              </Table>
+              {net.ports.length > 0 && (
+                <Table striped bordered hover size="sm" className="mb-0">
+                  <thead><tr><th>Slot</th><th>Type</th><th>Protocol</th><th>Remote IP</th><th>Port</th></tr></thead>
+                  <tbody>
+                    {net.ports.map(pt => (
+                      <tr key={pt.n}>
+                        <td>P{pt.n}</td>
+                        <td>{pt.typeName}</td>
+                        <td>{pt.protocolName || '—'}</td>
+                        <td>{pt.ip || '—'}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{pt.port === null ? '—' : pt.port}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+            </>
+          )}
+        </Card.Body>
+      </Card>
+    );
+  }
+
   renderContent() {
     const isUART = this.state.addInputType === 'UART';
     const atMax = this.state.links.length >= 4;
@@ -208,6 +290,8 @@ class FCPage extends basePage {
           <p><b>If the link stays &quot;Not connected &mdash; 0 packets&quot;</b> even though the FC is sending: the <b>UDP Input Port</b> above must not collide with the shared <b>UDP Server</b> (broadcast) port under <i>Telemetry Destinations</i> (which defaults to <code>14550</code>). Two endpoints on the same port make the router exit with <i>&quot;Address already in use&quot;</i>. Keep the input on the FC&apos;s port and either disable the broadcast UDP Server or move it off <code>14550</code>; connect a ground station via the <b>TCP Server</b> (<code>5760</code>) or a <b>UDP Client</b> output instead. If the FC pings only at a <code>169.254.x.x</code> address, <code>NET_DHCP</code> is still <code>1</code>.</p>
           <p>See ArduPilot&apos;s <a href="https://ardupilot.org/copter/docs/common-network.html" target="_blank" rel="noreferrer">Ethernet / Network Setup</a> docs for full details.</p>
         </HelpSection>
+
+        {this.renderNetParams()}
 
         <h2>Telemetry Links</h2>
         {this.state.links.length === 0 && <p><i>No links yet — add one below.</i></p>}

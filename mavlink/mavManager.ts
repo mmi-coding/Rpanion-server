@@ -362,6 +362,27 @@ class mavManager {
     this.sendData(command)
   }
 
+  sendParamRequestList () {
+    // ask the flight controller to stream its entire parameter set
+    // (PARAM_REQUEST_LIST). Each PARAM_VALUE carries the total count + its index,
+    // so the caller can detect a complete download and re-request any gaps.
+    const msg = new common.ParamRequestList()
+    msg.targetSystem = this.targetSystem
+    msg.targetComponent = this.targetComponent
+    this.sendData(msg)
+  }
+
+  sendParamRead (paramIndex: number) {
+    // re-request a single parameter by its index (PARAM_REQUEST_READ) — used to
+    // fill gaps when PARAM_VALUE messages are dropped during a full download.
+    const msg = new common.ParamRequestRead()
+    msg.targetSystem = this.targetSystem
+    msg.targetComponent = this.targetComponent
+    msg.paramId = ''
+    msg.paramIndex = paramIndex
+    this.sendData(msg)
+  }
+
   sendSetMessageInterval (msgId: number, intervalUsec: number) {
     // ask the FC to stream a specific message at a fixed interval
     // (MAV_CMD_SET_MESSAGE_INTERVAL). intervalUsec = -1 disables, 0 = default rate

@@ -269,6 +269,22 @@ class FCDetails {
     }
   }
 
+  // ---- Parameter download (FC Configuration page) — primary link only, since
+  //      parameters come from a single vehicle (not the multi-link fan-out) ----
+  requestParams () {
+    if (this.links.length > 0 && this.links[0].m !== null) {
+      this.links[0].m.sendParamRequestList()
+      return true
+    }
+    return false
+  }
+
+  requestParam (paramIndex: number) {
+    if (this.links.length > 0 && this.links[0].m !== null) {
+      this.links[0].m.sendParamRead(paramIndex)
+    }
+  }
+
   // ---- MAVLink fan-out (index.ts wires camera / RTCM / heartbeat through here) ----
   sendRTCMMessage (msg: any, seq: any) {
     for (let i = 0; i < this.links.length; i++) {

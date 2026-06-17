@@ -614,6 +614,41 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   })
 
   // =========================================================================
+  // /api/FCParamRefresh, /api/FCConfigOverview (FC Configuration page)
+  // =========================================================================
+  describe('POST /api/FCParamRefresh', function () {
+    it('200 — starts a download and returns progress', function (done) {
+      sinon.stub(hooks.fcParams, 'requestAll').returns(true)
+      sinon.stub(hooks.fcParams, 'getProgress').returns({ state: 'downloading', received: 0, total: 0 })
+      request('POST', '/api/FCParamRefresh').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.started, true)
+          assert.equal(res.body.state, 'downloading')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  describe('GET /api/FCConfigOverview', function () {
+    it('200 — returns the decoded overview', function (done) {
+      sinon.stub(hooks.fcParams, 'getOverview').returns({
+        state: 'complete', received: 2, total: 2,
+        sensors: [], serial: [], servos: [], can: { ports: [], drivers: [], nodes: [] }, net: { present: false }
+      })
+      request('GET', '/api/FCConfigOverview').then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.equal(res.body.state, 'complete')
+          assert.equal(res.body.net.present, false)
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+  })
+
+  // =========================================================================
   // /api/FCAddLink, /api/FCRemoveLink, /api/FCOptions
   // =========================================================================
   describe('POST /api/FCAddLink', function () {

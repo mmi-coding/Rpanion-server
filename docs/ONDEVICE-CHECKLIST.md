@@ -425,3 +425,17 @@ device. See docs/MAVLINK-INSPECTOR.md.
 - [ ] The name **filter** narrows the list; the page works with **no video stream running** (independent of the HUD)
 - [ ] Pi Zero 2 W: the 1 Hz snapshot emit + decode adds no meaningful CPU at the FC's stream rate
 - [ ] Confirm telemetry bandwidth/latency over Ethernet vs the UART baseline (the main reason to use it)
+
+## Feature 36: FC Configuration overview (read-only)
+
+WSL-verified via unit/UI tests with synthetic params + telemetry; needs a real FC
+parameter download on device. See docs/FC-CONFIG.md.
+
+- [ ] With an FC link connected (e.g. the Pixhawk 6X over Ethernet/UDP), open **Flight → FC Configuration**, click **Refresh parameters** → the progress bar runs `downloading` and settles on `complete`; note the param count and how long it took (Ethernet/USB vs a telemetry radio)
+- [ ] **Sensors** lists the FC's real sensors (gyro/accel/compass/baro/GPS, plus 2nd IMU/compass if fitted) with correct enabled/healthy state; tilt/cover to confirm health tracks
+- [ ] **Serial peripherals** matches the FC's `SERIALx_PROTOCOL`/`_BAUD` (cross-check Mission Planner) — GPS, RC, ESC telem, etc. decode to the right names; unmapped values fall back to `Protocol N`
+- [ ] **Servo outputs** matches `SERVOx_FUNCTION` on a known airframe (motors/control surfaces), shows live PWM from `SERVO_OUTPUT_RAW`, and min/max/reversed
+- [ ] **CAN / DroneCAN**: the CAN bus config (driver/protocol/bitrate) matches `CAN_*`; **verify whether any DroneCAN nodes appear** — MAVLink `UAVCAN_NODE_STATUS/INFO` may not stream without CAN forwarding, so confirm real behaviour and whether the best-effort node table is useful or should be gated
+- [ ] On the **Flight Controller** page, the **Ethernet (`NET_`) parameters** card matches the FC's `NET_*` (enable/DHCP/IP/netmask/gateway + per-port type/protocol/IP/port) against Mission Planner
+- [ ] **Partial/failed paths:** pull the link mid-download → state settles `partial` (re-request of gaps attempted) without hanging; with no FC connected, Refresh shows `failed` and the "No flight controller responded" note
+- [ ] Pi Zero 2 W: the one-shot full param download + 1 Hz `FCParamStatus` adds no meaningful CPU

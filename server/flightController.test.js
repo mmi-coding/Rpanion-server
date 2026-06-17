@@ -34,6 +34,8 @@ function fakeM () {
     statusBytesPerSec: { avgBytesSec: 100 },
     fcVersion: '4.5.0',
     sendReboot: sinon.spy(),
+    sendParamRequestList: sinon.spy(),
+    sendParamRead: sinon.spy(),
     sendBinStreamRequest: sinon.spy(),
     sendBinStreamRequestStop: sinon.spy(),
     sendRTCMMessage: sinon.spy(),
@@ -295,6 +297,23 @@ describe('FCDetails (multi-link orchestrator #311)', function () {
     FC.stopBinLogging()
     assert.ok(FC.links[0].m.sendBinStreamRequest.calledOnce)
     assert.ok(FC.links[0].m.sendBinStreamRequestStop.calledOnce)
+  })
+
+  it('#requestParams / #requestParam - primary link only', function () {
+    settings.clear()
+    const FC = new FCManagerClass(settings)
+    // no links → false / safe no-op
+    assert.equal(FC.requestParams(), false)
+    FC.requestParam(3)
+    addUART(FC, '/dev/ttyS0')
+    assert.equal(FC.requestParams(), true)
+    FC.requestParam(5)
+    assert.ok(FC.links[0].m.sendParamRequestList.calledOnce)
+    assert.ok(FC.links[0].m.sendParamRead.calledWith(5))
+    // link present but mavManager not yet up → false / safe no-op
+    FC.links[0].m = null
+    assert.equal(FC.requestParams(), false)
+    FC.requestParam(9)
   })
 
   it('MAVLink fan-out - RTCM / commandAck / heartbeat / data reach every link', function () {
