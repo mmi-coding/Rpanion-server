@@ -312,7 +312,13 @@ class FCConfigPage extends basePage {
           </small>
         </div>
         {params.length === 0 ? (
-          <p className="mb-0"><small className="text-muted">{ps.scanning ? 'Waiting for the node to respond…' : 'This node reported no parameters.'}</small></p>
+          <p className="mb-0"><small className="text-muted">{
+            ps.scanning
+              ? 'Waiting for the node to respond…'
+              : (ps.error
+                  ? 'No response — this node did not answer the parameter request. Many DroneCAN peripherals (e.g. some GPS units) don’t expose parameters over param.GetSet; their settings live in the flight controller’s parameters instead.'
+                  : 'This node reported no parameters.')
+          }</small></p>
         ) : (
           <Table striped bordered hover size="sm" className="mb-0">
             <thead><tr><th>Parameter</th><th>Value</th><th>Default</th><th>Min</th><th>Max</th></tr></thead>

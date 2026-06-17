@@ -161,9 +161,11 @@ describe('#FCConfigPage()', function () {
     // finished with no params
     act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, scanning: false, done: true, error: null, params: [] }) })
     expect(page.container.textContent).toContain('This node reported no parameters')
-    // stopped with an error
+    // stopped with an error (node didn't answer) → header + clear "no response" guidance
     act(() => { lastSocket().fire('DroneCANNodeParams', { active: true, nodeId: 125, scanning: false, done: true, error: 'timeout', params: [] }) })
     expect(page.container.textContent).toContain('stopped (timeout)')
+    expect(page.container.textContent).toContain('No response')
+    expect(page.container.textContent).toContain('param.GetSet')
     page.unmount()
   })
 

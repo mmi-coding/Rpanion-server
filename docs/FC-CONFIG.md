@@ -118,6 +118,20 @@ no `param.GetSet` ever sets anything; there is no write path in the code. Becaus
 the FC forwards one bus at a time, opening a node **takes over forwarding for that
 node's bus** (pausing any node sweep) until enumeration finishes.
 
+**Not every node answers.** `param.GetSet` is an *optional* DroneCAN service (unlike
+the mandatory `GetNodeInfo` used for the node list). A node that doesn't implement
+it — or whose firmware build omits parameter support — simply never replies, and the
+table shows a "no response" note rather than a parameter list. **On-device (2026-06-18)**
+neither peripheral on the test drone answered: the Holybro GPS (node 125, an AP_Periph
+node) and the Vimdrones servo hub (node 123) both reply to `GetNodeInfo` but send **zero
+`GetSet` frames**. This was traced exhaustively to the *nodes*, not the code: the request
+we emit is **byte-identical to the reference DroneCAN GUI tool** (pydronecan: CAN id
+`0x1E0BFDFF`, payload `00 00 c0`), and a multi-byte `GetNodeInfo` probe injected over the
+same path *was* answered back to us — so request injection, framing, addressing and
+response routing all work; the peripherals just don't serve `param.GetSet`. The feature
+works against any node that does (ESCs, power modules, airspeed sensors, many GPS units).
+See docs/reports/feature-38-dronecan-node-params.md.
+
 GetSet uses **bit-level DSDL** unlike the byte-aligned NodeStatus/GetNodeInfo
 messages, but `param.GetSet.Response` is deliberately byte-aligned (each `Value`/
 `NumericValue` union is prefixed with `void5`/`void6` padding so tag + payload land
