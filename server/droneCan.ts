@@ -17,8 +17,8 @@ const GETNODEINFO_DTID = 1 // uavcan.protocol.GetNodeInfo (service)
 const OUR_NODE_ID = 127 // this monitor's DroneCAN node id (GCS convention)
 const PRIORITY = 30 // low priority for our service requests
 const CAN_EFF_FLAG = 0x80000000 // extended-frame flag in the MAVLink CAN_FRAME id
-const RE_FORWARD_MS = 1000 // forwarding lapses 5 s on the FC → re-request (also paces GetNodeInfo retries)
-const SCAN_MS = 10000 // default scan window
+const RE_FORWARD_MS = 1000 // re-arm the active bus every second — forwarding lapses ~5 s on the FC; matches the DroneCAN GUI tool's 1 Hz CAN_FORWARD keepalive
+const PER_BUS_MS = 5000 // dwell per bus before rotating: the FC forwards only ONE bus at a time, so we sweep the requested buses in turn
 const MAX_INFO_TRIES = 8 // GetNodeInfo retries per node (multi-frame responses can be lossy over CAN forwarding)
 
 const HEALTH: { [k: number]: string } = { 0: 'OK', 1: 'Warning', 2: 'Error', 3: 'Critical' }
@@ -130,6 +130,7 @@ class DroneCANMonitor {
   forwardTimer: any
   stopTimer: any
   transferId: number
+  tick: number
   stats: any
 
   constructor (fcManager: any) {
@@ -141,38 +142,45 @@ class DroneCANMonitor {
     this.forwardTimer = null
     this.stopTimer = null
     this.transferId = 0
+    this.tick = 0
     this.stats = { frames: 0, nodeStatus: 0, service: 0, nodeInfo: 0, requests: 0 }
   }
 
-  // start a scan: enable forwarding on each bus (re-requested every second) and
-  // collect nodes for the scan window
-  scan (buses: number[], durationMs: number = SCAN_MS): void {
+  // start a scan. The FC forwards only one CAN bus at a time, so — like the
+  // DroneCAN GUI tool, which connects per-bus — we dwell on each requested bus
+  // in turn (re-arming it every second), sweeping them all within one scan.
+  scan (buses: number[]): void {
     this.stop()
     this.nodes = {}
     this.reasm = new Reassembler()
     this.stats = { frames: 0, nodeStatus: 0, service: 0, nodeInfo: 0, requests: 0 }
-    this.buses = buses
+    this.buses = buses.length > 0 ? buses : [0]
     this.scanning = true
+    this.tick = 0
     this._forward()
     this.forwardTimer = setInterval(() => this._forward(), RE_FORWARD_MS)
-    this.stopTimer = setTimeout(() => this.stop(), durationMs)
+    // run long enough for every requested bus to get one full dwell
+    this.stopTimer = setTimeout(() => this.stop(), this.buses.length * PER_BUS_MS)
   }
 
   _forward (): void {
-    for (const b of this.buses) {
-      this.fcManager.canForward(b)
-      // forward only NodeStatus (msg type 341) + GetNodeInfo (svc type 1) so the
-      // FC's small forward buffer isn't saturated by other bus traffic, which
-      // would truncate multi-frame GetNodeInfo responses (ids must be sorted)
-      this.fcManager.canFilter(b, [GETNODEINFO_DTID, NODESTATUS_DTID])
-    }
-    // retry GetNodeInfo for nodes we've seen but don't yet have a name for
-    // (the first request can be lost right after forwarding arms)
+    // ArduPilot forwards exactly one bus per MAVLink channel — a new
+    // MAV_CMD_CAN_FORWARD unregisters the previous bus — so forward a single bus,
+    // rotating to the next once its dwell elapses, re-arming it on every tick.
+    // No CAN_FILTER_MODIFY: like the GUI tool we forward all frames (a filter is
+    // available but defaults off), so multi-frame GetNodeInfo isn't starved.
+    const dwellTicks = Math.max(1, Math.round(PER_BUS_MS / RE_FORWARD_MS))
+    const bus = this.buses[Math.floor(this.tick / dwellTicks) % this.buses.length]
+    this.tick++
+    this.fcManager.canForward(bus)
+    // retry GetNodeInfo for nameless nodes seen on the bus we're forwarding now
+    // (a request on a non-forwarded bus goes nowhere; the first one can also be
+    // lost right after forwarding arms)
     for (const k of Object.keys(this.nodes)) {
       const n = this.nodes[parseInt(k)]
-      if (n.name === undefined && n.bus !== undefined && (n.infoTries || 0) < MAX_INFO_TRIES) {
+      if (n.bus === bus && n.name === undefined && (n.infoTries || 0) < MAX_INFO_TRIES) {
         n.infoTries = (n.infoTries || 0) + 1
-        this._requestNodeInfo(n.bus, n.id)
+        this._requestNodeInfo(bus, n.id)
       }
     }
   }
