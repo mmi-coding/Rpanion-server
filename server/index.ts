@@ -29,6 +29,7 @@ const DynamicDns = require('./dynamicDns')
 const NetworkPriority = require('./networkPriority')
 const TelemetryInjector = require('./telemetryInjector')
 const MavTelemetry = require('./mavTelemetry')
+const FCParams = require('./fcParams')
 
 const settings = require('settings-store')
 
@@ -81,6 +82,8 @@ vManager.secondaryStreams = secondaryStreams
 const fcManager = new fcManagerClass(settings)
 // live store of every MAVLink message from the FC, for the webUI inspector
 const mavTelemetry = new MavTelemetry()
+// FC parameter cache + full-download orchestration, for the FC Configuration page
+const fcParams = new FCParams(fcManager, mavTelemetry)
 const logManager = new flightLogger()
 const ntripClient = new ntrip(settings)
 const cloud = new cloudManager(settings)
@@ -330,6 +333,7 @@ fcManager.eventEmitter.on('gotMessage', (packet: any, data: any, link: any) => {
     vManager.onMavPacket(packet, data)
     camSwitcher.onMavPacket(packet, data)
     mavTelemetry.onMessage(packet, data)
+    fcParams.onMessage(packet, data)
     // ask the FC to stream RC_CHANNELS (2 Hz), once, if the camera switcher
     // needs it — requested from the link whose vehicle we first locked onto
     if (camSwitcher.getSettings().enabled && !camSwitcher.streamRequested &&
@@ -442,6 +446,9 @@ app.use('/media', express.static(MEDIA_ROOT))
 // Flight controller routes (extracted to ./routes/flightController.js)
 app.use(require('./routes/flightController')({ authenticateToken, fcManager }))
 
+// FC Configuration page routes (parameter download + decoded overview)
+app.use(require('./routes/fcConfig')({ authenticateToken, fcParams }))
+
 io.engine.use((req: any, res: any, next: any) => {
   const isHandshake = req._query.sid === undefined
   if (isHandshake) {
@@ -469,6 +476,7 @@ io.on('connection', function () {
     io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
     io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
     io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
+    io.sockets.emit('FCParamStatus', fcParams.getProgress())
   }, 1000)
 })
 
@@ -519,6 +527,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // works. Pure addition — zero production behaviour change.
 ;(app as any).testHooks = {
   fcManager,
+  fcParams,
   vManager,
   secondaryStreams,
   ntripClient,

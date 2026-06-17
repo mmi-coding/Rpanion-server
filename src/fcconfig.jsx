@@ -1,0 +1,230 @@
+import Card from 'react-bootstrap/Card';
+import Table from 'react-bootstrap/Table';
+import Button from 'react-bootstrap/Button';
+import Badge from 'react-bootstrap/Badge';
+import ProgressBar from 'react-bootstrap/ProgressBar';
+
+import React from 'react'
+
+import basePage from './basePage.jsx';
+import { HelpTip, HelpSection } from './components/Help.jsx'
+import { fmt, stateVariant } from './fcConfigShared'
+
+import './css/styles.css';
+
+// Read-only overview of how the connected flight controller is configured:
+// available sensors, serial peripherals, servo output assignments and
+// CAN/DroneCAN. The webUI has no parameter editor — the backend (fcParams.ts)
+// downloads the FC's whole parameter set once and decodes the config-relevant
+// groups; sensors and live servo PWM come from the telemetry stream.
+class FCConfigPage extends basePage {
+  constructor(props, useSocketIO = true) {
+    super(props, useSocketIO);
+    this.state = {
+      ...this.state,
+      overview: null,
+      progress: { state: 'idle', received: 0, total: 0 }
+    }
+
+    // live download progress, pushed once a second by the backend
+    this.socket.on('FCParamStatus', function (msg) {
+      const prevState = this.state.progress.state;
+      this.setState({ progress: msg });
+      // when a download settles, pull the freshly-decoded overview
+      if ((msg.state === 'complete' || msg.state === 'partial') && prevState !== msg.state) {
+        this.fetchOverview();
+      }
+    }.bind(this));
+    this.socket.on('reconnect', function () {
+      this.componentDidMount();
+    }.bind(this));
+  }
+
+  componentDidMount() {
+    this.fetchOverview();
+    this.loadDone();
+  }
+
+  renderTitle() {
+    return "FC Configuration";
+  }
+
+  fetchOverview = () => {
+    fetch('/api/FCConfigOverview', { headers: { Authorization: `Bearer ${this.state.token}` } })
+      .then(response => response.json())
+      .then(data => this.setState({ overview: data, progress: { state: data.state, received: data.received, total: data.total } }))
+      .catch(error => this.setState({ error: error.message }));
+  }
+
+  handleRefresh = () => {
+    fetch('/api/FCParamRefresh', { method: 'POST', headers: { Authorization: `Bearer ${this.state.token}` } })
+      .then(response => response.json())
+      .then(data => this.setState({ progress: { state: data.state, received: data.received, total: data.total } }))
+      .catch(error => this.setState({ error: error.message }));
+  }
+
+  renderContent() {
+    const ov = this.state.overview;
+    const p = this.state.progress;
+    const variant = stateVariant(p.state);
+    const pct = p.total > 0 ? Math.round((p.received / p.total) * 100) : 0;
+    const hasParams = ov !== null && p.total > 0;
+
+    return (
+      <div style={{ maxWidth: 900 }}>
+        <p><i>A read-only snapshot of how the connected flight controller is set up — sensors, serial peripherals, servos and CAN/DroneCAN.</i></p>
+        <HelpSection title="How this works">
+          <p>The webUI has no parameter editor. This page asks the flight controller for its <b>entire parameter set</b> (the same data Mission Planner&apos;s full parameter list shows) plus its live telemetry, and decodes the configuration-relevant parts so you can see how the FC is wired without a ground station.</p>
+          <p>Click <b>Refresh parameters</b> to (re)download — on a fast link (Ethernet/USB) it takes a few seconds; over a constrained telemetry radio it can take longer, and dropped values are automatically re-requested. <b>Sensors</b> and live servo <b>PWM</b> come from the telemetry stream, so an FC link on the <b>Flight Controller</b> page must be connected. DroneCAN node listing is best-effort over MAVLink and may need on-device CAN forwarding.</p>
+        </HelpSection>
+
+        <div className="form-group row" style={{ alignItems: 'center', marginBottom: '10px' }}>
+          <div className="col-sm-4">
+            <Button onClick={this.handleRefresh} disabled={p.state === 'downloading'}>
+              Refresh parameters
+            </Button>
+            <HelpTip text="Download the full parameter set from the flight controller. Re-run after changing FC settings to update this page. Disabled while a download is in progress." />
+          </div>
+          <div className="col-sm-8">
+            <span className="text-muted">Parameters: </span>
+            <Badge bg={variant}>{p.state}</Badge>
+            {p.total > 0 && <span style={{ marginLeft: '8px', fontVariantNumeric: 'tabular-nums' }}>{p.received} / {p.total}</span>}
+            {p.state === 'downloading' && <ProgressBar now={pct} label={`${pct}%`} style={{ marginTop: '6px' }} />}
+          </div>
+        </div>
+
+        {p.state === 'failed' && <div className="alert alert-warning" role="alert">No flight controller responded. Connect an FC link on the Flight Controller page, then refresh.</div>}
+
+        {!hasParams ? (
+          <p><i>No parameters downloaded yet — click <b>Refresh parameters</b> to read the FC configuration.</i></p>
+        ) : (
+          <>
+            {this.renderSensors(ov.sensors)}
+            {this.renderSerial(ov.serial)}
+            {this.renderServos(ov.servos)}
+            {this.renderCan(ov.can)}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  renderSensors(sensors) {
+    return (
+      <Card className="mb-3">
+        <Card.Header><h5 className="mb-0">Sensors</h5></Card.Header>
+        <Card.Body>
+          {sensors.length === 0 ? <p className="mb-0"><i>No SYS_STATUS telemetry yet.</i></p> : (
+            <div className="d-flex flex-wrap" style={{ gap: '8px' }}>
+              {sensors.map(s => {
+                const v = !s.enabled ? 'secondary' : (s.healthy ? 'success' : 'danger');
+                const label = !s.enabled ? 'disabled' : (s.healthy ? 'OK' : 'unhealthy');
+                return <Badge key={s.key} bg={v}>{s.label}: {label}</Badge>;
+              })}
+            </div>
+          )}
+        </Card.Body>
+      </Card>
+    );
+  }
+
+  renderSerial(serial) {
+    return (
+      <Card className="mb-3">
+        <Card.Header><h5 className="mb-0">Serial peripherals</h5></Card.Header>
+        <Card.Body>
+          {serial.length === 0 ? <p className="mb-0"><i>No serial port parameters found.</i></p> : (
+            <Table striped bordered hover size="sm" className="mb-0">
+              <thead><tr><th>Port</th><th>Protocol</th><th>Baud</th></tr></thead>
+              <tbody>
+                {serial.map(s => (
+                  <tr key={s.port}>
+                    <td>SERIAL{s.port}</td>
+                    <td>{s.protocolName}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(s.baud)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card.Body>
+      </Card>
+    );
+  }
+
+  renderServos(servos) {
+    return (
+      <Card className="mb-3">
+        <Card.Header><h5 className="mb-0">Servo outputs</h5></Card.Header>
+        <Card.Body>
+          {servos.length === 0 ? <p className="mb-0"><i>No assigned servo outputs.</i></p> : (
+            <Table striped bordered hover size="sm" className="mb-0">
+              <thead><tr><th>Ch</th><th>Function</th><th>PWM</th><th>Range</th><th>Reversed</th></tr></thead>
+              <tbody>
+                {servos.map(s => (
+                  <tr key={s.ch}>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{s.ch}</td>
+                    <td>{s.funcName}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{s.pwm === null ? '—' : s.pwm}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(s.min)}–{fmt(s.max)}</td>
+                    <td>{s.reversed ? 'Yes' : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card.Body>
+      </Card>
+    );
+  }
+
+  renderCan(can) {
+    return (
+      <Card className="mb-3">
+        <Card.Header><h5 className="mb-0">CAN / DroneCAN</h5></Card.Header>
+        <Card.Body>
+          {can.ports.length === 0 && can.drivers.length === 0 ? <p><i>No CAN parameters found.</i></p> : (
+            <Table striped bordered hover size="sm">
+              <thead><tr><th>CAN bus</th><th>Driver</th><th>Bitrate</th></tr></thead>
+              <tbody>
+                {can.ports.map(c => (
+                  <tr key={c.n}>
+                    <td>CAN{c.n}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{c.driver}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(c.bitrate)}</td>
+                  </tr>
+                ))}
+                {can.drivers.map(d => (
+                  <tr key={'d' + d.n}>
+                    <td>Driver {d.n}</td>
+                    <td colSpan={2}>{d.protocolName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+          <h6>DroneCAN nodes</h6>
+          {can.nodes.length === 0 ? (
+            <p className="mb-0"><small className="text-muted">No DroneCAN nodes seen on the MAVLink stream. Full node enumeration needs CAN forwarding from the FC — verify on-device.</small></p>
+          ) : (
+            <Table striped bordered hover size="sm" className="mb-0">
+              <thead><tr><th>Name</th><th>Health</th><th>Mode</th><th>Uptime</th></tr></thead>
+              <tbody>
+                {can.nodes.map((n, i) => (
+                  <tr key={i}>
+                    <td>{n.name || '—'}</td>
+                    <td>{n.health || '—'}</td>
+                    <td>{n.mode || '—'}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{n.uptimeSec === undefined ? '—' : n.uptimeSec + ' s'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </Card.Body>
+      </Card>
+    );
+  }
+}
+
+export default FCConfigPage;

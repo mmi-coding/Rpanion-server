@@ -27,6 +27,7 @@ import LTEModemPage from './ltemodem.jsx'
 import CellularTuningPage from './cellulartuning.jsx'
 import TelemetryInjectorPage from './telemetryinjector.jsx'
 import MavInspectorPage from './mavinspector.jsx'
+import FCConfigPage from './fcconfig.jsx'
 
 // Sidebar navigation. Home is a standalone top item; the rest are grouped into
 // collapsible categories. `code` is the short "waypoint" tag shown when the rail
@@ -35,6 +36,7 @@ const NAV_HOME = { to: '/', code: 'HOM', label: 'Home', end: true }
 const NAV_GROUPS = [
   { id: 'flight', label: 'Flight', items: [
     { to: '/controller', code: 'FC', label: 'Flight Controller' },
+    { to: '/fcconfig', code: 'CFG', label: 'FC Configuration' },
     { to: '/mavinspector', code: 'MAV', label: 'MAVLink Inspector' },
     { to: '/ntrip', code: 'NTR', label: 'NTRIP Config' },
     { to: '/telemetryinjector', code: 'TEL', label: 'Telemetry Injector' },
@@ -217,6 +219,7 @@ function AppRouter () {
           <Routes>
             <Route exact path="/" element={<Home showLogin={!isAuthenticated} />} />
             <Route exact path="/controller" element={<FCConfig />} />
+            <Route exact path="/fcconfig" element={<FCConfigPage />} />
             <Route exact path="/mavinspector" element={<MavInspectorPage />} />
             <Route exact path="/ppp" element={<PPPPage />} />
             <Route exact path="/network" element={<NetworkConfig />} />

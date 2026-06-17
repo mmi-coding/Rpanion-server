@@ -180,6 +180,69 @@ describe('MAVLink Functions', function () {
     })
   })
 
+  it('#paramRequestListSend()', function (done) {
+    const m = new mavManager(2, '127.0.0.1', 15000)
+    const udpStream = udp.createSocket('udp4')
+
+    m.eventEmitter.on('linkready', () => {
+      m.sendParamRequestList()
+    })
+
+    udpStream.on('message', (msg) => {
+      try {
+        // MAVLink2 frame: magic 0xFD, msgid little-endian in bytes 7..9
+        assert.equal(msg[0], 0xFD)
+        assert.equal(msg[7], 21) // PARAM_REQUEST_LIST
+        assert.equal(msg[8], 0)
+        assert.equal(msg[9], 0)
+        m.close()
+        udpStream.close()
+        done()
+      } catch (e) {
+        m.close()
+        udpStream.close()
+        done(e)
+      }
+    })
+
+    udpStream.send(Buffer.from([0xfd, 0x06]), 15000, '127.0.0.1', (error) => {
+      if (error) {
+        console.error(error)
+      }
+    })
+  })
+
+  it('#paramReadSend()', function (done) {
+    const m = new mavManager(2, '127.0.0.1', 15000)
+    const udpStream = udp.createSocket('udp4')
+
+    m.eventEmitter.on('linkready', () => {
+      m.sendParamRead(7)
+    })
+
+    udpStream.on('message', (msg) => {
+      try {
+        assert.equal(msg[0], 0xFD)
+        assert.equal(msg[7], 20) // PARAM_REQUEST_READ
+        assert.equal(msg[8], 0)
+        assert.equal(msg[9], 0)
+        m.close()
+        udpStream.close()
+        done()
+      } catch (e) {
+        m.close()
+        udpStream.close()
+        done(e)
+      }
+    })
+
+    udpStream.send(Buffer.from([0xfd, 0x06]), 15000, '127.0.0.1', (error) => {
+      if (error) {
+        console.error(error)
+      }
+    })
+  })
+
   it('#heartbeatSend()', function (done) {
     const m = new mavManager(2, '127.0.0.1', 15000)
     const udpStream = udp.createSocket('udp4')

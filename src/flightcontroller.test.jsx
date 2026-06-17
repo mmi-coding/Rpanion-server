@@ -19,9 +19,11 @@ const fcDetails = {
   enableDSRequest: false, doLogging: false
 }
 const fcOutputs = { UDPoutputs: [] }
+// default config overview: no params downloaded yet (net null → "click Refresh")
+const fcOverviewNull = { state: 'idle', received: 0, total: 0, net: null }
 
 function defaultFetch (overrides = {}) {
-  return mockFetch({ '/api/FCDetails': fcDetails, '/api/FCOutputs': fcOutputs, ...overrides })
+  return mockFetch({ '/api/FCDetails': fcDetails, '/api/FCOutputs': fcOutputs, '/api/FCConfigOverview': fcOverviewNull, ...overrides })
 }
 
 function renderFC () {
@@ -252,6 +254,102 @@ describe('#FCPage() multi-link', function () {
     await page.flush()
     expect(findButton(page, 'Add Link').disabled).toBe(true)
     expect(page.container.textContent).toContain('Maximum of 4 links')
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
+  // Ethernet (NET_*) parameters section
+  // -------------------------------------------------------------------------
+  const netA = {
+    state: 'complete', received: 5, total: 5,
+    net: {
+      present: true, enable: 1, dhcp: 0, ip: '192.168.144.14', netmask: 24, gateway: null,
+      ports: [
+        { n: 1, type: 1, typeName: 'UDP Client', protocol: 2, protocolName: 'MAVLink2', ip: '192.168.144.10', port: 14550 },
+        { n: 2, type: 2, typeName: 'UDP Server', protocol: null, protocolName: null, ip: null, port: null }
+      ]
+    }
+  }
+  const netB = {
+    state: 'complete', received: 5, total: 5,
+    net: { present: true, enable: 0, dhcp: 1, ip: null, netmask: null, gateway: '192.168.1.1', ports: [] }
+  }
+
+  test('NET section: null overview shows the "not downloaded" prompt', async function () {
+    defaultFetch()
+    const { page } = renderFC()
+    await page.flush()
+    expect(page.container.textContent).toContain('No parameters downloaded yet — click Refresh from FC')
+    page.unmount()
+  })
+
+  test('NET section: downloaded but unset shows the "no NET_ params" note', async function () {
+    defaultFetch({ '/api/FCConfigOverview': { state: 'complete', received: 5, total: 5, net: { present: false } } })
+    const { page } = renderFC()
+    await page.flush()
+    expect(page.container.textContent).toContain('No NET_ parameters set on this flight controller')
+    page.unmount()
+  })
+
+  test('NET section: renders decoded NET_ values + per-port table', async function () {
+    defaultFetch({ '/api/FCConfigOverview': netA })
+    const { page } = renderFC()
+    await page.flush()
+    const txt = page.container.textContent
+    expect(txt).toContain('Remote IP') // the per-port table header (unique to the rendered table)
+    expect(txt).toContain('192.168.144.14') // IP
+    expect(txt).toContain('UDP Client') // port 1 type
+    page.unmount()
+  })
+
+  test('NET section: complementary value branches (no IP/netmask, gateway set, no ports)', async function () {
+    defaultFetch({ '/api/FCConfigOverview': netB })
+    const { page } = renderFC()
+    await page.flush()
+    expect(page.container.textContent).toContain('192.168.1.1') // gateway shown
+    page.unmount()
+  })
+
+  test('NET section: Refresh from FC POSTs a param refresh', async function () {
+    const stub = defaultFetch({ 'POST /api/FCParamRefresh': { started: true, state: 'downloading', received: 0, total: 0 } })
+    const { page } = renderFC()
+    await page.flush()
+    page.click(findButton(page, 'Refresh from FC'))
+    await page.flush()
+    expect(stub.mock.calls.some(c => c[0] === '/api/FCParamRefresh' && c[1]?.method === 'POST')).toBe(true)
+    page.unmount()
+  })
+
+  test('NET section: FCParamStatus completion refetches the overview', async function () {
+    let n = 0
+    const seq = [fcOverviewNull, netA]
+    defaultFetch({ '/api/FCConfigOverview': () => seq[Math.min(n++, seq.length - 1)] })
+    const { page } = renderFC()
+    await page.flush()
+    expect(page.container.textContent).not.toContain('Remote IP') // table not rendered yet
+    act(() => { lastSocket().fire('FCParamStatus', { state: 'downloading', received: 1, total: 5 }) })
+    expect(page.container.textContent).toContain('downloading') // progress badge
+    act(() => { lastSocket().fire('FCParamStatus', { state: 'complete', received: 5, total: 5 }) })
+    await page.flush()
+    expect(page.container.textContent).toContain('Remote IP') // per-port table now rendered
+    page.unmount()
+  })
+
+  test('NET section: overview fetch error surfaces in the error modal', async function () {
+    defaultFetch({ '/api/FCConfigOverview': () => { throw new Error('net boom') } })
+    const { page } = renderFC()
+    await page.flush()
+    expect(document.body.textContent).toContain('net boom')
+    page.unmount()
+  })
+
+  test('NET section: refresh error surfaces in the error modal', async function () {
+    defaultFetch({ 'POST /api/FCParamRefresh': () => { throw new Error('refresh boom') } })
+    const { page } = renderFC()
+    await page.flush()
+    page.click(findButton(page, 'Refresh from FC'))
+    await page.flush()
+    expect(document.body.textContent).toContain('refresh boom')
     page.unmount()
   })
 })
