@@ -222,7 +222,7 @@ class FCConfigPage extends basePage {
             <Button size="sm" onClick={this.handleScanDroneCAN} disabled={this.state.dcScanning}>
               {this.state.dcScanning ? 'Scanning…' : 'Scan DroneCAN bus'}
             </Button>
-            <HelpTip text="Ask the flight controller to forward its CAN bus over MAVLink and enumerate live DroneCAN nodes (id, name, health, versions). Runs for a few seconds; safe and read-only (it only sends standard GetNodeInfo requests)." />
+            <HelpTip text="Ask the flight controller to forward its CAN bus over MAVLink and enumerate live DroneCAN nodes (id, name, health, versions) — the same thing a ground station's DroneCAN screen does. The FC can forward only one bus at a time, so this sweeps each CAN bus in turn (~5 s per bus). Safe and read-only (it only sends standard GetNodeInfo requests)." />
             {this.state.dcStats && this.state.dcStats.frames > 0 && (
               <small className="text-muted" style={{ marginLeft: '8px', fontVariantNumeric: 'tabular-nums' }}>
                 bus traffic: {this.state.dcStats.frames} frames · {this.state.dcStats.nodeStatus} status · {this.state.dcStats.nodeInfo} info replies

@@ -49,50 +49,53 @@ overview is fetched over `GET /api/FCConfigOverview`.
 The CAN *bus* config (driver/protocol/bitrate) comes from parameters, but listing
 the actual **nodes** on the bus needs more: ArduPilot doesn't stream node status
 over MAVLink. **Scan DroneCAN bus** does what a ground station's DroneCAN screen
-does — it asks the FC to tunnel the CAN bus over MAVLink (`MAV_CMD_CAN_FORWARD`,
-re-requested every second so the tunnel stays open), then speaks DroneCAN
-(UAVCAN v0) over the forwarded `CAN_FRAME`s:
+does — it asks the FC to tunnel a CAN bus over MAVLink (`MAV_CMD_CAN_FORWARD`,
+re-sent every second so the tunnel stays open), then speaks DroneCAN (UAVCAN v0)
+over the forwarded `CAN_FRAME`s:
 
 - decodes periodic **NodeStatus** broadcasts → node id, health, mode, uptime;
 - sends a **GetNodeInfo** request to each discovered node → its **name**
   (e.g. `org.ardupilot.gps`), SW/HW version and unique id.
 
-The scan runs for a few seconds and the node table updates live (pushed as the
-`DroneCANNodes` socket.io event). It is **read-only** — the only frames injected
-are standard empty GetNodeInfo requests; no node is configured. Backend:
-`server/droneCan.ts` (`DroneCANMonitor`).
+This mirrors the reference implementation — the **DroneCAN GUI Tool**, built on
+**pydronecan**'s `mavcan` driver (connection string `mavcan:udp:…`). Two facts,
+from that driver and from `AP_CANManager/AP_MAVLinkCAN.cpp`, shape how we scan:
 
-ArduPilot specifics handled here (from `AP_CANManager/AP_MAVLinkCAN.cpp`):
-`MAV_CMD_CAN_FORWARD` and `CAN_FILTER_MODIFY` take a **1-based** bus (we add 1;
-`CAN_FRAME` itself is 0-based); forwarding lapses after 5 s (re-requested each
-second); and the FC forwards into a small (~20-frame) buffer, so we send a
-`CAN_FILTER_MODIFY` (ids sorted, message type 341 + service type 1) to forward
-only NodeStatus + GetNodeInfo and keep that buffer from saturating.
+- **One bus at a time.** The FC forwards exactly **one** CAN bus per MAVLink
+  channel — a new `MAV_CMD_CAN_FORWARD` *unregisters* the previous bus
+  (`callback_bus` is a single field). pydronecan likewise forwards one bus per
+  driver instance, and Mission Planner has a separate button per CAN port. So one
+  **Scan** click **sweeps each requested bus in turn** (~5 s dwell each, re-arming
+  the active bus every second), accumulating nodes from all of them. (`bus` is
+  **1-based** in `MAV_CMD_CAN_FORWARD`/`CAN_FILTER_MODIFY` — we add 1; `CAN_FRAME`
+  itself is 0-based.)
+- **No CAN filter.** Like the GUI tool, we forward **all** frames;
+  `CAN_FILTER_MODIFY` is an optional optimisation that defaults off (the wrapper
+  `sendCanFilter()` stays available for a busy-bus fallback, but the scan no longer
+  uses it — an earlier build did, and it coincided with the names problem below).
 
-**Status / limitation (verified on-device 2026-06-17, Pixhawk 6X):** node
-**discovery + health + mode + uptime** and the **CAN bus config** work reliably.
-Node **names/versions** (via GetNodeInfo) **do not resolve on this FC**: the
-flight controller's CAN-forward path systematically drops the **tail frames** of
-each multi-frame GetNodeInfo response (we receive the first 1–3 frames, never the
-end-of-transfer frame), so reassembly never completes. This was confirmed to be
-**FC-side, not ours**: it reproduces identically over **both Ethernet/UDP and a
-direct USB link**, at minimal traffic, with the CAN filter active and responses
-filtered to ours only (clean per-transfer-id sequences, none ending). The decoder
-itself is correct (unit-tested against full synthetic responses). A node with no
-resolved name still shows its id/health/mode/uptime — which is the useful part.
+The node table updates live (pushed as the `DroneCANNodes` socket.io event). It is
+**read-only** — the only frames injected are standard empty GetNodeInfo requests;
+no node is configured. We only reassemble GetNodeInfo responses addressed to us
+(the autopilot also polls GetNodeInfo; its responses share the node's source id and
+would otherwise corrupt reassembly). Backend: `server/droneCan.ts`
+(`DroneCANMonitor`).
 
-We still send GetNodeInfo (a few retries) in case a node's response is short
-enough to fit, and we only reassemble responses addressed to us (the autopilot
-also polls GetNodeInfo; its responses share the node's source id and would
-otherwise corrupt reassembly).
+**Names/versions status.** An earlier build forwarded buses in a single (buggy)
+loop — which, given the one-bus-at-a-time FC behaviour, meant only the *last* bus
+was ever live — and applied `CAN_FILTER_MODIFY`. Under that build, multi-frame
+GetNodeInfo responses were truncated (tail frames dropped) so names never resolved.
+The GUI-parity rework (sweep one bus at a time, no filter) is the like-for-like
+match to the tool that *does* resolve names; whether names now resolve on this FC
+is re-verified on-device — see docs/reports/feature-37-dronecan-nodes.md for the
+current result. A node with no resolved name still shows its id/health/mode/uptime.
 
-The alternative transport — **SLCAN** (what Mission Planner's DroneCAN GUI uses) —
-was also investigated and is **not viable from the companion over Ethernet** on
-this FC: SLCAN-over-USB is bench-only (needs the FC USB cable), and
+The alternative transport — **SLCAN** (the *other* way Mission Planner's DroneCAN
+GUI connects) — was also investigated and is **not viable from the companion over
+Ethernet** on this FC: SLCAN-over-USB is bench-only (needs the FC USB cable), and
 SLCAN-via-MAVLink (`SERIAL_CONTROL` tunnel) returned no response over the Ethernet
-link in testing — SLCAN binds to a *serial* port and our link is a NET port. So for
-node **names/params**, use Mission Planner's DroneCAN GUI over a USB/serial SLCAN
-connection (bench). Full details: docs/reports/feature-37-dronecan-nodes.md.
+link — SLCAN binds to a *serial* port and our link is a NET port. The `mavcan`
+(CAN-over-MAVLink) path used here is the transport that works over our link.
 
 ## Notes & limits
 

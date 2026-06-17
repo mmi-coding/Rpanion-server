@@ -131,6 +131,43 @@ Mission Planner's DroneCAN GUI over a **USB/serial SLCAN** connection (bench). I
 future test shows MP's "SLCan Mode" working over Ethernet/VPN, capture its exact
 `SERIAL_CONTROL`/param sequence and revisit — our DroneCAN decoder is ready to reuse.
 
+## GUI-parity rework — sweep one bus at a time, no filter (2026-06-17)
+
+On a live drone the scan listed only **one** node, on CAN2; a GPS on CAN1 and other
+nodes never appeared. Re-checking how the **reference tool** actually gets its data
+(rather than assuming) surfaced two divergences in our scan, both now fixed:
+
+- **The FC forwards exactly one bus at a time.** `AP_MAVLinkCAN.cpp` keeps a single
+  `can_forward.callback_bus`; a new `MAV_CMD_CAN_FORWARD` *unregisters* the previous
+  bus's callback. Our `_forward()` looped `canForward(0)` then `canForward(1)` in one
+  pass, so the bus-1 request immediately cancelled bus 0 — **only the last bus in the
+  list was ever live** (CAN2), which is exactly why CAN1 nodes were invisible. The
+  reference agrees on the constraint: pydronecan's `mavcan` driver (what the **DroneCAN
+  GUI Tool** uses; connect string `mavcan:udp:…`) forwards **one bus per driver
+  instance**, and Mission Planner exposes a **separate button per CAN port**. Fix: the
+  scan now **dwells on each requested bus in turn** (`PER_BUS_MS` = 5 s, re-arming the
+  active bus every second; total window = `buses.length × PER_BUS_MS`), rotating
+  through them — one **Scan** click still covers every bus.
+- **No `CAN_FILTER_MODIFY`.** pydronecan forwards **all** frames by default (the filter
+  is opt-in, only sent if a `filter_list` is configured). We had added a filter to
+  protect the FC's ~20-frame forward buffer, but it was also the one variable present
+  during the multi-frame GetNodeInfo truncation. The scan no longer sends it (the
+  `sendCanFilter()`/`canFilter()` wrappers stay for a busy-bus fallback, mirroring
+  pydronecan's optional filter). GetNodeInfo retries now target only the bus currently
+  being forwarded (a request on a non-forwarded bus goes nowhere).
+
+Sources (primary): DroneCAN spec §4.3 *MAVLink bus transport layer*; pydronecan
+`dronecan/driver/mavcan.py` (one bus per instance, `MAV_CMD_CAN_FORWARD` param1 =
+`bus+1` re-sent at 1 Hz, `CAN_FILTER_MODIFY` only if configured); ArduPilot
+`AP_CANManager/AP_MAVLinkCAN.cpp` (single `callback_bus`, filter-id bit extraction);
+ArduPilot DroneCAN GUI docs + Mission Planner DroneCAN/UAVCAN setup (per-port buttons).
+
+**This re-opens the names question.** The earlier "names never resolve — FC-side
+limitation" conclusion was reached *with* the combined-loop bug and the filter both
+present. Now that the scan is a like-for-like match to the tool that does resolve
+names, whether GetNodeInfo completes on this FC is to be re-verified on-device (see
+the checklist below). Discovery/health/mode/uptime were never in doubt.
+
 ## Needs-on-device (remaining)
 
 Appended to `docs/ONDEVICE-CHECKLIST.md`: confirm NodeStatus **health/mode bit

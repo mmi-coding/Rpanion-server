@@ -108,16 +108,28 @@ describe('DroneCAN', function () {
     assert.equal(r.accept('d', [2], parseTail(0x80 | 0)), null) // same toggle (0) → drop
   })
 
-  it('scan() forwards each bus immediately, re-forwards every second, and auto-stops', function () {
+  it('scan() sweeps one bus at a time (the FC forwards a single bus), re-arms it, rotates, and auto-stops', function () {
     const m = new DroneCANMonitor(fc)
     m.scan([0, 1])
-    assert.equal(fc.canForward.callCount, 2) // immediate forward of both buses
+    assert.equal(fc.canForward.callCount, 1) // ONE bus forwarded at a time, not both
+    assert.ok(fc.canForward.calledWith(0)) // starts on the first bus
     assert.equal(m.scanning, true)
     clock.tick(1000)
-    assert.equal(fc.canForward.callCount, 4) // re-forward
-    clock.tick(10000) // past the scan window
+    assert.equal(fc.canForward.callCount, 2) // re-armed, still dwelling on bus 0
+    assert.equal(fc.canForward.lastCall.args[0], 0)
+    clock.tick(5000) // past the 5 s dwell → rotate to bus 1
+    assert.ok(fc.canForward.calledWith(1))
+    clock.tick(10000) // past the scan window (buses.length * PER_BUS_MS)
     assert.equal(m.scanning, false)
     assert.equal(m.forwardTimer, null)
+  })
+
+  it('scan() defaults an empty bus list to bus 0', function () {
+    const m = new DroneCANMonitor(fc)
+    m.scan([])
+    assert.deepEqual(m.buses, [0])
+    assert.ok(fc.canForward.calledWith(0))
+    m.stop()
   })
 
   it('stop() is idempotent / safe with no timers', function () {
@@ -157,8 +169,7 @@ describe('DroneCAN', function () {
     m.buses = [0]
     m.nodes[5] = { id: 5, bus: 0, infoTries: 0 } // nameless + bus → requested
     m._forward()
-    assert.equal(fc.canForward.callCount, 1) // forwarded bus 0
-    assert.ok(fc.canFilter.calledWith(0, [1, 341])) // restrict to GetNodeInfo + NodeStatus
+    assert.equal(fc.canForward.callCount, 1) // forwarded bus 0 (no CAN_FILTER_MODIFY — all frames forwarded)
     assert.equal(fc.sendCanFrame.callCount, 1) // GetNodeInfo requested
     assert.equal(fc.sendCanFrame.args[0][0], 0) // on the node's bus
     assert.equal(fc.sendCanFrame.args[0][2].length, 1) // empty request: just a tail byte
