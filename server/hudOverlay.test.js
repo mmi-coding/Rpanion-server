@@ -250,4 +250,168 @@ describe('HUD overlay helpers (#173)', function () {
       assert.equal(text, 'ALT 124m  SPD 14.2m/s\nHDG 271°  BAT 15.8V 62%\nAUTO  GPS 3D/11')
     })
   })
+
+  // ── live "show real values" preview (HUD editor) ──────────────────────────
+  describe('#formatHudElement()', function () {
+    it('renders every text element from a full field dict (parity with video-server.py)', function () {
+      const fullHud = {
+        alt: 124.4, altRel: 38.2, spd: 14.23, airspeed: 15.12, climb: 0.53, throttle: 45.6, rangefinder: 2.44,
+        hdg: 271.4, turnRate: 5.2, gload: 1.23,
+        gpsFix: 3, gpsSats: 11, lat: 37.422001, lon: -122.084001, hdop: 0.84, gpsCourse: 270.4,
+        homeDist: 420.6, wpDist: 120.6, wpNum: 3, xtrack: 1.23, altError: 0.53,
+        batV: 15.84, batPct: 62, current: 8.44, mah: 1240.6, battTemp: 32.4, battTimeRemaining: 750, cpuLoad: 38.2, dropRate: 0.4,
+        rcRssi: 95.4, radioRssi: 180.4, radioRemRssi: 175.4, radioNoise: 40.4,
+        windSpeed: 4.23, windDir: 210.4, baroTemp: 24.4, pressure: 1013.4,
+        mode: 'AUTO', armed: true, timer: 222, clock: '14:05:32',
+        vibe: 12.4, vibeClip: 0,
+        modemFix: 'OK', modemLat: 37.422, modemLon: -122.084, modemAlt: 42.4
+      }
+      const expected = {
+        alt: 'ALT 124m', altRel: 'AGL 38m', spd: 'SPD 14.2', airspeed: 'AIR 15.1', climb: 'VS 0.5',
+        throttle: 'THR 46%', rangefinder: 'RNG 2.4m', hdg: 'HDG 271', turnRate: 'TRN 5°/s', gload: '1.2G',
+        gps: 'GPS 3D/11', lat: 'LAT 37.42200', lon: 'LON -122.08400', hdop: 'HDOP 0.8', gpsCourse: 'CRS 270°',
+        homeDist: 'HOME 421m', wpDist: 'WP 121m', wpNum: 'WP#3', xtrack: 'XTK 1.2m', altError: 'AERR 0.5m',
+        batV: 'BAT 15.8V', batPct: '62%', current: '8.4A', mah: '1241mAh', battTemp: 'BT 32°C',
+        battTimeRemaining: 'BTL 12:30', cpuLoad: 'CPU 38%', dropRate: 'DROP 0%',
+        rcRssi: 'RC 95%', radioRssi: 'RSSI 180', radioRemRssi: 'RRSSI 175', radioNoise: 'NOISE 40',
+        windSpeed: 'WND 4.2m/s', windDir: 'WDIR 210°', baroTemp: 'TMP 24°C', pressure: 'PRS 1013hPa',
+        mode: 'AUTO', armed: 'ARMED', timer: '3:42', clock: '14:05:32', vibe: 'VIB 12', vibeClip: 'CLIP 0',
+        modemFix: 'mGPS OK', modemLat: 'mLAT 37.42200', modemLon: 'mLON -122.08400', modemAlt: 'mALT 42m'
+      }
+      for (const type of Object.keys(expected)) {
+        assert.equal(hud.formatHudElement(type, fullHud), expected[type], 'mismatch for ' + type)
+      }
+    })
+
+    it('renders "--" placeholders for every null field (FC connected but quiet / disconnected)', function () {
+      const e = hud.emptyHudData()
+      const expected = {
+        alt: 'ALT --', spd: 'SPD --', throttle: 'THR --', hdg: 'HDG --', turnRate: 'TRN --', gload: '--',
+        gps: 'GPS --/--', wpNum: 'WP#--', batV: 'BAT --', batPct: '--%', current: '--', mah: '--',
+        battTimeRemaining: 'BTL --:--', mode: 'MODE --', armed: 'DISARM', timer: '--:--', clock: '--:--:--',
+        modemFix: 'mGPS --', modemAlt: 'mALT --'
+      }
+      for (const type of Object.keys(expected)) {
+        assert.equal(hud.formatHudElement(type, e), expected[type], 'mismatch for ' + type)
+      }
+    })
+
+    it('returns "" for graphic elements and unknown types', function () {
+      assert.equal(hud.formatHudElement('horizon', {}), '')
+      assert.equal(hud.formatHudElement('compass', {}), '')
+      assert.equal(hud.formatHudElement('homeDir', {}), '')
+      assert.equal(hud.formatHudElement('nonsense', {}), '')
+    })
+  })
+
+  describe('#hudDataFromSnapshot()', function () {
+    const fullSnap = [
+      { name: 'VFR_HUD', stale: false, fields: { alt: 124, groundspeed: 14.2, airspeed: 15.1, heading: 271, climb: 0.5, throttle: 45 } },
+      { name: 'GLOBAL_POSITION_INT', stale: false, fields: { relativeAlt: 38000, lat: 374220000, lon: -1220840000 } },
+      { name: 'HOME_POSITION', stale: false, fields: { latitude: 374200000, longitude: -1220800000 } },
+      { name: 'SYS_STATUS', stale: false, fields: { voltageBattery: 15800, batteryRemaining: 62, currentBattery: 840, load: 380, dropRateComm: 0 } },
+      { name: 'BATTERY_STATUS', stale: false, fields: { currentConsumed: 1240, temperature: 3200, timeRemaining: 750 } },
+      { name: 'GPS_RAW_INT', stale: false, fields: { fixType: 3, satellitesVisible: 11, eph: 80, cog: 27000 } },
+      { name: 'NAV_CONTROLLER_OUTPUT', stale: false, fields: { wpDist: 120, xtrackError: 1.2, altError: 0.5 } },
+      { name: 'MISSION_CURRENT', stale: false, fields: { seq: 3 } },
+      { name: 'RC_CHANNELS', stale: false, fields: { rssi: 242 } },
+      { name: 'RADIO_STATUS', stale: false, fields: { rssi: 180, remrssi: 175, noise: 40 } },
+      { name: 'WIND', stale: false, fields: { speed: 4.2, direction: 210 } },
+      { name: 'SCALED_PRESSURE', stale: false, fields: { temperature: 2400, pressAbs: 1013 } },
+      { name: 'RANGEFINDER', stale: false, fields: { distance: 2.4 } },
+      { name: 'VIBRATION', stale: false, fields: { vibrationX: 10, vibrationY: 12, vibrationZ: 8, clipping0: 0 } },
+      { name: 'SCALED_IMU', stale: false, fields: { xacc: 0, yacc: 0, zacc: 1000 } },
+      { name: 'HEARTBEAT', stale: false, fields: { type: 2, customMode: 3, baseMode: 128 } },
+      { name: 'ATTITUDE', stale: false, fields: { roll: 0, pitch: 0, yawspeed: 0.1 } }
+    ]
+
+    it('applies the same unit conversions as updateHudFromPacket()', function () {
+      const h = hud.hudDataFromSnapshot(fullSnap)
+      assert.equal(h.alt, 124)
+      assert.equal(h.spd, 14.2)
+      assert.equal(h.hdg, 271)
+      assert.equal(h.altRel, 38) // mm → m
+      assert.ok(Math.abs(h.lat - 37.422) < 1e-6)
+      assert.ok(Math.abs(h.lon + 122.084) < 1e-6)
+      assert.equal(h.batV, 15.8) // mV → V
+      assert.equal(h.batPct, 62)
+      assert.equal(h.current, 8.4) // cA → A
+      assert.equal(h.cpuLoad, 38) // 0.1% → %
+      assert.equal(h.mah, 1240)
+      assert.equal(h.battTemp, 32) // cdegC → °C
+      assert.equal(h.battTimeRemaining, 750)
+      assert.equal(h.gpsFix, 3)
+      assert.equal(h.gpsSats, 11)
+      assert.equal(h.hdop, 0.8) // eph/100
+      assert.equal(h.gpsCourse, 270) // cdeg → deg
+      assert.equal(h.wpDist, 120)
+      assert.equal(h.wpNum, 3)
+      assert.equal(h.rcRssi, 95) // 242/254*100, rounded
+      assert.equal(h.radioRssi, 180)
+      assert.equal(h.windSpeed, 4.2)
+      assert.equal(h.baroTemp, 24)
+      assert.equal(h.rangefinder, 2.4)
+      assert.equal(h.vibe, 12) // max(x,y,z)
+      assert.equal(h.gload, 1) // 1 g straight down
+      assert.equal(h.mode, 'AUTO')
+      assert.equal(h.armed, true)
+      assert.equal(h.roll, 0)
+      assert.ok(Math.abs(h.turnRate - 5.7296) < 1e-3) // 0.1 rad/s → deg/s
+      assert.ok(h.homeDist > 0) // GLOBAL_POSITION_INT + HOME_POSITION → distance computed
+      assert.ok(h.homeDir >= 0 && h.homeDir <= 360)
+    })
+
+    it('maps sentinel "unknown" values to null, and skips home distance without HOME_POSITION', function () {
+      const snap = [
+        { name: 'GLOBAL_POSITION_INT', stale: false, fields: { relativeAlt: 0, lat: 0, lon: 0 } }, // no HOME_POSITION
+        { name: 'SYS_STATUS', stale: false, fields: { voltageBattery: 65535, batteryRemaining: -1, currentBattery: -1, load: 0, dropRateComm: 0 } },
+        { name: 'BATTERY_STATUS', stale: false, fields: { currentConsumed: -1, temperature: 32767, timeRemaining: 0 } },
+        { name: 'GPS_RAW_INT', stale: false, fields: { fixType: 0, satellitesVisible: 0, eph: 65535, cog: 65535 } },
+        { name: 'RC_CHANNELS', stale: false, fields: { rssi: 255 } }
+      ]
+      const h = hud.hudDataFromSnapshot(snap)
+      assert.equal(h.batV, null)
+      assert.equal(h.batPct, null)
+      assert.equal(h.current, null)
+      assert.equal(h.mah, null)
+      assert.equal(h.battTemp, null)
+      assert.equal(h.battTimeRemaining, null)
+      assert.equal(h.hdop, null)
+      assert.equal(h.gpsCourse, null)
+      assert.equal(h.rcRssi, null)
+      assert.equal(h.homeDist, null) // position present but no home → not computed
+    })
+
+    it('ignores stale and malformed snapshot entries, and tolerates a non-array', function () {
+      const h = hud.hudDataFromSnapshot([
+        null,
+        { name: 5, fields: {} },
+        { name: 'SYSTEM_TIME', stale: false }, // valid + fresh but no fields → defaults to {}
+        { name: 'VFR_HUD', stale: true, fields: { alt: 999 } } // stale → ignored
+      ])
+      assert.equal(h.alt, null)
+      assert.deepEqual(hud.hudDataFromSnapshot(null), hud.emptyHudData())
+    })
+  })
+
+  describe('#liveHudValues()', function () {
+    it('reports connected + per-text-element values when an FC is transmitting', function () {
+      const snap = [{ name: 'VFR_HUD', stale: false, fields: { alt: 124, groundspeed: 14.2, heading: 271 } }]
+      const out = hud.liveHudValues(snap, '09:08:07')
+      assert.equal(out.connected, true)
+      assert.equal(out.values.alt, 'ALT 124m')
+      assert.equal(out.values.hdg, 'HDG 271')
+      assert.equal(out.values.clock, '09:08:07') // caller-supplied wall clock
+      assert.strictEqual(out.values.horizon, undefined) // graphic elements have no text value
+    })
+
+    it('reports disconnected with "--" placeholders for an empty / all-stale / non-array snapshot', function () {
+      const empty = hud.liveHudValues([])
+      assert.equal(empty.connected, false)
+      assert.equal(empty.values.alt, 'ALT --')
+      assert.equal(empty.values.clock, '--:--:--') // no clock supplied
+      assert.equal(hud.liveHudValues([{ name: 'VFR_HUD', stale: true, fields: {} }]).connected, false)
+      assert.equal(hud.liveHudValues(null).connected, false)
+    })
+  })
 })

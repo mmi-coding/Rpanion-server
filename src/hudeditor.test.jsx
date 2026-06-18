@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest'
 
 import { renderPage, mockFetch } from '../test/ui.jsx'
+import { lastSocket } from '../test/socketMock.js'
 import HudEditorPage from './hudeditor.jsx'
 
 vi.mock('socket.io-client', () => import('../test/socketMock.js'))
@@ -591,6 +592,43 @@ describe('#HudEditorPage()', function () {
     const { page, getRef } = renderEd(() => fetchWith({ '/api/videodevices': () => { throw new Error('net') } }))
     await page.flush()
     expect(getRef().state.cameras).toEqual([])
+    page.unmount()
+  })
+
+  test('"Show live values" swaps mock chips for real FC telemetry and shows a status line', async function () {
+    const { page, getRef } = renderEd(() => fetchWith())
+    await page.flush()
+    // off by default → chips show the mock sample, no status line
+    expect(page.container.querySelector('[data-eltype="alt"]').textContent).toContain('ALT 124m')
+    expect(page.container.querySelector('[data-testid="live-status"]')).toBeFalsy()
+    // turn it on; before any packet arrives the chip keeps the mock sample and the
+    // status warns there's no telemetry yet (live.connected is false)
+    act(() => { page.container.querySelector('[data-testid="show-live"]').click() })
+    expect(getRef().state.liveValues).toBe(true)
+    expect(page.container.querySelector('[data-testid="live-status"]').textContent).toContain('Waiting for telemetry')
+    expect(page.container.querySelector('[data-eltype="alt"]').textContent).toContain('ALT 124m')
+    // a live packet arrives (FC connected) → the alt chip shows the real reading,
+    // while modemFix (absent from the values map) falls back to its mock sample
+    act(() => { lastSocket().fire('HUDLive', { connected: true, values: { alt: 'ALT 250m' } }) })
+    expect(page.container.querySelector('[data-eltype="alt"]').textContent).toContain('ALT 250m')
+    expect(page.container.querySelector('[data-eltype="alt"]').textContent).not.toContain('ALT 124m')
+    expect(page.container.querySelector('[data-eltype="modemFix"]').textContent).toContain('mGPS OK')
+    expect(page.container.querySelector('[data-testid="live-status"]').textContent).toContain('Live')
+    // toggling back off restores every mock sample
+    act(() => { page.container.querySelector('[data-testid="show-live"]').click() })
+    expect(page.container.querySelector('[data-eltype="alt"]').textContent).toContain('ALT 124m')
+    expect(page.container.querySelector('[data-testid="live-status"]')).toBeFalsy()
+    page.unmount()
+  })
+
+  test('a socket reconnect re-fetches the layout', async function () {
+    const fetch = fetchWith()
+    const page = renderPage(<HudEditorPage />)
+    await page.flush()
+    const before = fetch.mock.calls.filter(c => c[0] === '/api/hudlayout').length
+    act(() => { lastSocket().fire('reconnect') })
+    await page.flush()
+    expect(fetch.mock.calls.filter(c => c[0] === '/api/hudlayout').length).toBeGreaterThan(before)
     page.unmount()
   })
 })

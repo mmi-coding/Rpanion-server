@@ -15,7 +15,8 @@ import './css/styles.css';
 // of every text field is editable, globally and per-element.
 class HudEditorPage extends basePage {
   constructor(props) {
-    super(props, false); // no socket — layout is fetched/saved over REST
+    super(props, true); // socket: layout is fetched/saved over REST, but live FC
+    // telemetry (the "show live values" backdrop) arrives over socket.io
     this.state = {
       ...this.state,
       catalog: [],   // [{ type, section, label, mock, graphic }]
@@ -29,6 +30,11 @@ class HudEditorPage extends basePage {
       selectedCamera: '',   // device value of the camera shown behind the HUD
       showCamera: false,    // toggle the live camera backdrop
       cameraError: false,   // the preview <img> failed to load (busy / no signal)
+      liveValues: false,    // toggle: show real FC telemetry instead of mock data
+      // live per-element values pushed by the backend (server/index.ts → HUDLive):
+      // { connected, values: { type: 'ALT 124m', … } }. connected = an FC is
+      // actually transmitting (≥1 non-stale message)
+      live: { connected: false, values: {} },
       // artificial-horizon options (INAV-inspired): AHI styles + aircraft markers
       horizonOpts: { styles: ['ladder', 'line', 'ticks'], markers: ['wings', 'crosshair', 'dot', 'caret', 'drone'] },
       selectedType: null, // element whose style is being edited
@@ -37,6 +43,21 @@ class HudEditorPage extends basePage {
       error: null
     }
     this.canvasRef = React.createRef();
+
+    // live FC telemetry for the "show live values" preview (pushed ~1 Hz)
+    this.socket.on('HUDLive', (msg) => this.setState({ live: msg }));
+    this.socket.on('reconnect', () => this.componentDidMount());
+  }
+
+  toggleLive = () => this.setState({ liveValues: !this.state.liveValues })
+
+  // the value shown on a text chip: the live FC reading when "show live values" is
+  // on and a reading has arrived, otherwise the mock sample (WYSIWYG layout)
+  chipValue(type) {
+    if (this.state.liveValues && this.state.live.values[type] != null) {
+      return this.state.live.values[type];
+    }
+    return this.catalogFor(type).mock;
   }
 
   componentDidMount() {
@@ -408,7 +429,7 @@ class HudEditorPage extends basePage {
           fontSize: 'calc(' + eff.size + ' / 1600 * 100cqw)',
           border: '1px solid ' + (selected ? '#4fa3ff' : 'rgba(255,255,255,0.35)')
         }}>
-        {e.icon && this.renderIcon(e.type, e.iconColor || '#7fe9c8', e.iconScale || 1)}{this.catalogFor(e.type).mock}
+        {e.icon && this.renderIcon(e.type, e.iconColor || '#7fe9c8', e.iconScale || 1)}{this.chipValue(e.type)}
       </div>
     );
   }
@@ -575,6 +596,7 @@ class HudEditorPage extends basePage {
         <p><i>Arrange the graphic HUD: drag elements on the screen, pick which stats and icons to show, and style the text — each chip shows the value exactly as it will appear on the video.</i></p>
         <HelpSection title="About the HUD editor">
           <p>This configures the <b>Graphic</b> Telemetry HUD (enable it on the Photo &amp; Video page, HUD Style = Graphic). The black area below represents your video frame, drawn with <b>mock data</b> so you see real-looking values. Drag an element to position it; tick <b>Show</b> to include a stat and <b>Icon</b> to draw its icon. Click an element to change its <b>font, size and colour</b> — or set those globally below. For a field with its icon shown, you can also size and colour the <b>icon</b> independently (it defaults to cyan). Press <b>Save</b> to apply — a running graphic stream updates live.</p>
+          <p>Turn on <b>Show live values from the flight controller</b> to swap the mock numbers for the <b>real telemetry</b> the FC is sending right now — the same readings the HUD burns onto the video — so you can confirm the layout against actual data. It needs an FC link connected on the <b>Flight Controller</b> page; with none, each readout shows <code>--</code>. The artificial horizon, compass and home arrow stay as layout previews (their live motion happens on the video itself).</p>
           <p>The <i>Artificial Horizon</i>, <i>Compass</i> and <i>Home arrow</i> are graphic elements (the home arrow rotates to point home like a compass). The <i>Modem GPS</i> elements show the SIM7600&apos;s own GNSS fix, available even with no flight controller connected.</p>
         </HelpSection>
 
@@ -614,6 +636,14 @@ class HudEditorPage extends basePage {
               : this.state.cameras.map(c => <option key={c.value} value={c.value}>{c.label || c.value}</option>)}
           </Form.Select>
           {this.state.cameraError && <span className="text-warning"><small>Camera unavailable (busy, or no signal)</small></span>}
+        </div>
+
+        <div className="d-flex flex-wrap align-items-center mb-2" style={{ gap: 12, border: '1px solid #2a3340', borderRadius: 4, padding: '8px 12px' }}>
+          <Form.Check type="switch" id="hud-show-live" label="Show live values from the flight controller" checked={this.state.liveValues} onChange={this.toggleLive} data-testid="show-live" />
+          <HelpTip text="Replace the mock sample numbers with the real telemetry the flight controller is sending right now (the same values the HUD burns onto the video). Needs an FC link connected on the Flight Controller page; otherwise the readouts show '--'. The artificial horizon, compass and home arrow stay as layout previews." />
+          {this.state.liveValues && (this.state.live.connected
+            ? <span className="text-success" data-testid="live-status"><small>● Live — receiving telemetry from the flight controller</small></span>
+            : <span className="text-warning" data-testid="live-status"><small>● Waiting for telemetry — connect a flight controller link on the Flight Controller page</small></span>)}
         </div>
 
         {importedFonts.length > 0 &&

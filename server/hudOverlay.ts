@@ -367,4 +367,209 @@ function formatHudText (hud: HudData): string {
   return line1 + '\n' + line2 + '\n' + line3
 }
 
-export = { mavlinkModeName, gpsFixName, formatHudText, emptyHudData, hudElements, horizonOptions, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }
+// ── per-element value formatting (graphic "Graphic" HUD) ────────────────────
+// These mirror video-server.py's hudElementText() exactly, so the live editor
+// preview reads identically to the text burned onto the stream. Three small
+// helpers match the Python _hud_num / _hud_int / _hud_mmss formatters.
+function hnum (v: any, suffix: string, digits = 0): string {
+  return (v === null || v === undefined) ? '--' : Number(v).toFixed(digits) + suffix
+}
+function hint (v: any, prefix = '', suffix = ''): string {
+  return (v === null || v === undefined) ? prefix + '--' : prefix + String(Math.round(Number(v))) + suffix
+}
+function hmmss (v: any): string {
+  if (v === null || v === undefined) {
+    return '--:--'
+  }
+  const t = Math.trunc(Number(v))
+  return Math.trunc(t / 60) + ':' + String(t % 60).padStart(2, '0')
+}
+
+// The value string for one OSD text element type, given a HudData field dict.
+// Graphic elements (horizon/compass/homeDir) have no text → ''. Mirrors
+// video-server.py hudElementText() so the editor's "live values" preview matches
+// the device byte-for-byte. `clock` is taken from hud.clock (the caller supplies
+// the wall-clock string) so this function stays pure/deterministic.
+function formatHudElement (type: string, hud: HudData): string {
+  const f = (k: string): any => hud[k]
+  switch (type) {
+    // altitude & speed
+    case 'alt': return 'ALT ' + hnum(f('alt'), 'm')
+    case 'altRel': return 'AGL ' + hnum(f('altRel'), 'm')
+    case 'spd': return 'SPD ' + hnum(f('spd'), '', 1)
+    case 'airspeed': return 'AIR ' + hnum(f('airspeed'), '', 1)
+    case 'climb': return 'VS ' + hnum(f('climb'), '', 1)
+    case 'throttle': return 'THR ' + (f('throttle') === null || f('throttle') === undefined ? '--' : Math.round(f('throttle')) + '%')
+    case 'rangefinder': return 'RNG ' + hnum(f('rangefinder'), 'm', 1)
+    // attitude
+    case 'hdg': return 'HDG ' + (f('hdg') === null || f('hdg') === undefined ? '--' : String(Math.round(f('hdg'))))
+    case 'turnRate': return 'TRN ' + hint(f('turnRate'), '', '°/s')
+    case 'gload': return hnum(f('gload'), 'G', 1)
+    // position & gps
+    case 'gps': return 'GPS ' + (f('gpsFix') === null || f('gpsFix') === undefined ? '--' : gpsFixName(f('gpsFix'))) +
+      '/' + (f('gpsSats') === null || f('gpsSats') === undefined ? '--' : f('gpsSats'))
+    case 'lat': return 'LAT ' + hnum(f('lat'), '', 5)
+    case 'lon': return 'LON ' + hnum(f('lon'), '', 5)
+    case 'hdop': return 'HDOP ' + hnum(f('hdop'), '', 1)
+    case 'gpsCourse': return 'CRS ' + hint(f('gpsCourse'), '', '°')
+    // navigation
+    case 'homeDist': return 'HOME ' + hint(f('homeDist'), '', 'm')
+    case 'wpDist': return 'WP ' + hint(f('wpDist'), '', 'm')
+    case 'wpNum': return hint(f('wpNum'), 'WP#')
+    case 'xtrack': return 'XTK ' + hnum(f('xtrack'), 'm', 1)
+    case 'altError': return 'AERR ' + hnum(f('altError'), 'm', 1)
+    // battery & power
+    case 'batV': return 'BAT ' + hnum(f('batV'), 'V', 1)
+    case 'batPct': return (f('batPct') === null || f('batPct') === undefined ? '--' : f('batPct')) + '%'
+    case 'current': return hnum(f('current'), 'A', 1)
+    case 'mah': return hint(f('mah'), '', 'mAh')
+    case 'battTemp': return 'BT ' + hint(f('battTemp'), '', '°C')
+    case 'battTimeRemaining': return 'BTL ' + hmmss(f('battTimeRemaining'))
+    case 'cpuLoad': return 'CPU ' + hint(f('cpuLoad'), '', '%')
+    // link
+    case 'rcRssi': return 'RC ' + hint(f('rcRssi'), '', '%')
+    case 'radioRssi': return 'RSSI ' + hint(f('radioRssi'))
+    case 'radioRemRssi': return 'RRSSI ' + hint(f('radioRemRssi'))
+    case 'radioNoise': return 'NOISE ' + hint(f('radioNoise'))
+    case 'dropRate': return 'DROP ' + hnum(f('dropRate'), '%', 0)
+    // environment
+    case 'windSpeed': return 'WND ' + hnum(f('windSpeed'), 'm/s', 1)
+    case 'windDir': return 'WDIR ' + hint(f('windDir'), '', '°')
+    case 'baroTemp': return 'TMP ' + hint(f('baroTemp'), '', '°C')
+    case 'pressure': return 'PRS ' + hint(f('pressure'), '', 'hPa')
+    // status
+    case 'mode': return (f('mode') === null || f('mode') === undefined) ? 'MODE --' : String(f('mode'))
+    case 'armed': return f('armed') ? 'ARMED' : 'DISARM'
+    case 'timer': return hmmss(f('timer'))
+    case 'clock': return (f('clock') === null || f('clock') === undefined) ? '--:--:--' : String(f('clock'))
+    // health
+    case 'vibe': return 'VIB ' + hint(f('vibe'))
+    case 'vibeClip': return 'CLIP ' + hint(f('vibeClip'))
+    // modem GPS (SIM7600) — sourced on-device only, '--' in the editor preview
+    case 'modemFix': return 'mGPS ' + (f('modemFix') === null || f('modemFix') === undefined ? '--' : String(f('modemFix')))
+    case 'modemLat': return 'mLAT ' + hnum(f('modemLat'), '', 5)
+    case 'modemLon': return 'mLON ' + hnum(f('modemLon'), '', 5)
+    case 'modemAlt': return 'mALT ' + hint(f('modemAlt'), '', 'm')
+    default: return '' // graphic elements (horizon/compass/homeDir) + unknowns
+  }
+}
+
+// Build a HudData field dict from a MAVTelemetry snapshot (the array of
+// { name, fields, stale } the inspector already receives). Mirrors the per-packet
+// unit conversions in videostream.ts updateHudFromPacket(), but works off the
+// accumulated latest-of-every-message snapshot so it is available whenever an FC
+// link is up — no live video stream required.
+function hudDataFromSnapshot (snapshot: any[]): HudData {
+  const hud = emptyHudData()
+  const by: { [k: string]: any } = {}
+  for (const m of (Array.isArray(snapshot) ? snapshot : [])) {
+    if (m && typeof m.name === 'string' && !m.stale) {
+      by[m.name] = m.fields || {}
+    }
+  }
+  const has = (n: string): boolean => by[n] !== undefined
+  const v = (n: string, k: string): any => by[n][k]
+
+  if (has('VFR_HUD')) {
+    hud.alt = v('VFR_HUD', 'alt')
+    hud.spd = v('VFR_HUD', 'groundspeed')
+    hud.airspeed = v('VFR_HUD', 'airspeed')
+    hud.hdg = v('VFR_HUD', 'heading')
+    hud.climb = v('VFR_HUD', 'climb')
+    hud.throttle = v('VFR_HUD', 'throttle')
+  }
+  if (has('GLOBAL_POSITION_INT')) {
+    hud.altRel = v('GLOBAL_POSITION_INT', 'relativeAlt') / 1000
+    hud.lat = v('GLOBAL_POSITION_INT', 'lat') / 1e7
+    hud.lon = v('GLOBAL_POSITION_INT', 'lon') / 1e7
+    if (has('HOME_POSITION')) {
+      const hLat = v('HOME_POSITION', 'latitude') / 1e7
+      const hLon = v('HOME_POSITION', 'longitude') / 1e7
+      hud.homeDist = homeDistance(hud.lat as number, hud.lon as number, hLat, hLon)
+      hud.homeDir = homeBearing(hud.lat as number, hud.lon as number, hLat, hLon)
+    }
+  }
+  if (has('SYS_STATUS')) {
+    hud.batV = v('SYS_STATUS', 'voltageBattery') === 65535 ? null : v('SYS_STATUS', 'voltageBattery') / 1000
+    hud.batPct = v('SYS_STATUS', 'batteryRemaining') < 0 ? null : v('SYS_STATUS', 'batteryRemaining')
+    hud.current = v('SYS_STATUS', 'currentBattery') < 0 ? null : v('SYS_STATUS', 'currentBattery') / 100
+    hud.cpuLoad = Math.round(v('SYS_STATUS', 'load') / 10)
+    hud.dropRate = v('SYS_STATUS', 'dropRateComm') / 100
+  }
+  if (has('BATTERY_STATUS')) {
+    hud.mah = v('BATTERY_STATUS', 'currentConsumed') < 0 ? null : v('BATTERY_STATUS', 'currentConsumed')
+    hud.battTemp = v('BATTERY_STATUS', 'temperature') === 32767 ? null : v('BATTERY_STATUS', 'temperature') / 100
+    hud.battTimeRemaining = v('BATTERY_STATUS', 'timeRemaining') > 0 ? v('BATTERY_STATUS', 'timeRemaining') : null
+  }
+  if (has('GPS_RAW_INT')) {
+    hud.gpsFix = v('GPS_RAW_INT', 'fixType')
+    hud.gpsSats = v('GPS_RAW_INT', 'satellitesVisible')
+    hud.hdop = v('GPS_RAW_INT', 'eph') === 65535 ? null : v('GPS_RAW_INT', 'eph') / 100
+    hud.gpsCourse = v('GPS_RAW_INT', 'cog') === 65535 ? null : v('GPS_RAW_INT', 'cog') / 100
+  }
+  if (has('NAV_CONTROLLER_OUTPUT')) {
+    hud.wpDist = v('NAV_CONTROLLER_OUTPUT', 'wpDist')
+    hud.xtrack = v('NAV_CONTROLLER_OUTPUT', 'xtrackError')
+    hud.altError = v('NAV_CONTROLLER_OUTPUT', 'altError')
+  }
+  if (has('MISSION_CURRENT')) {
+    hud.wpNum = v('MISSION_CURRENT', 'seq')
+  }
+  if (has('RC_CHANNELS')) {
+    hud.rcRssi = v('RC_CHANNELS', 'rssi') >= 255 ? null : Math.round(v('RC_CHANNELS', 'rssi') / 254 * 100)
+  }
+  if (has('RADIO_STATUS')) {
+    hud.radioRssi = v('RADIO_STATUS', 'rssi')
+    hud.radioRemRssi = v('RADIO_STATUS', 'remrssi')
+    hud.radioNoise = v('RADIO_STATUS', 'noise')
+  }
+  if (has('WIND')) {
+    hud.windSpeed = v('WIND', 'speed')
+    hud.windDir = v('WIND', 'direction')
+  }
+  if (has('SCALED_PRESSURE')) {
+    hud.baroTemp = v('SCALED_PRESSURE', 'temperature') / 100
+    hud.pressure = v('SCALED_PRESSURE', 'pressAbs')
+  }
+  if (has('RANGEFINDER')) {
+    hud.rangefinder = v('RANGEFINDER', 'distance')
+  }
+  if (has('VIBRATION')) {
+    hud.vibe = Math.round(Math.max(v('VIBRATION', 'vibrationX'), v('VIBRATION', 'vibrationY'), v('VIBRATION', 'vibrationZ')))
+    hud.vibeClip = v('VIBRATION', 'clipping0')
+  }
+  if (has('SCALED_IMU')) {
+    hud.gload = +(Math.sqrt(v('SCALED_IMU', 'xacc') ** 2 + v('SCALED_IMU', 'yacc') ** 2 + v('SCALED_IMU', 'zacc') ** 2) / 1000).toFixed(2)
+  }
+  if (has('HEARTBEAT')) {
+    hud.mode = mavlinkModeName(v('HEARTBEAT', 'type'), v('HEARTBEAT', 'customMode'))
+    hud.armed = (v('HEARTBEAT', 'baseMode') & 128) !== 0
+  }
+  if (has('ATTITUDE')) {
+    hud.roll = v('ATTITUDE', 'roll') * 180 / Math.PI
+    hud.pitch = v('ATTITUDE', 'pitch') * 180 / Math.PI
+    hud.turnRate = v('ATTITUDE', 'yawspeed') * 180 / Math.PI
+  }
+  return hud
+}
+
+// Turn a MAVTelemetry snapshot into the live per-element value strings the HUD
+// editor shows when "live values" is on. `connected` is true when the FC is
+// actually transmitting (≥1 non-stale message). `clock`, if given, fills the
+// Clock element with the caller's wall-clock string (keeps this pure).
+function liveHudValues (snapshot: any[], clock?: string): { connected: boolean; values: { [k: string]: string } } {
+  const hud = hudDataFromSnapshot(snapshot)
+  if (clock !== undefined) {
+    hud.clock = clock
+  }
+  const values: { [k: string]: string } = {}
+  for (const e of HUD_ELEMENTS) {
+    if (!GRAPHIC_TYPES.has(e.type)) {
+      values[e.type] = formatHudElement(e.type, hud)
+    }
+  }
+  const connected = (Array.isArray(snapshot) ? snapshot : []).some((m) => m && !m.stale)
+  return { connected, values }
+}
+
+export = { mavlinkModeName, gpsFixName, formatHudText, formatHudElement, hudDataFromSnapshot, liveHudValues, emptyHudData, hudElements, horizonOptions, defaultHudLayout, validateHudLayout, homeDistance, homeBearing }
