@@ -32,13 +32,19 @@ On top of upstream Rpanion-server (each with docs in [`docs/`](docs/)):
 - **Cellular video tuning** — a low-latency preset (1 s keyframe, CBR-style VBV capping, leaky queues) plus runtime encoder bitrate retuning over a control channel. ([CELLULAR-TUNING](docs/CELLULAR-TUNING.md))
 - **Multi-camera switching** — switch between two cameras from an RC channel (with hysteresis/debounce) or manually, without restarting the stream. ([CAMERA-SWITCHER](docs/CAMERA-SWITCHER.md))
 - **Custom GStreamer pipelines** — per-camera pipeline overrides with a parse/dry-run validator and a runtime fallback so the stream never bricks. ([CUSTOM-PIPELINES](docs/CUSTOM-PIPELINES.md))
+- **More video** — an **RTP/UDP (H.264) sink** alongside RTSP, **multiple simultaneous streams**, a **telemetry HUD overlay** burned into the feed, and **MAVLink-triggered still capture / video recording**. ([UDP-VIDEO](docs/UDP-VIDEO.md))
 - **Self-hosted WireGuard Hub** — generates a turnkey VPS setup script for a vendor-free WireGuard rendezvous server, solving the CGNAT inbound problem without relying on ZeroTier/Tailscale relays. ([WIREGUARD-HUB](docs/WIREGUARD-HUB.md))
 - **Tailscale VPN** and **Dynamic DNS** (DuckDNS / No-IP). ([TAILSCALE](docs/TAILSCALE.md), [DYNAMIC-DNS](docs/DYNAMIC-DNS.md))
 - **Network priority / failover** with bandwidth monitoring. ([NETWORK-PRIORITY](docs/NETWORK-PRIORITY.md))
 - **Telemetry injector** — inject external sensor data into the MAVLink stream as `NAMED_VALUE_FLOAT` / `STATUSTEXT` (HTTP / UDP / serial sources). ([TELEMETRY-INJECTORS](docs/TELEMETRY-INJECTORS.md))
+- **Multiple serial telemetry links** — connect to more than one MAVLink source at once (e.g. an FC on the GPIO UART plus a second autopilot / radio on USB) and route them all to the GCS over the cellular link.
+- **Flight-controller insight** *(read-only)* — a live **MAVLink Inspector** (decoded FC telemetry messages), an **FC Configuration overview** (sensors, serial peripherals, servo outputs, CAN/DroneCAN — decoded from the FC's full parameter set), and a **DroneCAN node browser** that enumerates live nodes over MAVLink CAN-forwarding and reads a node's parameters when you click it. ([MAVLINK-INSPECTOR](docs/MAVLINK-INSPECTOR.md), [FC-CONFIG](docs/FC-CONFIG.md))
 - **Role-based access control** — `admin` / `read-only` users. ([USER-ROLES](docs/USER-ROLES.md))
 - **"Ground Station" UI** — a redesigned, self-documenting web interface with a **light/dark toggle**, a **mobile-responsive** layout, and collapsible navigation. ([GROUND-STATION-THEME](docs/GROUND-STATION-THEME.md))
+- **Operations** — live **system stats** (CPU load / temperature / RAM / disk / uptime) on the dashboard, full-configuration **backup & restore**, and **time-zone** selection from the web UI. ([BACKUP-RESTORE](docs/BACKUP-RESTORE.md))
 - **Engineering** — TypeScript backend, **100 % unit-test coverage** on both suites, plus a Playwright e2e suite.
+
+Several of these also close long-standing **upstream feature requests** — live system stats ([#31](https://github.com/stephendade/Rpanion-server/issues/31)), video HUD overlay ([#173](https://github.com/stephendade/Rpanion-server/issues/173)), time zone ([#224](https://github.com/stephendade/Rpanion-server/issues/224)), multiple serial links ([#311](https://github.com/stephendade/Rpanion-server/issues/311)), MAVLink camera capture ([#396](https://github.com/stephendade/Rpanion-server/issues/396)) and multiple video streams ([#398](https://github.com/stephendade/Rpanion-server/issues/398)).
 
 The full design rationale and per-feature reports are in [docs/FORK-NOTES.md](docs/FORK-NOTES.md) and [`docs/reports/`](docs/reports/).
 
@@ -58,6 +64,9 @@ How this fork sits between upstream Rpanion-server and the commercial **UAVcast-
 | Low-latency cellular preset + runtime bitrate retune | ✗ | ✓ | ◑ (configurable bitrate) |
 | Custom per-camera GStreamer pipelines | ✗ | ✓ | ✓ |
 | Multi-camera switching (RC channel) | ✗ | ✓ | `?` |
+| Multiple simultaneous video streams | ✗ | ✓ | `?` |
+| Telemetry HUD overlay on the video | ✗ | ✓ | `?` |
+| MAVLink-triggered still capture / recording | ◑ | ✓ | `?` |
 | Cellular modem mgmt (signal, data usage, auto-reconnect, AT console) | ✗ | ✓ (SIM7600, direct AT) | ✓ (Traditional + HiLink) |
 | Selectable modem data path (RNDIS / QMI / PPP) | ✗ | ✓ | ◑ (Traditional / HiLink) |
 | Network config + WiFi access point | ✓ | ✓ | ✓ |
@@ -69,8 +78,13 @@ How this fork sits between upstream Rpanion-server and the commercial **UAVcast-
 | Dynamic DNS | ✗ | ✓ | ✓ |
 | NTRIP (RTK corrections) input | ✓ | ✓ | `?` |
 | Telemetry injection (`NAMED_VALUE_FLOAT` / `STATUSTEXT`) | ✗ | ✓ | `?` |
+| Multiple serial telemetry links | ✗ | ✓ | `?` |
+| MAVLink message inspector (web UI) | ✗ | ✓ | `?` |
+| FC config overview + DroneCAN node browser | ✗ | ✓ | `?` |
 | Flight log / media management | ✓ | ✓ | ✓ |
 | Cloud upload | ✓ | ✓ | `?` |
+| Live system stats (CPU / temp / RAM / disk) | ✗ | ✓ | `?` |
+| Settings backup / restore | ✗ | ✓ | `?` |
 | **Live map / fleet dashboard** (GPS tracking, flight path) | ✗ | ✗ | ✓ |
 | Role-based access (admin / read-only) | ✗ (single login) | ✓ | `?` |
 | Web UI | ✓ | ✓ (light/dark, mobile, self-documenting) | ✓ (React + live map) |
