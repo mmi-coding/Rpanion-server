@@ -31,6 +31,7 @@ const TelemetryInjector = require('./telemetryInjector')
 const MavTelemetry = require('./mavTelemetry')
 const FCParams = require('./fcParams')
 const DroneCANMonitor = require('./droneCan')
+const hudOverlay = require('./hudOverlay')
 
 const settings = require('settings-store')
 
@@ -480,6 +481,8 @@ io.on('connection', function () {
     io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
     io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
     io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
+    // live per-element HUD values for the editor's "show live values" preview
+    io.sockets.emit('HUDLive', hudOverlay.liveHudValues(mavTelemetry.getSnapshot(), new Date().toTimeString().slice(0, 8)))
     io.sockets.emit('FCParamStatus', fcParams.getProgress())
     io.sockets.emit('DroneCANNodes', { scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() })
     io.sockets.emit('DroneCANNodeParams', droneCan.getParamScan())
