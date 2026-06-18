@@ -458,3 +458,15 @@ off-by-one and added CAN_FILTER_MODIFY; see docs/FC-CONFIG.md + the feature repo
 ### DroneCAN node parameters (feature-38)
 - [x] **Click a node → read its parameters (param.GetSet).** Verified on-device (2026-06-18) that request injection, multi-byte frame injection, addressing and response routing all work end-to-end: our request is byte-identical to pydronecan (`0x1E0BFDFF` / `00 00 c0`), and a multi-byte GetNodeInfo probe over the param-scan path was answered back to us (`125→127`). The request reaches the node and the path round-trips.
 - [ ] **Populated parameter table against a GetSet-capable node.** On this drone *no* node answers `param.GetSet` (optional service): the Holybro GPS (node 125, AP_Periph) and Vimdrones servo hub (node 123) reply to GetNodeInfo but send **zero GetSet frames**; the autopilot node can't be read this way (no loopback of self-injected frames). Re-test against a node that implements GetSet (DroneCAN ESC / power module / airspeed) to confirm end-to-end decode of real int/float/bool/string params + min/max + multi-page enumeration.
+
+## Feature 39: HUD editor live values (feature/hud-live-values)
+
+WSL-verified via unit tests (socket wiring, snapshot→fields conversion, per-element
+formatting parity with `video-server.py`, the toggle + status line + chip swap). The
+live data path needs a real FC connected on the Flight Controller page.
+
+- [ ] **Toggle "Show live values"** with an FC link up → status reads **● Live** and the text chips track the real readings (ATTITUDE/VFR_HUD/GPS/SYS_STATUS/…); cross-check against the MAVLink Inspector + a ground station
+- [ ] **Editor preview == burned-in HUD:** start a Graphic HUD video stream and compare a few chips (e.g. `ALT`, `HDG`, `BAT`, `GPS`, `HOME`) against the on-video text — confirms the JS `formatHudElement()` ↔ Python `hudElementText()` parity holds on live data (rounding/units, home distance/bearing)
+- [ ] **No FC connected** → status reads **● Waiting for telemetry** and every readout shows `--`; pulling the link mid-session flips back to Waiting within ~5 s (stale flag)
+- [ ] `clock` ticks once per second from the device wall clock; `timer` shows `--:--` in the editor (no arm event off a snapshot — expected)
+- [ ] Pi Zero 2 W: the extra 1 Hz `HUDLive` emit (small text map) adds no meaningful CPU
