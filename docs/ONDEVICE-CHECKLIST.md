@@ -462,11 +462,12 @@ off-by-one and added CAN_FILTER_MODIFY; see docs/FC-CONFIG.md + the feature repo
 ## Feature 39: HUD editor live values (feature/hud-live-values)
 
 WSL-verified via unit tests (socket wiring, snapshot→fields conversion, per-element
-formatting parity with `video-server.py`, the toggle + status line + chip swap). The
-live data path needs a real FC connected on the Flight Controller page.
+formatting parity with `video-server.py`, the toggle + status line + chip swap).
+**Deployed + API-verified on-device 2026-06-18** (Pi 4 @ .143, live ArduPlane FC).
 
-- [ ] **Toggle "Show live values"** with an FC link up → status reads **● Live** and the text chips track the real readings (ATTITUDE/VFR_HUD/GPS/SYS_STATUS/…); cross-check against the MAVLink Inspector + a ground station
-- [ ] **Editor preview == burned-in HUD:** start a Graphic HUD video stream and compare a few chips (e.g. `ALT`, `HDG`, `BAT`, `GPS`, `HOME`) against the on-video text — confirms the JS `formatHudElement()` ↔ Python `hudElementText()` parity holds on live data (rounding/units, home distance/bearing)
-- [ ] **No FC connected** → status reads **● Waiting for telemetry** and every readout shows `--`; pulling the link mid-session flips back to Waiting within ~5 s (stale flag)
-- [ ] `clock` ticks once per second from the device wall clock; `timer` shows `--:--` in the editor (no arm event off a snapshot — expected)
-- [ ] Pi Zero 2 W: the extra 1 Hz `HUDLive` emit (small text map) adds no meaningful CPU
+- [x] **`HUDLive` emits real FC values.** A socket.io probe (logged in, prod build) returned `connected:true` with correct live readings: `ALT 69m`, `HDG 357`, `GPS 3D/22`, `mode RTL`, `HDOP 0.6`, `CRS 353°`, `VIB 0`. Fields the FC isn't sending show `--` honestly (`BAT 0.0V`/`--%`/current `--`/gload `--`). The served prod bundle contains the **"Show live values"** toggle + status line; `index.js` emits `HUDLive`; `hudOverlay.js` carries the new functions
+- [x] `clock` ticks once per second from the device wall clock (`11:23:27`); `timer` shows `--:--` when disarmed (no arm event off a snapshot — expected)
+- [ ] **Browser visual:** open the HUD Editor in a browser, flip the toggle, watch the chips track live (couldn't screenshot from the dev env — browser MCP unavailable; validated via the live socket payload + served-bundle grep instead)
+- [ ] **Editor preview == burned-in HUD:** start a Graphic HUD video stream and compare a few chips (e.g. `ALT`, `HDG`, `GPS`, `HOME`) against the on-video text — parity is unit-tested by construction and the live values are correct, but a side-by-side against a running stream is still worth a look (esp. `HOME` distance/bearing, which needs `GLOBAL_POSITION_INT` + `HOME_POSITION`)
+- [ ] **No FC connected** → status reads **● Waiting for telemetry** and every readout shows `--`. The `--` placeholder path is confirmed live (battery/current/gload all `--`); the fully-disconnected **Waiting** banner is unit-tested but not yet observed on-device (the FC was connected throughout) — pull the link mid-session and confirm it flips back within ~5 s (stale flag)
+- [ ] Pi Zero 2 W: the extra 1 Hz `HUDLive` emit (small text map) adds no meaningful CPU (verified on a Pi 4 only)
