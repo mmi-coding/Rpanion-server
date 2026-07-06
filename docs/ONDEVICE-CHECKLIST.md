@@ -501,6 +501,18 @@ the real modem, and the sudoers grant can only be checked on the Pi.
 
 ## Security hardening — S1 admin provisioning + S5 bind (2026-07-06)
 
+**Mechanism verified on-device (Pi, aarch64, node v24, real bcryptjs — 2026-07-06):**
+a standalone harness ran the real `userLogin.ensureInitialAdmin()` against a temp
+config and confirmed all nine behaviours — provisions a random 16-char admin when
+the users file is missing, the generated password logs in, **`admin:admin` is
+rejected**, `initial-password.txt` is written at **mode 0600**, `mustChangePassword`
+is flagged, `changePassword` clears the flag + deletes the hint file, and a re-run
+is a no-op (never reverts). The S5 listen+fallback pattern was confirmed live:
+`RPANION_BIND_ADDRESS=127.0.0.1` binds loopback, a bogus address raises
+`EADDRNOTAVAIL` and **falls back to `0.0.0.0`** (never bind-locked-out). What
+remains below is the `.deb`-install *integration* (each component is verified; the
+end-to-end install + live systemd wiring is still to confirm on the next deploy).
+
 The self-heal, packaging and interface-bind paths only exist on a real Pi install.
 
 - [ ] **Fresh-install self-provisioning.** Install the new `.deb` on a Pi with **no**
