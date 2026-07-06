@@ -223,6 +223,28 @@ describe('SecondaryStreams (#398)', function () {
     }, 200)
   }).timeout(4000)
 
+  it('#startStream() - spawn error (stale/invalid venv, ENOENT) is handled, not thrown (R3)', function (done) {
+    // R3: without an 'error' listener, the child 'error' event (ENOENT on a
+    // stale venv path, or spawn EACCES/ENOMEM on a memory-pressured Pi Zero) is
+    // thrown by Node and crashes the whole server. The listener must log + clean
+    // up: drop the dead process ref (isRunning → false); 'stopped' still fires.
+    settings.clear()
+    logpaths.getPythonPath.returns(path.join(tmpDir, 'no-such-python'))
+    const mgr = new SecondaryStreams(settings, noVManager())
+    activeMgr = mgr
+    let stopped = -1
+    mgr.eventEmitter.on('stopped', (id) => { stopped = id })
+    mgr.addStream({ ...cfgRTSP }, () => {})
+    const stream = mgr.streams[0]
+    const id = stream.id
+    waitFor(() => stream.process === null && stopped === id).then(() => {
+      try {
+        assert.equal(mgr.isRunning(stream), false)
+        done()
+      } catch (e) { done(e) }
+    }).catch(done)
+  }).timeout(4000)
+
   it('restores saved streams on construction', function () {
     settings.clear()
     settings.setValue('camera.secondaryStreams', [{ ...cfgRTSP }, { ...cfgRTP }])

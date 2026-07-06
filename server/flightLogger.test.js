@@ -95,6 +95,97 @@ describe('Logging Functions', function () {
     assert.ok(fs.existsSync(Path.join(logpaths.flightsLogsDir, 'flight.tlog')))
   })
 
+  // Create a log file of a given size with a deterministic mtime (seconds).
+  function makeLog (filePath, size, mtimeSec) {
+    fs.mkdirSync(Path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, Buffer.alloc(size, 1))
+    const t = new Date(mtimeSec * 1000)
+    fs.utimesSync(filePath, t, t)
+  }
+
+  it('#pruneLogsNoOpUnderCap()', function () {
+    const Lgr = new Logger()
+    const dir = logpaths.flightsLogsDir
+    makeLog(Path.join(dir, 'a.bin'), 500, 100)
+    makeLog(Path.join(dir, 'b.bin'), 500, 200)
+
+    // caps far above what exists -> nothing is deleted
+    const deleted = Lgr.pruneLogs(null, 1e12, 1000)
+    assert.equal(deleted.length, 0)
+    assert.ok(fs.existsSync(Path.join(dir, 'a.bin')))
+    assert.ok(fs.existsSync(Path.join(dir, 'b.bin')))
+  })
+
+  it('#pruneLogsByCountRecursesAndIgnoresNonLogs()', function () {
+    const Lgr = new Logger()
+    const dir = logpaths.flightsLogsDir
+    makeLog(Path.join(dir, 'a.bin'), 500, 100) // oldest log
+    fs.writeFileSync(Path.join(dir, 'keep.txt'), Buffer.from('x')) // not a log
+    makeLog(Path.join(dir, 'sub', 'b.tlog'), 500, 200) // newer, in a subdir
+
+    // count cap of 1 with two logs -> the single oldest log is pruned
+    const deleted = Lgr.pruneLogs(null, 1e12, 1)
+    assert.equal(deleted.length, 1)
+    assert.ok(!fs.existsSync(Path.join(dir, 'a.bin')))
+    assert.ok(fs.existsSync(Path.join(dir, 'sub', 'b.tlog')))
+    assert.ok(fs.existsSync(Path.join(dir, 'keep.txt'))) // non-log untouched
+  })
+
+  it('#pruneLogsBySize()', function () {
+    const Lgr = new Logger()
+    const dir = logpaths.flightsLogsDir
+    makeLog(Path.join(dir, 'old.bin'), 1000, 100)
+    makeLog(Path.join(dir, 'mid.bin'), 1000, 200)
+    makeLog(Path.join(dir, 'new.bin'), 1000, 300)
+
+    // 3000 bytes total, cap 2500 -> drop only the oldest to get under
+    const deleted = Lgr.pruneLogs(null, 2500, 999)
+    assert.equal(deleted.length, 1)
+    assert.ok(!fs.existsSync(Path.join(dir, 'old.bin')))
+    assert.ok(fs.existsSync(Path.join(dir, 'mid.bin')))
+    assert.ok(fs.existsSync(Path.join(dir, 'new.bin')))
+  })
+
+  it('#pruneLogsSkipsActiveBinlog()', function () {
+    const Lgr = new Logger()
+    const dir = logpaths.flightsLogsDir
+    const active = Path.join(dir, 'active.bin')
+    makeLog(active, 500, 100) // oldest, but actively written
+    makeLog(Path.join(dir, 'b.bin'), 500, 200)
+    makeLog(Path.join(dir, 'c.bin'), 500, 300)
+
+    // count cap of 1: the oldest is the active log, so it must be skipped and
+    // the two newer logs pruned instead
+    const deleted = Lgr.pruneLogs(active, 1e12, 1)
+    assert.ok(fs.existsSync(active))
+    assert.ok(!fs.existsSync(Path.join(dir, 'b.bin')))
+    assert.ok(!fs.existsSync(Path.join(dir, 'c.bin')))
+    assert.deepEqual(
+      deleted.slice().sort(),
+      [Path.join(dir, 'b.bin'), Path.join(dir, 'c.bin')].sort()
+    )
+  })
+
+  it('#pruneLogsSurvivesUnlinkError()', function () {
+    const Lgr = new Logger()
+    const dir = logpaths.flightsLogsDir
+    makeLog(Path.join(dir, 'a.bin'), 500, 100)
+    makeLog(Path.join(dir, 'b.bin'), 500, 200)
+
+    // an unlink failure (e.g. concurrent delete / not writable) must not crash
+    const origUnlink = fs.unlinkSync
+    fs.unlinkSync = function () { throw new Error('EACCES') }
+    try {
+      const deleted = Lgr.pruneLogs(null, 0, 0) // force everything over cap
+      assert.equal(deleted.length, 0)
+    } finally {
+      fs.unlinkSync = origUnlink
+    }
+    // both files survive because every unlink threw and was swallowed
+    assert.ok(fs.existsSync(Path.join(dir, 'a.bin')))
+    assert.ok(fs.existsSync(Path.join(dir, 'b.bin')))
+  })
+
   it('#getlogs()', function (done) {
     const Lgr = new Logger()
 

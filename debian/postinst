@@ -17,6 +17,10 @@ sudo usermod -a -G networkmanager rpanion   # for access to nmcli and dnsmasq le
 # Set up Python virtual environment
 /usr/share/rpanion-server/app/python/setup-venv.sh
 
+# Ensure the config dir exists (config/user.json is no longer shipped — the
+# server self-provisions a random-password admin on first boot; see S1).
+mkdir -p /etc/rpanion-server/config
+
 # Set permissions
 chown -R rpanion /usr/share/rpanion-server
 chown -R rpanion /etc/rpanion-server
@@ -50,7 +54,7 @@ rpanion ALL=(ALL) NOPASSWD: \
   /usr/sbin/udhcpc *, \
   /usr/bin/ip link set *, \
   /usr/sbin/iw dev * scan ap-force, \
-  /usr/bin/pkill -SIGTERM pppd, \
+  /usr/bin/pkill -SIGTERM -f pppd*, \
   /usr/bin/cat /var/lib/NetworkManager/dnsmasq-*
 EOF
 

@@ -1040,6 +1040,10 @@ class GstServer():
         # streams (#398) run their own server on a distinct port to avoid a clash
         self.port = port
         self.server.set_service(str(port))
+        # S5: which interface the RTSP server listens on. Defaults to 0.0.0.0 (all
+        # interfaces) so the field WiFi-AP path keeps working; harden by setting
+        # RPANION_BIND_ADDRESS (e.g. the wg0 VPN address). Mirrors the web UI bind.
+        self.server.set_address(os.environ.get('RPANION_BIND_ADDRESS', '0.0.0.0'))
 
         # Configure server for low-latency streaming
         self.server.set_backlog(5)  # Limit queued connections

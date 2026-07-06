@@ -230,7 +230,7 @@ describe('PPPConnection', function () {
       assert.strictEqual(ppp.pppProcess, null);
     });
 
-    it('kills a live pppProcess and runs pkill via execSync', function () {
+    it('kills a live pppProcess and runs a device-scoped pkill (R13)', function () {
       const ppp = new PPPConnection(mockSettings);
       const killSpy = sinon.spy();
       const removeListenersSpy = sinon.spy();
@@ -239,6 +239,7 @@ describe('PPPConnection', function () {
         pid: 12345,
         removeAllListeners: removeListenersSpy,
       };
+      ppp.pppDevicePath = FAKE_DEVICE.path; // required for the scoped kill
       fake.reset(); // clear previous sudo call log
       ppp.quitting();
       assert.strictEqual(ppp.isQuitting, true);
@@ -246,11 +247,13 @@ describe('PPPConnection', function () {
       assert.ok(killSpy.calledOnce, 'kill should be called');
       assert.strictEqual(ppp.pppProcess, null);
       const sudoCalls = fake.calls('sudo');
-      assert.ok(sudoCalls.some(function (c) { return c.includes('pkill'); }),
-        'sudo pkill should have been invoked via execSync');
+      // pkill must be scoped: -f + our device path (never a bare system-wide `pkill pppd`)
+      assert.ok(sudoCalls.some(function (c) {
+        return c.includes('pkill') && c.includes('-f') && c.includes(FAKE_DEVICE.path);
+      }), 'sudo pkill should be scoped to our device path');
     });
 
-    it('catches error thrown by pkill execSync', function () {
+    it('catches error thrown by the scoped pkill', function () {
       process.env.FAKE_SCENARIO = 'pkill-err';
       const ppp = new PPPConnection(mockSettings);
       const errSpy = sinon.spy(console, 'error');
@@ -259,8 +262,19 @@ describe('PPPConnection', function () {
         pid: 999,
         removeAllListeners: function () {},
       };
+      ppp.pppDevicePath = FAKE_DEVICE.path; // so the scoped kill actually runs (and throws)
       assert.doesNotThrow(function () { ppp.quitting(); });
       assert.strictEqual(ppp.pppProcess, null);
+      assert.ok(errSpy.calledWithMatch('Error stopping PPP connection on shutdown:'),
+        'the pkill failure should be logged, not thrown');
+    });
+
+    it('cancels a pending reconnect timer on quit', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.reconnectTimer = setTimeout(function () {}, 60000);
+      ppp.pppProcess = null;
+      ppp.quitting();
+      assert.strictEqual(ppp.reconnectTimer, null, 'reconnect timer should be cancelled');
     });
   });
 
@@ -560,7 +574,7 @@ describe('PPPConnection', function () {
       });
     });
 
-    it('close handler: crash (code 99, no signal, not quitting) — sets isConnected=false', function (done) {
+    it('close handler: crash (code 99, no signal, not quitting) — sets isConnected=false and schedules a reconnect (R13)', function (done) {
       this.timeout(5000);
       process.env.FAKE_SCENARIO = 'pppd-crash';
       const ppp = new PPPConnection(mockSettings);
@@ -576,10 +590,69 @@ describe('PPPConnection', function () {
             .then(function () {
               // code=99, signal=null → not signal termination → isConnected set false
               assert.strictEqual(ppp.isConnected, false);
+              // …and an unexpected death arms the backoff reconnect timer
+              assert.ok(ppp.reconnectTimer !== null, 'reconnect should be scheduled after a crash');
+              assert.strictEqual(ppp.reconnectAttempts, 1);
+              ppp._cancelReconnect(); // don't let the real reconnect fire during the suite
               done();
             })
-            .catch(done);
+            .catch(function (e) { ppp._cancelReconnect(); done(e); });
         } catch (e) {
+          ppp._cancelReconnect();
+          done(e);
+        }
+      });
+    });
+
+    it('records the resolved device path of the pppd it spawned (for scoped kill)', function (done) {
+      this.timeout(5000);
+      process.env.NODE_ENV = 'production';
+      const ppp = new PPPConnection(mockSettings);
+      ppp.serialDevices = FAKE_DEVICES;
+
+      ppp.startPPP(FAKE_DEVICE.value, 921600, '192.168.1.1', '192.168.1.2', function (err) {
+        try {
+          process.env.NODE_ENV = 'development';
+          assert.strictEqual(err, null);
+          assert.strictEqual(ppp.pppDevicePath, FAKE_DEVICE.path);
+          if (ppp.pppProcess) {
+            ppp.pppProcess.removeAllListeners();
+            ppp.pppProcess.kill();
+            ppp.pppProcess = null;
+          }
+          ppp.isConnected = false;
+          done();
+        } catch (e) {
+          process.env.NODE_ENV = 'development';
+          done(e);
+        }
+      });
+    });
+
+    it('spawn error listener resets state and schedules a reconnect (R3)', function (done) {
+      this.timeout(5000);
+      const ppp = new PPPConnection(mockSettings);
+      ppp.serialDevices = FAKE_DEVICES;
+
+      ppp.startPPP(FAKE_DEVICE.value, 921600, '192.168.1.1', '192.168.1.2', function (err) {
+        const child = ppp.pppProcess;
+        try {
+          assert.strictEqual(err, null);
+          assert.ok(child, 'pppd should have been spawned');
+          const schedSpy = sinon.spy(ppp, '_scheduleReconnect');
+          // Simulate a child 'error' event (ENOENT / fork failure). With no listener
+          // Node would re-throw this as an uncaught exception → crash. It must not.
+          assert.doesNotThrow(function () { child.emit('error', new Error('spawn boom')); });
+          assert.strictEqual(ppp.pppProcess, null);
+          assert.strictEqual(ppp.isConnected, false);
+          assert.ok(schedSpy.calledOnce, 'a spawn error should arm the reconnect');
+          ppp._cancelReconnect();
+          child.removeAllListeners();
+          child.kill();
+          done();
+        } catch (e) {
+          if (child) { child.removeAllListeners(); child.kill(); }
+          ppp._cancelReconnect();
           done(e);
         }
       });
@@ -623,7 +696,7 @@ describe('PPPConnection', function () {
       });
     });
 
-    it('kills pppProcess and calls pkill when connected with live process', function (done) {
+    it('kills pppProcess and calls a device-scoped pkill when connected with live process', function (done) {
       this.timeout(3000);
       const killSpy = sinon.spy();
       const ppp = new PPPConnection(mockSettings);
@@ -633,6 +706,7 @@ describe('PPPConnection', function () {
         pid: 7777,
         removeAllListeners: function () {},
       };
+      ppp.pppDevicePath = FAKE_DEVICE.path;
 
       fake.reset();
       ppp.stopPPP(function (err, result) {
@@ -643,11 +717,58 @@ describe('PPPConnection', function () {
           assert.strictEqual(ppp.isManualStop, true);
           assert.strictEqual(ppp.isConnected, false);
           const sudoCalls = fake.calls('sudo');
-          assert.ok(sudoCalls.some(function (c) { return c.includes('pkill'); }),
-            'sudo pkill should be called');
+          assert.ok(sudoCalls.some(function (c) {
+            return c.includes('pkill') && c.includes('-f') && c.includes(FAKE_DEVICE.path);
+          }), 'sudo pkill should be scoped to our device path');
           ppp.pppProcess = null;
           done();
         } catch (e) {
+          done(e);
+        }
+      });
+    });
+
+    it('catches an error thrown by the scoped pkill (does not throw out of stopPPP)', function (done) {
+      this.timeout(3000);
+      process.env.FAKE_SCENARIO = 'pkill-err';
+      const ppp = new PPPConnection(mockSettings);
+      const errSpy = sinon.spy(console, 'error');
+      ppp.isConnected = true;
+      ppp.pppProcess = { kill: function () {}, pid: 8888, removeAllListeners: function () {} };
+      ppp.pppDevicePath = FAKE_DEVICE.path;
+
+      ppp.stopPPP(function (err, result) {
+        try {
+          assert.strictEqual(err, null);
+          assert.strictEqual(result.enabled, false);
+          assert.strictEqual(ppp.isConnected, false);
+          assert.ok(errSpy.calledWithMatch('Error stopping PPP connection:'),
+            'the pkill failure should be logged, not thrown');
+          ppp.pppProcess = null;
+          done();
+        } catch (e) {
+          done(e);
+        }
+      });
+    });
+
+    it('cancels a pending reconnect and resets backoff even when called mid-reconnect (R13)', function (done) {
+      // Mid-reconnect the link is briefly disconnected; an operator "stop" must still
+      // halt the loop rather than just returning "not connected" and leaving it running.
+      const ppp = new PPPConnection(mockSettings);
+      ppp.isConnected = false;
+      ppp.reconnectTimer = setTimeout(function () {}, 60000);
+      ppp.reconnectAttempts = 4;
+
+      ppp.stopPPP(function (err) {
+        try {
+          assert.ok(err instanceof Error);
+          assert.match(err.message, /PPP is not connected/);
+          assert.strictEqual(ppp.reconnectTimer, null, 'reconnect timer should be cancelled');
+          assert.strictEqual(ppp.reconnectAttempts, 0, 'backoff should be reset');
+          done();
+        } catch (e) {
+          ppp._cancelReconnect();
           done(e);
         }
       });
@@ -889,6 +1010,122 @@ describe('PPPConnection', function () {
       assert.ok(values.includes(12500000));
       assert.ok(ppp.baudRates[0].hasOwnProperty('value'));
       assert.ok(ppp.baudRates[0].hasOwnProperty('label'));
+    });
+  });
+
+  // ── reconnect backoff (R13) ─────────────────────────────────────────────────
+
+  describe('_scheduleReconnect / reconnect backoff (R13)', function () {
+    it('is a no-op while quitting', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.isQuitting = true;
+      ppp._scheduleReconnect();
+      assert.strictEqual(ppp.reconnectTimer, null);
+      assert.strictEqual(ppp.reconnectAttempts, 0);
+    });
+
+    it('is a no-op after a manual stop', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.isManualStop = true;
+      ppp._scheduleReconnect();
+      assert.strictEqual(ppp.reconnectTimer, null);
+      assert.strictEqual(ppp.reconnectAttempts, 0);
+    });
+
+    it('does not stack a second timer when one is already pending', function () {
+      const ppp = new PPPConnection(mockSettings);
+      const existing = setTimeout(function () {}, 60000);
+      ppp.reconnectTimer = existing;
+      ppp._scheduleReconnect();
+      assert.strictEqual(ppp.reconnectTimer, existing, 'pending timer must be preserved');
+      assert.strictEqual(ppp.reconnectAttempts, 0, 'attempts must not advance');
+      clearTimeout(existing);
+    });
+
+    it('caps the backoff delay at reconnectMaxMs', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.reconnectBaseMs = 1000;
+      ppp.reconnectMaxMs = 5000;
+      ppp.reconnectAttempts = 20; // 1000 * 2^20 ≫ 5000 → capped
+      ppp._scheduleReconnect();
+      assert.strictEqual(ppp.reconnectDelayMs, 5000);
+      ppp._cancelReconnect();
+    });
+
+    it('fires the timer, retries via startPPP, and grows the backoff on repeated failure', function (done) {
+      this.timeout(4000);
+      const ppp = new PPPConnection(mockSettings);
+      ppp.reconnectBaseMs = 5;
+      ppp.reconnectMaxMs = 1000;
+      const startStub = sinon.stub(ppp, 'startPPP').callsFake(function (d, b, l, r, cb) {
+        cb(new Error('still down'));
+      });
+      ppp._scheduleReconnect();
+      assert.strictEqual(ppp.reconnectAttempts, 1);
+      waitFor(function () { return startStub.callCount >= 2; }, 3000)
+        .then(function () {
+          assert.ok(ppp.reconnectAttempts >= 2, 'backoff attempts should grow across retries');
+          ppp._cancelReconnect();
+          done();
+        })
+        .catch(function (e) { ppp._cancelReconnect(); done(e); });
+    });
+
+    it('stops retrying once startPPP reports success', function (done) {
+      this.timeout(4000);
+      const ppp = new PPPConnection(mockSettings);
+      ppp.reconnectBaseMs = 5;
+      const startStub = sinon.stub(ppp, 'startPPP').callsFake(function (d, b, l, r, cb) {
+        cb(null);
+      });
+      ppp._scheduleReconnect();
+      waitFor(function () { return startStub.callCount >= 1; }, 3000)
+        .then(function () {
+          // success → no reschedule → no lingering timer
+          assert.strictEqual(ppp.reconnectTimer, null);
+          assert.strictEqual(startStub.callCount, 1);
+          done();
+        })
+        .catch(function (e) { ppp._cancelReconnect(); done(e); });
+    });
+  });
+
+  describe('_cancelReconnect', function () {
+    it('clears a pending reconnect timer', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.reconnectTimer = setTimeout(function () {}, 60000);
+      ppp._cancelReconnect();
+      assert.strictEqual(ppp.reconnectTimer, null);
+    });
+
+    it('is a no-op when no timer is pending', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.reconnectTimer = null;
+      assert.doesNotThrow(function () { ppp._cancelReconnect(); });
+      assert.strictEqual(ppp.reconnectTimer, null);
+    });
+  });
+
+  // ── scoped pppd kill (R13) ──────────────────────────────────────────────────
+
+  describe('_killScopedPppd', function () {
+    it('never issues a system-wide pkill when no device path was recorded', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.pppDevicePath = null;
+      fake.reset();
+      assert.doesNotThrow(function () { ppp._killScopedPppd(); });
+      assert.strictEqual(fake.calls('sudo').length, 0, 'must not shell out to pkill at all');
+    });
+
+    it('escapes regex metacharacters in the device path for the pkill -f pattern', function () {
+      const ppp = new PPPConnection(mockSettings);
+      ppp.pppDevicePath = '/dev/serial/by-id/usb-A.B+C';
+      fake.reset();
+      ppp._killScopedPppd();
+      const sudoCalls = fake.calls('sudo');
+      assert.ok(sudoCalls.some(function (c) {
+        return c.includes('pkill') && c.includes('-f') && c.includes('usb-A\\.B\\+C');
+      }), 'metacharacters in the device path should be escaped in the pattern');
     });
   });
 });

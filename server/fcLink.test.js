@@ -372,6 +372,30 @@ except (KeyboardInterrupt, SystemExit):
     link.startLink(() => {})
   }).timeout(5000)
 
+  it('#startLink() - router process error event is handled (no crash, drives stopLink)', function (done) {
+    // R3: an unhandled child 'error' (EACCES/EAGAIN/ENOMEM/ENOENT) would be
+    // thrown by Node and crash the process. The listener must log + tear down.
+    const parent = fakeParent()
+    const link = new FCLink(0, udpDevice, parent)
+    activeLink = link
+    link.startLink((err) => {
+      try {
+        assert.equal(err, null)
+        let stopId = null
+        parent.eventEmitter.once('stopLink', (id) => { stopId = id })
+        // simulate a spawn/runtime error on the router child
+        link.router.emit('error', new Error('spawn EACCES'))
+        setTimeout(() => {
+          try {
+            assert.equal(stopId, 0)
+            assert.equal(link.active, false)
+            done()
+          } catch (e) { done(e) }
+        }, 40)
+      } catch (e) { done(e) }
+    })
+  }).timeout(5000)
+
   it('#closeLink() - stops the dflogger and clears active', function (done) {
     sinon.stub(logpaths, 'getPythonPath').returns(fakePython)
     const link = new FCLink(0, udpDevice, fakeParent({ doLogging: true }))
@@ -465,6 +489,48 @@ except (KeyboardInterrupt, SystemExit):
     })
   }).timeout(8000)
 
+  it('#startInterval() - skips reconnect when the serial device is gone (R14 null-device guard)', function (done) {
+    // UART whose value is absent from serialDevices → getSerialPathFromValue → null.
+    // Reconnect must be skipped rather than spawning a router dialling 'null:baud'.
+    const parent = fakeParent({ serialDevices: [] })
+    const link = new FCLink(0, { inputType: 'UART', serial: '/dev/ttyGONE', baud: 115200, mavversion: 2 }, parent)
+    activeLink = link
+    link.m = { conStatusInt: () => -1, sendHeartbeat: () => {}, restart: () => {} }
+    const closeSpy = sinon.stub(link, 'closeLink')
+    const startSpy = sinon.stub(link, 'startLink')
+    const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    link.startInterval()
+    clock.tickAsync(1100).then(() => {
+      try {
+        clock.restore()
+        assert.equal(closeSpy.callCount, 0)
+        assert.equal(startSpy.callCount, 0)
+        if (link.intervalObj) clearInterval(link.intervalObj)
+        done()
+      } catch (e) { clock.restore(); done(e) }
+    }).catch((e) => { clock.restore(); done(e) })
+  }).timeout(8000)
+
+  it('#startInterval() - reconnects when the serial device is present (R14 guard allows)', function (done) {
+    const parent = fakeParent({ serialDevices: [{ value: '/dev/ttyHERE', path: '/dev/ttyHERE', label: 'x' }] })
+    const link = new FCLink(0, { inputType: 'UART', serial: '/dev/ttyHERE', baud: 115200, mavversion: 2 }, parent)
+    activeLink = link
+    link.m = { conStatusInt: () => -1, sendHeartbeat: () => {}, restart: () => {} }
+    const closeSpy = sinon.stub(link, 'closeLink').callsFake((cb) => cb(null))
+    const startSpy = sinon.stub(link, 'startLink').callsFake((cb) => cb(null))
+    const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    link.startInterval()
+    clock.tickAsync(1100).then(() => {
+      try {
+        clock.restore()
+        assert.ok(closeSpy.callCount >= 1)
+        assert.ok(startSpy.callCount >= 1)
+        if (link.intervalObj) clearInterval(link.intervalObj)
+        done()
+      } catch (e) { clock.restore(); done(e) }
+    }).catch((e) => { clock.restore(); done(e) })
+  }).timeout(8000)
+
   it('#startDFLogger() - already-running and process-exit branches; #stopDFLogger() not-running', function (done) {
     sinon.stub(logpaths, 'getPythonPath').returns(fakePython)
     const link = new FCLink(0, udpDevice, fakeParent())
@@ -496,6 +562,64 @@ except (KeyboardInterrupt, SystemExit):
     activeLink = link
     link.startDFLogger()
     setTimeout(() => done(), 300)
+  }).timeout(5000)
+
+  it('#startDFLogger() - process error event is handled and identity-nulls (R3)', function (done) {
+    sinon.stub(logpaths, 'getPythonPath').returns(fakePython)
+    const link = new FCLink(0, udpDevice, fakeParent())
+    activeLink = link
+    link.startDFLogger()
+    const proc = link.dflogger
+    assert.notEqual(proc, null)
+    // simulate a child 'error' (spawn EACCES/EAGAIN) — must not crash, must null
+    proc.emit('error', new Error('spawn EAGAIN'))
+    setTimeout(() => {
+      try { assert.equal(link.dflogger, null) } catch (e) { try { proc.kill('SIGTERM') } catch (_) {} return done(e) }
+      // the fake process is still alive (manual emit didn't kill it) — reap it
+      try { proc.kill('SIGTERM') } catch (_) {}
+      done()
+    }, 40)
+  }).timeout(5000)
+
+  it('#startDFLogger() - a late OLD close does not null a NEW logger (R6 identity check)', function (done) {
+    sinon.stub(logpaths, 'getPythonPath').returns(fakePython)
+    const link = new FCLink(0, udpDevice, fakeParent())
+    activeLink = link
+    link.startDFLogger()
+    const oldProc = link.dflogger
+    assert.notEqual(oldProc, null)
+    // kill-before-respawn: a NEW logger is now the live reference
+    const newProc = { newLogger: true }
+    link.dflogger = newProc
+    // the OLD process exits late and fires its (stale) close handler
+    oldProc.emit('close', 0)
+    setTimeout(() => {
+      try {
+        assert.strictEqual(link.dflogger, newProc) // NOT nulled by the stale close
+        link.dflogger = oldProc // restore so teardown reaps the real fake process
+        done()
+      } catch (e) { try { oldProc.kill('SIGTERM') } catch (_) {} done(e) }
+    }, 40)
+  }).timeout(5000)
+
+  it('#startDFLogger() - a late OLD error does not null a NEW logger (error-path identity check)', function (done) {
+    sinon.stub(logpaths, 'getPythonPath').returns(fakePython)
+    const link = new FCLink(0, udpDevice, fakeParent())
+    activeLink = link
+    link.startDFLogger()
+    const oldProc = link.dflogger
+    assert.notEqual(oldProc, null)
+    const newProc = { newLogger: true }
+    link.dflogger = newProc
+    // the OLD process errors late — its handler must not clear the NEW ref
+    oldProc.emit('error', new Error('spawn EACCES'))
+    setTimeout(() => {
+      try {
+        assert.strictEqual(link.dflogger, newProc)
+        link.dflogger = oldProc // restore so teardown reaps the real fake process
+        done()
+      } catch (e) { try { oldProc.kill('SIGTERM') } catch (_) {} done(e) }
+    }, 40)
   }).timeout(5000)
 
   it('#getStatus() - with and without a mavManager', function () {

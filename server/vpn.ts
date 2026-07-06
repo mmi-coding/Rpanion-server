@@ -2,6 +2,7 @@
  VPN management. Currently supports Zerotier and Wireguard
 */
 const path = require('path')
+const fs = require('fs')
 const { exec, execFile } = require('child_process')
 const logpaths = require('./paths')
 
@@ -33,7 +34,15 @@ function getVPNStatusZerotier (errpass: string | null, callback: VPNCallback): v
           const infoout = stdout.slice(0, stdout.indexOf('[\n]'))
           const networkout = stdout.slice(stdout.indexOf('\n') + 1)
           const isOnline = infoout.search('ONLINE') > -1 || infoout.search('TUNNELED') > -1
-          return callback(errpass, { installed: true, status: isOnline, text: JSON.parse(networkout) })
+          let networks: any[]
+          try {
+            networks = JSON.parse(networkout)
+          } catch (e) {
+            // malformed/partial zerotier-cli output must not crash the server
+            console.error(`Unable to parse zerotier networks: ${e}`)
+            return callback('Unable to parse zerotier networks', { installed: true, status: false, text: [] })
+          }
+          return callback(errpass, { installed: true, status: isOnline, text: networks })
         }
       }
     })
@@ -83,13 +92,21 @@ function addWireguardProfile (filename: string, tmpfilepath: string, callback: (
     return callback('Bad extension')
   }
 
-  // remove the file
-  exec('cp ' + tmpfilepath + ' /etc/wireguard/' + filename + ' && rm ' + tmpfilepath, (error: Error | null, stdout: string, stderr: string) => {
+  // copy into place with an argv array (no shell) and strip any path
+  // components from the uploaded name so it can only land in /etc/wireguard
+  const dest = path.join('/etc/wireguard', path.basename(filename))
+  execFile('cp', [tmpfilepath, dest], (error: Error | null, stdout: string, stderr: string) => {
     if (stderr.toString().trim() !== '') {
       console.error(`exec error: ${error}`)
       return callback(stderr.toString().trim())
     }
-    return callback(null)
+    // best-effort cleanup of the temp upload; a failure here must not crash
+    fs.unlink(tmpfilepath, (unlinkErr: Error | null) => {
+      if (unlinkErr !== null) {
+        console.error(`unlink error: ${unlinkErr}`)
+      }
+      return callback(null)
+    })
   })
 }
 
@@ -186,7 +203,15 @@ function getVPNStatusWireguard (errpass: string | null, callback: VPNCallback): 
         } else {
           // output in JSON format anyway, so just pipe through
           console.log(stdout)
-          return callback(errpass, { installed: true, status: true, text: JSON.parse(stdout) })
+          let profiles: any[]
+          try {
+            profiles = JSON.parse(stdout)
+          } catch (e) {
+            // malformed/partial wireguardconfig.py output must not crash the server
+            console.error(`Unable to parse wireguard config: ${e}`)
+            return callback('Unable to parse wireguard config', { installed: true, status: false, text: [] })
+          }
+          return callback(errpass, { installed: true, status: true, text: profiles })
         }
       })
     }

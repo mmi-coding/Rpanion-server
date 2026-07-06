@@ -53,7 +53,10 @@ npm prune --omit=dev --no-audit --no-fund >/dev/null
 
 rm -rf ./python/.venv
 mkdir -p ./additional/etc/rpanion-server/config
-cp ./config/user.json ./additional/etc/rpanion-server/config
+# S1: do NOT ship config/user.json (it holds the admin:admin default). The server
+# self-provisions a random-password admin on first boot if the users file is
+# absent (userLogin.ensureInitialAdmin), so no shared default reaches a device and
+# a redeploy never reverts an operator's changed password.
 mkdir -p ./additional/usr/share/rpanion-server/app/server
 node_modules.dev/.bin/node-deb --verbose --extra-files additional -- server mavlink build python assets
 rm -r ./additional

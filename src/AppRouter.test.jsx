@@ -107,6 +107,37 @@ describe('#AppRouter()', function () {
   })
 
   // -------------------------------------------------------------------------
+  // S1: default-password banner
+  // -------------------------------------------------------------------------
+  test('shows the default-password banner when mustChangePassword=true', async function () {
+    mockFetch({ 'POST /api/auth': { authEnabled: true, mustChangePassword: true } })
+    const page = renderPage(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRouter />
+      </MemoryRouter>
+    )
+    await page.flush()
+    const banner = page.container.querySelector('#default-pw-banner')
+    expect(banner).not.toBeNull()
+    expect(banner.textContent).toContain('default password')
+    const link = banner.querySelector('a')
+    expect(link.getAttribute('href')).toContain('/users')
+    page.unmount()
+  })
+
+  test('no default-password banner when mustChangePassword is absent', async function () {
+    mockFetch(authOk)
+    const page = renderPage(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRouter />
+      </MemoryRouter>
+    )
+    await page.flush()
+    expect(page.container.querySelector('#default-pw-banner')).toBeNull()
+    page.unmount()
+  })
+
+  // -------------------------------------------------------------------------
   // RBAC: read-only role shows a badge in the sidebar heading
   // -------------------------------------------------------------------------
   test('shows a read-only badge when the auth role is readonly', async function () {

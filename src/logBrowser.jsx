@@ -60,13 +60,23 @@ class LoggerPage extends basePage {
     return "Flight Log and Media Browser";
   }
 
+  // Build a download URL for a static-served file. /logdownload and /media are
+  // now behind authenticateToken on the server (S3); <a download> can't set an
+  // Authorization header, so carry the JWT in the ?token= query param (which
+  // authenticateToken also accepts). Falls back to an unadorned URL when there
+  // is no token (dev mode, where the server skips auth anyway).
+  downloadUrl(prefix, key) {
+    const baseUrl = window.location.origin;
+    const q = this.state.token ? "?token=" + encodeURIComponent(this.state.token) : "";
+    return baseUrl + prefix + key + q;
+  }
+
   // create an html table from a list of logfiles
   renderLogTableData(logfilelist) {
-    const baseUrl = window.location.origin;
     return logfilelist.map((log) => {
       return (
         <tr key={log.key}>
-          <td><a href={baseUrl + "/logdownload/" + log.key} download={log.name}>{log.key}</a></td>
+          <td><a href={this.downloadUrl("/logdownload/", log.key)} download={log.name}>{log.key}</a></td>
           <td>{log.size} KB</td>
           <td>{log.modified}</td>
         </tr>
@@ -77,7 +87,6 @@ class LoggerPage extends basePage {
   // create an html table from a list of media files, sorted from newest to oldest
   renderMediaTableData(logfilelist) {
     // clone the list and sort with newest first
-    const baseUrl = window.location.origin;
     const sorted = [...logfilelist].sort((a, b) => {
       return new Date(b.modified) - new Date(a.modified);
     });
@@ -85,7 +94,7 @@ class LoggerPage extends basePage {
     return sorted.map((log) => {
       return (
         <tr key={log.key}>
-          <td><a href={baseUrl + "/media/" + log.key} download={log.name}>{log.key}</a></td>
+          <td><a href={this.downloadUrl("/media/", log.key)} download={log.name}>{log.key}</a></td>
           <td>{log.size} KB</td>
           <td>{log.modified}</td>
         </tr>

@@ -115,6 +115,22 @@ describe('#LoggerPage()', function () {
     page.unmount()
   })
 
+  // S3: /logdownload and /media are now behind authenticateToken; <a download>
+  // links must carry the JWT in ?token= so the browser can authenticate.
+  test('download links carry the ?token= query param when authenticated', async function () {
+    localStorage.setItem('token', JSON.stringify({ token: 'jwt-abc-123' }))
+    // token present → basePage verifies it via POST /api/auth on mount
+    mockFetch({ ...defaultFetch, 'POST /api/auth': {} })
+    const page = renderPage(<LoggerPage />)
+    await page.flush()
+    const links = page.container.querySelectorAll('a')
+    const tlogLink = [...links].find(a => a.href.includes('logdownload/'))
+    expect(tlogLink.href).toContain('token=jwt-abc-123')
+    const mediaLink = [...links].find(a => a.href.includes('/media/'))
+    expect(mediaLink.href).toContain('token=jwt-abc-123')
+    page.unmount()
+  })
+
   // -------------------------------------------------------------------------
   // doLogConversion toggle button
   // -------------------------------------------------------------------------

@@ -1965,6 +1965,50 @@ describe('Package B — delegate HTTP routes', function () {
         } catch (e) { done(e) }
       }).catch(done)
     })
+
+    // S2: the conType allowlist and the conName/conAdapter charset must reject
+    // shell-metacharacter payloads before they ever reach the (sudo nmcli) manager.
+    it('rejects a command-injection payload in conType (not in allowlist)', function (done) {
+      const spy = sinon.stub(networkManager, 'addConnection').callsFake(function (name, type, adapter, settings, cb) {
+        cb(null)
+      })
+      request('POST', '/api/networkadd', { body: { conName: 'myconn', conType: 'ethernet; reboot', conAdapter: 'eth0', conSettings: { ipaddresstype: 'auto' } } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.error)
+          assert.ok(spy.notCalled, 'addConnection must not be reached')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('rejects a command-injection payload in conAdapter (charset)', function (done) {
+      const spy = sinon.stub(networkManager, 'addConnection').callsFake(function (name, type, adapter, settings, cb) {
+        cb(null)
+      })
+      request('POST', '/api/networkadd', { body: { conName: 'myconn', conType: 'ethernet', conAdapter: 'eth0; rm -rf /', conSettings: { ipaddresstype: 'auto' } } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.error)
+          assert.ok(spy.notCalled, 'addConnection must not be reached')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
+
+    it('rejects a command-injection payload in conName (charset)', function (done) {
+      const spy = sinon.stub(networkManager, 'addConnection').callsFake(function (name, type, adapter, settings, cb) {
+        cb(null)
+      })
+      request('POST', '/api/networkadd', { body: { conName: 'x$(id)', conType: 'ethernet', conAdapter: 'eth0', conSettings: { ipaddresstype: 'auto' } } }).then(function (res) {
+        try {
+          assert.equal(res.status, 200)
+          assert.ok(res.body.error)
+          assert.ok(spy.notCalled, 'addConnection must not be reached')
+          done()
+        } catch (e) { done(e) }
+      }).catch(done)
+    })
   })
 
   // =========================================================================

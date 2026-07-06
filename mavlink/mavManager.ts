@@ -11,6 +11,12 @@ const REGISTRY = {
   ...ardupilotmega.REGISTRY
 }
 
+// Cap the STATUSTEXT accumulator so a long flight can't grow it without bound
+// (it is also re-broadcast at 1 Hz over the scarce LTE uplink). Keep only the
+// most-recent lines; each MAVLink STATUSTEXT is <=50 chars so this stays well
+// under ~4 KB.
+const MAX_STATUSTEXT_LINES = 50
+
 class mavManager {
   enableDSRequest: any
   inStream: any
@@ -99,74 +105,97 @@ class mavManager {
 
     this.mav = this.inStream.pipe(new MavLinkPacketSplitter()).pipe(new MavLinkPacketParser())
 
+    // A malformed/truncated frame (RF/EMI on a noisy airframe, or a crafted frame
+    // on the open TCP link) can make the splitter/parser emit an 'error' event.
+    // Without a listener Node re-throws it out of the event loop and the global
+    // handler exits the process -> ~10 s loss of all links. Log and keep running.
+    this.mav.on('error', (err: any) => {
+      console.log('MAVLink parser error: ', err)
+    })
+
     // what to do when we get a message
     this.mav.on('data', (packet: any) => {
-      const clazz = REGISTRY[packet.header.msgid]
-      if (!clazz) {
-        // bad message - can't process here any further
-        // console.log("Generic: ", packet)
-        this.eventEmitter.emit('gotMessage', packet, null)
-        return
-      }
-      const data = packet.protocol.data(packet.payload, clazz)
-      // console.log(packet)
-
-      // set the target system/comp ID if needed
-      // ensure it's NOT a GCS, as mavlink-router will sometimes route
-      // messages from connected GCS's
-      if (this.targetSystem === null && packet.header.msgid === minimal.Heartbeat.MSG_ID && data.type !== 6
-        && data.type !== 18 && data.type !== 27) {
-        console.log('Vehicle is S/C: ' + packet.header.sysid + '/' + packet.header.compid)
-        this.targetSystem = packet.header.sysid
-        this.targetComponent = packet.header.compid
-
-        // send off initial messages
-        this.sendVersionRequest()
-
-        // Respond to MavLink commands that are targeted to the companion computer
-      } else if (data.targetSystem === this.targetSystem &&
-        data.targetComponent === minimal.MavComponent.ONBOARD_COMPUTER &&
-        packet.header.msgid === common.CommandLong.MSG_ID) {
-        console.log('Received CommandLong addressed to onboard computer')
-
-      // Or the attached camera
-      } else if (data.targetSystem === this.targetSystem &&
-        data.targetComponent === minimal.MavComponent.CAMERA &&
-        packet.header.msgid === common.CommandLong.MSG_ID) {
-        console.log('Received CommandLong addressed to attached camera')
-
-      } else if (this.targetSystem !== packet.header.sysid || this.targetComponent !== packet.header.compid) {
-        // don't use packets from other systems or components in Rpanion-server
-        return
-      }
-
-      // raise event for external objects
-      this.eventEmitter.emit('gotMessage', packet, data)
-
-      this.statusNumRxPackets += 1
-      this.timeofLastPacket = (Date.now().valueOf())
-      if (packet.header.msgid === minimal.Heartbeat.MSG_ID) {
-        // System status
-        this.statusFWName = data.autopilot
-        this.statusVehType = data.type
-
-        // arming status
-        if ((data.baseMode & 128) !== 0 && this.statusArmed === 0) {
-          console.log('Vehicle ARMED')
-          this.statusArmed = 1
-          this.eventEmitter.emit('armed')
-        } else if ((data.baseMode & 128) === 0 && this.statusArmed === 1) {
-          console.log('Vehicle DISARMED')
-          this.statusArmed = 0
-          this.eventEmitter.emit('disarmed')
+      try {
+        const clazz = REGISTRY[packet.header.msgid]
+        if (!clazz) {
+          // bad message - can't process here any further
+          // console.log("Generic: ", packet)
+          this.eventEmitter.emit('gotMessage', packet, null)
+          return
         }
-      } else if (packet.header.msgid === common.StatusText.MSG_ID) {
-        // Remove whitespace
-        this.statusText += data.text.trim().replace(/[^ -~]+/g, '') + '\n'
-      } else /* istanbul ignore next - msgid 148 (AUTOPILOT_VERSION) absent from node-mavlink REGISTRY; splitter skips unknown-registry packets before reaching here */ if (packet.header.msgid === 148) {
-        // decode Ardupilot version (AUTOPILOT_VERSION message)
-        this.fcVersion = this.decodeFlightSwVersion(data.flightSwVersion)
-        console.log(this.fcVersion)
+        const data = packet.protocol.data(packet.payload, clazz)
+        // console.log(packet)
+
+        // set the target system/comp ID if needed
+        // ensure it's NOT a GCS, as mavlink-router will sometimes route
+        // messages from connected GCS's
+        if (this.targetSystem === null && packet.header.msgid === minimal.Heartbeat.MSG_ID && data.type !== 6
+          && data.type !== 18 && data.type !== 27) {
+          console.log('Vehicle is S/C: ' + packet.header.sysid + '/' + packet.header.compid)
+          this.targetSystem = packet.header.sysid
+          this.targetComponent = packet.header.compid
+
+          // send off initial messages
+          this.sendVersionRequest()
+
+          // Respond to MavLink commands that are targeted to the companion computer
+        } else if (data.targetSystem === this.targetSystem &&
+          data.targetComponent === minimal.MavComponent.ONBOARD_COMPUTER &&
+          packet.header.msgid === common.CommandLong.MSG_ID) {
+          console.log('Received CommandLong addressed to onboard computer')
+
+        // Or the attached camera
+        } else if (data.targetSystem === this.targetSystem &&
+          data.targetComponent === minimal.MavComponent.CAMERA &&
+          packet.header.msgid === common.CommandLong.MSG_ID) {
+          console.log('Received CommandLong addressed to attached camera')
+
+        } else if (this.targetSystem !== packet.header.sysid || this.targetComponent !== packet.header.compid) {
+          // don't use packets from other systems or components in Rpanion-server
+          return
+        }
+
+        // raise event for external objects
+        this.eventEmitter.emit('gotMessage', packet, data)
+
+        this.statusNumRxPackets += 1
+        this.timeofLastPacket = (Date.now().valueOf())
+        if (packet.header.msgid === minimal.Heartbeat.MSG_ID) {
+          // System status
+          this.statusFWName = data.autopilot
+          this.statusVehType = data.type
+
+          // arming status
+          if ((data.baseMode & 128) !== 0 && this.statusArmed === 0) {
+            console.log('Vehicle ARMED')
+            this.statusArmed = 1
+            this.eventEmitter.emit('armed')
+          } else if ((data.baseMode & 128) === 0 && this.statusArmed === 1) {
+            console.log('Vehicle DISARMED')
+            this.statusArmed = 0
+            this.eventEmitter.emit('disarmed')
+          }
+        } else if (packet.header.msgid === common.StatusText.MSG_ID) {
+          // Remove whitespace
+          this.statusText += data.text.trim().replace(/[^ -~]+/g, '') + '\n'
+          // Bound the accumulator to the most-recent lines (see MAX_STATUSTEXT_LINES).
+          // statusText always ends in '\n', so split() yields a trailing '' element;
+          // keep the last MAX_STATUSTEXT_LINES entries plus that terminator.
+          const stLines = this.statusText.split('\n')
+          if (stLines.length > MAX_STATUSTEXT_LINES + 1) {
+            this.statusText = stLines.slice(stLines.length - (MAX_STATUSTEXT_LINES + 1)).join('\n')
+          }
+        } else /* istanbul ignore next - msgid 148 (AUTOPILOT_VERSION) absent from node-mavlink REGISTRY; splitter skips unknown-registry packets before reaching here */ if (packet.header.msgid === 148) {
+          // decode Ardupilot version (AUTOPILOT_VERSION message)
+          this.fcVersion = this.decodeFlightSwVersion(data.flightSwVersion)
+          console.log(this.fcVersion)
+        }
+      } catch (err) {
+        // A malformed/truncated frame can make packet.protocol.data() throw a
+        // RangeError, or a null STATUSTEXT make data.text.trim() throw a
+        // TypeError. Drop the frame and keep the process alive rather than
+        // letting the throw escape the callback and crash the companion.
+        console.log('Error processing MAVLink packet: ', err)
       }
     })
   }
@@ -219,6 +248,9 @@ class mavManager {
 
     this.udpStream = udp.createSocket('udp4')
     this.statusBytesPerSec = { avgBytesSec: 0, bytes: 0, lastTime: Date.now().valueOf() }
+    // clear the STATUSTEXT accumulator so it doesn't survive (and keep growing)
+    // across reconnects
+    this.statusText = ''
 
     this.udpStream.on('message', (msg: Buffer, rinfo: { port: number, address: string }) => {
       // lock onto server port
@@ -266,14 +298,12 @@ class mavManager {
     const buffer = protocol.serialize(msg, this.seq++)
     this.seq &= 255
 
-    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, function (error: Error | null) {
-      /* istanbul ignore next - error callback loses 'this' (non-arrow fn); UDP send-error path would throw, upstream bug */
+    this.udpStream.send(buffer, this.RinudpPort, this.RinudpIP, (error: Error | null) => {
       if (error) {
-        this.udpStream.close()
+        // A transient UDP send error (ECONNREFUSED from an ICMP port-unreachable,
+        // EMSGSIZE, etc.) must NOT tear down the socket — closing it here would
+        // drop the whole FC link. Log and keep the stream so the next send works.
         console.log(error)
-      } else {
-        // console.log(msgbuf)
-        // console.log(buf)
       }
     })
   }

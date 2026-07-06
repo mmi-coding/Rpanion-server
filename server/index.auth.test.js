@@ -5,6 +5,7 @@ const sinon = require('sinon')
 const { describe, it, before, after, afterEach } = require('mocha')
 const jwt = require('jsonwebtoken')
 const userLogin = require('./userLogin')
+const CameraSwitcher = require('./cameraSwitcher')
 
 // Shared harness — server started once by index.test.js before() via getServer()
 const { getServer, request } = require('../test/indexApp')
@@ -112,6 +113,21 @@ describe('Auth and user routes', function () {
         const res = await request('POST', '/api/auth', { body: {}, token })
         assert.equal(res.status, 200)
         assert.strictEqual(res.body.authEnabled, true)
+      } finally {
+        process.env.NODE_ENV = savedEnv
+      }
+    })
+
+    it('200 — flags mustChangePassword when the default admin password is in use (S1)', async function () {
+      // The test fixture (config/user.json) ships admin:admin, so the
+      // default-credentials flag must be set for the UI banner.
+      const token = await getToken()
+      const savedEnv = process.env.NODE_ENV
+      try {
+        process.env.NODE_ENV = 'production'
+        const res = await request('POST', '/api/auth', { body: {}, token })
+        assert.equal(res.status, 200)
+        assert.strictEqual(res.body.mustChangePassword, true)
       } finally {
         process.env.NODE_ENV = savedEnv
       }
@@ -383,7 +399,9 @@ describe('Auth and user routes', function () {
       // Stub jwt.verify so it calls back with an expiry error.
       // expiredToken is distinct from any blacklisted token so the blacklist
       // check passes and jwt.verify (stubbed) is reached.
-      sinon.stub(jwt, 'verify').callsFake((_tok, _secret, cb) => {
+      // jwt.verify is now called with an options object ({ algorithms: ['HS256'] },
+      // S15) so the callback is the 4th arg — the fake must accept _opts.
+      sinon.stub(jwt, 'verify').callsFake((_tok, _secret, _opts, cb) => {
         const err = new Error('jwt expired')
         err.name = 'TokenExpiredError'
         cb(err, null)
@@ -488,6 +506,15 @@ describe('Auth and user routes', function () {
       assert.equal(res.status, 200)
     })
 
+    it('403 — read-only user cannot DELETE a mutating route (S6)', async function () {
+      // The RBAC gate must fire on every non-idempotent verb, not just POST.
+      // DELETE /api/hudfonts/:id is a live example of a non-POST mutation; the
+      // gate returns before the route handler runs, so no stubbing is needed.
+      process.env.NODE_ENV = 'production'
+      const res = await request('DELETE', '/api/hudfonts/anyid', { token: readonlyToken })
+      assert.equal(res.status, 403)
+    })
+
     it('200 — read-only user may POST an allowlisted route (/api/auth)', async function () {
       process.env.NODE_ENV = 'production'
       const res = await request('POST', '/api/auth', { token: readonlyToken, body: {} })
@@ -502,6 +529,156 @@ describe('Auth and user routes', function () {
         body: { username: 'someone', password: 'password' }
       })
       assert.equal(res.status, 200)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // S4 — the camera-switcher "command" mode is a root-level command-exec
+  // primitive (server/cameraSwitcher.ts runs exec(commandA/B) as root). The
+  // requireAdmin gate on /api/cameraswitchermodify (stores the command) and
+  // /api/cameraswitcherswitch (fires it) must reject any non-admin, and let an
+  // admin through.
+  // -------------------------------------------------------------------------
+  describe('Camera-switcher command mode is admin-only (S4)', function () {
+    const validSwitcherBody = {
+      enabled: false,
+      rcChannel: 7,
+      threshold: 1500,
+      hysteresis: 50,
+      minHoldMs: 500,
+      switchMode: 'gstreamer'
+    }
+    let savedNodeEnv
+    let adminToken
+    let nonAdminToken
+
+    before(async function () {
+      this.timeout(20000)
+      savedNodeEnv = process.env.NODE_ENV
+      sinon.stub(userLogin.prototype, 'checkLoginDetails').resolves(true)
+      const roleStub = sinon.stub(userLogin.prototype, 'getUserRole')
+      roleStub.resolves('admin')
+      adminToken = (await request('POST', '/api/login', {
+        body: { username: 's4admin', password: 'pw' }
+      })).body.token
+      // A token whose role is neither 'admin' nor 'readonly': authenticateToken's
+      // read-only write-block does NOT catch it, so it reaches requireAdmin — the
+      // exact gap the admin gate is defence-in-depth against.
+      roleStub.resolves(undefined)
+      nonAdminToken = (await request('POST', '/api/login', {
+        body: { username: 's4nonadmin', password: 'pw' }
+      })).body.token
+      sinon.restore()
+    })
+
+    afterEach(function () {
+      sinon.restore()
+      process.env.NODE_ENV = savedNodeEnv
+    })
+
+    after(function () {
+      process.env.NODE_ENV = savedNodeEnv
+    })
+
+    it('403 — non-admin cannot POST /api/cameraswitchermodify', async function () {
+      process.env.NODE_ENV = 'production'
+      const res = await request('POST', '/api/cameraswitchermodify', {
+        token: nonAdminToken,
+        body: validSwitcherBody
+      })
+      assert.equal(res.status, 403)
+    })
+
+    it('403 — non-admin cannot POST /api/cameraswitcherswitch', async function () {
+      process.env.NODE_ENV = 'production'
+      const res = await request('POST', '/api/cameraswitcherswitch', {
+        token: nonAdminToken,
+        body: { source: 'A' }
+      })
+      assert.equal(res.status, 403)
+    })
+
+    it('200 — admin may POST /api/cameraswitchermodify', async function () {
+      sinon.stub(CameraSwitcher.prototype, 'setSettings').callsFake(function (opts, cb) { cb(null) })
+      sinon.stub(CameraSwitcher.prototype, 'getSettings').returns({ enabled: false })
+      process.env.NODE_ENV = 'production'
+      const res = await request('POST', '/api/cameraswitchermodify', {
+        token: adminToken,
+        body: validSwitcherBody
+      })
+      assert.equal(res.status, 200)
+    })
+
+    it('200 — admin may POST /api/cameraswitcherswitch', async function () {
+      sinon.stub(CameraSwitcher.prototype, 'doSwitch').returns(undefined)
+      sinon.stub(CameraSwitcher.prototype, 'getStatus').returns({ activeSource: 'A' })
+      process.env.NODE_ENV = 'production'
+      const res = await request('POST', '/api/cameraswitcherswitch', {
+        token: adminToken,
+        body: { source: 'A' }
+      })
+      assert.equal(res.status, 200)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // S15 — jwt.verify pins the signing algorithm to HS256. A token whose header
+  // advertises a different HMAC algorithm (even one signed with the real secret)
+  // must be rejected. Driven against the middleware directly with a known secret
+  // so the token can be forged (the running server's secret is random/unknown).
+  // -------------------------------------------------------------------------
+  describe('JWT algorithm pinning (S15)', function () {
+    const authModule = require('./auth')
+    const SECRET = 'unit-test-secret-key-for-alg-pinning'
+    let authenticateToken
+    let savedSecret
+    let savedNodeEnv
+
+    // Run the middleware and resolve with the outcome: either 'next' (allowed)
+    // or an 'error' response carrying the status code.
+    function runAuth (req) {
+      return new Promise((resolve) => {
+        const res = {
+          statusCode: 200,
+          status (code) { this.statusCode = code; return this },
+          json (obj) { resolve({ outcome: 'error', statusCode: this.statusCode, body: obj }) }
+        }
+        authenticateToken(req, res, () => resolve({ outcome: 'next', statusCode: 200 }))
+      })
+    }
+
+    function reqFor (token) {
+      return { headers: { authorization: 'Bearer ' + token }, query: {}, method: 'GET', path: '/api/users' }
+    }
+
+    before(function () {
+      savedSecret = process.env.RPANION_SECRET_KEY
+      savedNodeEnv = process.env.NODE_ENV
+      process.env.RPANION_SECRET_KEY = SECRET
+      // Capture the secret at module-construction time, then enforce auth.
+      authenticateToken = authModule({ userMgmt: {} }).authenticateToken
+      process.env.NODE_ENV = 'production'
+    })
+
+    after(function () {
+      if (savedSecret === undefined) delete process.env.RPANION_SECRET_KEY
+      else process.env.RPANION_SECRET_KEY = savedSecret
+      process.env.NODE_ENV = savedNodeEnv
+    })
+
+    it('allows a correctly-signed HS256 token', async function () {
+      const token = jwt.sign({ username: 'u', role: 'admin' }, SECRET, { algorithm: 'HS256' })
+      const out = await runAuth(reqFor(token))
+      assert.equal(out.outcome, 'next')
+    })
+
+    it('403 — rejects a token signed with a non-HS256 algorithm (HS512)', async function () {
+      // Signed with the *real* secret but under HS512 — accepted without the pin,
+      // rejected with { algorithms: ['HS256'] }.
+      const token = jwt.sign({ username: 'u', role: 'admin' }, SECRET, { algorithm: 'HS512' })
+      const out = await runAuth(reqFor(token))
+      assert.equal(out.outcome, 'error')
+      assert.equal(out.statusCode, 403)
     })
   })
 
@@ -527,6 +704,116 @@ describe('Auth and user routes', function () {
         const res = await request('GET', '/api/users')
         // Well below the 50 req/min cap — should still succeed
         assert.notEqual(res.status, 429)
+      } finally {
+        delete process.env.ENABLE_RATE_LIMIT
+      }
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // S3 — /logdownload and /media are behind authenticateToken. Unauthenticated
+  // requests are rejected in production; the JWT may ride in ?token= so
+  // <a download> links still work.
+  // -------------------------------------------------------------------------
+  describe('Static file auth — /logdownload and /media (S3)', function () {
+    const fs = require('fs')
+    const path = require('path')
+    const logpaths = require('./paths')
+    let savedNodeEnv
+    let token
+
+    before(async function () {
+      this.timeout(20000)
+      savedNodeEnv = process.env.NODE_ENV
+      // mint a real JWT in dev mode (auth skipped) before switching to production
+      token = await getToken()
+    })
+
+    after(function () {
+      process.env.NODE_ENV = savedNodeEnv
+    })
+
+    afterEach(function () {
+      process.env.NODE_ENV = savedNodeEnv
+    })
+
+    it('401 — /logdownload rejected without a token in production', async function () {
+      process.env.NODE_ENV = 'production'
+      const res = await request('GET', '/logdownload/anything.tlog')
+      assert.equal(res.status, 401)
+    })
+
+    it('401 — /media rejected without a token in production', async function () {
+      process.env.NODE_ENV = 'production'
+      const res = await request('GET', '/media/anything.jpg')
+      assert.equal(res.status, 401)
+    })
+
+    it('200 — /logdownload serves the file when the JWT rides in ?token=', async function () {
+      fs.mkdirSync(logpaths.flightsLogsDir, { recursive: true })
+      const fname = 's3-logdownload-' + Date.now() + '.tlog'
+      const fpath = path.join(logpaths.flightsLogsDir, fname)
+      fs.writeFileSync(fpath, 'HELLO_TLOG')
+      try {
+        process.env.NODE_ENV = 'production'
+        const res = await request('GET', '/logdownload/' + fname + '?token=' + encodeURIComponent(token), { raw: true })
+        assert.equal(res.statusCode, 200)
+        assert.equal(res.body, 'HELLO_TLOG')
+      } finally {
+        fs.unlinkSync(fpath)
+      }
+    })
+
+    it('200 — /media serves the file when the JWT rides in ?token=', async function () {
+      fs.mkdirSync(logpaths.mediaDir, { recursive: true })
+      const fname = 's3-media-' + Date.now() + '.txt'
+      const fpath = path.join(logpaths.mediaDir, fname)
+      fs.writeFileSync(fpath, 'MEDIA_BYTES')
+      try {
+        process.env.NODE_ENV = 'production'
+        const res = await request('GET', '/media/' + fname + '?token=' + encodeURIComponent(token), { raw: true })
+        assert.equal(res.statusCode, 200)
+        assert.equal(res.body, 'MEDIA_BYTES')
+      } finally {
+        fs.unlinkSync(fpath)
+      }
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // S9 — security headers on every response
+  // -------------------------------------------------------------------------
+  describe('Security headers (S9)', function () {
+    it('sets X-Frame-Options, X-Content-Type-Options and a CSP', async function () {
+      const res = await request('GET', '/api/users')
+      assert.equal(res.headers['x-frame-options'], 'DENY')
+      assert.equal(res.headers['x-content-type-options'], 'nosniff')
+      assert.ok(res.headers['content-security-policy'], 'expected a CSP header')
+      assert.ok(res.headers['content-security-policy'].includes("frame-ancestors 'none'"))
+      assert.ok(res.headers['content-security-policy'].includes("default-src 'self'"))
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // S11 — stricter per-login rate limiter (in addition to the global one)
+  // -------------------------------------------------------------------------
+  describe('Login rate limiter (S11)', function () {
+    it('throttles /api/login after ~5 attempts/min while the global limiter still allows them', async function () {
+      this.timeout(10000)
+      // Force the limiters on in dev mode; the login limiter (max 5) must trip
+      // well before the global limiter (max 50).
+      process.env.ENABLE_RATE_LIMIT = '1'
+      try {
+        const statuses = []
+        for (let i = 0; i < 6; i++) {
+          const res = await request('POST', '/api/login', {
+            body: { username: 'admin', password: 'admin' }
+          })
+          statuses.push(res.status)
+        }
+        // The first request is under the cap and succeeds; the 6th is throttled.
+        assert.equal(statuses[0], 200, 'first login should succeed under the cap')
+        assert.equal(statuses[5], 429, 'the 6th login within a minute should be rate-limited')
       } finally {
         delete process.env.ENABLE_RATE_LIMIT
       }

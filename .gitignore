@@ -5,6 +5,7 @@
 /.playwright-mcp
 # testing
 /coverage
+/AP Periph Firmwares
 
 # production
 /build

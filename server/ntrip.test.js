@@ -41,7 +41,8 @@ describe('NTRIP Functions', function () {
       assert.equal(username, '')
       assert.equal(password, '')
       assert.equal(active, false)
-      assert.equal(useTls, false)
+      // new configs default to TLS on (S14)
+      assert.equal(useTls, true)
       done()
     })
   })
@@ -121,6 +122,50 @@ describe('NTRIP Functions', function () {
     ntripClient.status = -5
     assert.ok(ntripClient.conStatusStr().startsWith(' | '))
     ntripClient.status = 0
+  })
+
+  it('#ntripClientTeardownOnResave()', function () {
+    // R11: re-saving while NTRIP is active must close and detach the previous
+    // client (its TCP socket + NMEA timer) before creating a new one, otherwise
+    // the old socket leaks and both clients push RTCM to the FC.
+    settings.clear()
+    const ntripClient = new Ntrip(settings)
+    ntripClient.setSettings('127.0.0.1', 1, 'MNT', 'user', 'pwd', true, false)
+    const firstClient = ntripClient.client
+    assert.ok(firstClient)
+    const closeSpy = sinon.spy(firstClient, 'close')
+    const removeSpy = sinon.spy(firstClient, 'removeAllListeners')
+
+    // re-save while still active: the old client is torn down and swapped out
+    ntripClient.setSettings('127.0.0.1', 1, 'MNT2', 'user', 'pwd', true, false)
+    assert.ok(closeSpy.calledOnce)
+    assert.ok(removeSpy.calledOnce)
+    assert.ok(ntripClient.client)
+    assert.notStrictEqual(ntripClient.client, firstClient)
+
+    // clean up: disabling tears the live client down and clears the handle
+    ntripClient.setSettings('127.0.0.1', 1, 'MNT', 'user', 'pwd', false, false)
+    assert.equal(ntripClient.client, null)
+  })
+
+  it('#useTlsDefaultsToTrueForNewConfig()', function () {
+    // S14: a brand-new config (nothing stored) defaults to TLS so caster
+    // credentials are never sent in cleartext
+    settings.clear()
+    const ntripClient = new Ntrip(settings)
+    assert.equal(ntripClient.options.useTls, true)
+  })
+
+  it('#useTlsPreservesExplicitFalse()', function () {
+    // S14: an operator who explicitly saved useTls=false for a plaintext-only
+    // caster must keep it — the new default must not flip a stored false
+    settings.clear()
+    const saver = new Ntrip(settings)
+    saver.setSettings('host', 2101, 'MNT', 'user', 'pwd', false, false)
+
+    // a fresh instance loading those stored settings keeps useTls=false
+    const reloaded = new Ntrip(settings)
+    assert.equal(reloaded.options.useTls, false)
   })
 
   it('#setSettingsSaveFailure()', function () {

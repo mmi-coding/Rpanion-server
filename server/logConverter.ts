@@ -7,6 +7,7 @@ class logConverter {
   intervalObj: any
   settings: any
   converterPid: any
+  converting: boolean
   pythonScript: any
   pythonFolder: any
   options: any
@@ -20,6 +21,9 @@ class logConverter {
     this.pythonScript = path.join(this.pythonFolder, 'tlog2kmz.py')
 
     this.converterPid = null
+    // true while a tlog2kmz child is in-flight; guards the 20 s interval from
+    // stacking concurrent python conversions if one run outlives the interval
+    this.converting = false
 
     // load settings
     this.settings = settings
@@ -28,10 +32,13 @@ class logConverter {
     // interval for conversion checks
     this.intervalObj = setInterval(() => {
       console.log('LogConverter interval')
-      if (this.options.doLogConversion) {
+      // skip if a previous conversion is still running: a slow tlog2kmz must
+      // not have a second python spawned on top of it every 20 s (R11)
+      if (this.options.doLogConversion && !this.converting) {
         try {
           console.log('Doing log conversion...')
           const pythonPath = logpaths.getPythonPath()
+          this.converting = true
           this.converterPid = spawn(pythonPath, [this.pythonScript, logpaths.flightsLogsDir])
           this.converterPid.stdout.on('data', (data: any) => {
             console.log(`stdout from log converter: ${data}`)
@@ -39,11 +46,20 @@ class logConverter {
           this.converterPid.stderr.on('data', (data: any) => {
             console.log(`stderr from log converter: ${data}`)
           })
+          // an unhandled child 'error' (spawn EACCES/EAGAIN/ENOMEM, stale-venv
+          // ENOENT) is thrown by Node and crashes the whole process — log and
+          // clear the running-guard instead (R3)
+          this.converterPid.on('error', (err: any) => {
+            console.log(`Error from log converter: ${err}`)
+            this.converting = false
+          })
           this.converterPid.on('close', (code: any) => {
             console.log(`Log converter exited with code ${code}`)
+            this.converting = false
           })
         } catch (error) {
           console.log(error)
+          this.converting = false
         }
       }
     }, this.options.interval * 1000)

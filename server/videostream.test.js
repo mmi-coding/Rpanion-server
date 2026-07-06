@@ -2876,6 +2876,134 @@ describe('Video Functions', function () {
     })
   })
 
+  describe('#R10 stream lifecycle guards', function () {
+    let streamChild = null
+
+    afterEach(function () { killChild(streamChild); streamChild = null })
+
+    it('#_stopRunningStream() kills the child and clears the heartbeat + HUD timers', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      const killSpy = sinon.spy()
+      vManager.deviceStream = { kill: killSpy }
+      vManager.intervalObj = setInterval(() => {}, 1000)
+      vManager.hudTimer = setInterval(() => {}, 1000)
+      vManager._stopRunningStream()
+      assert.ok(killSpy.calledOnceWithExactly('SIGTERM'))
+      assert.equal(vManager.deviceStream, null)
+      assert.equal(vManager.intervalObj, null)
+      assert.equal(vManager.hudTimer, null)
+    })
+
+    it('#_stopRunningStream() is a safe no-op when nothing is running', function () {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.deviceStream = null
+      vManager.intervalObj = null
+      vManager.hudTimer = null
+      vManager._stopRunningStream() // must not throw
+      assert.equal(vManager.deviceStream, null)
+      assert.equal(vManager.intervalObj, null)
+    })
+
+    it('startCamera() while already running kills the old child and clears its heartbeat timer', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      vManager.cameraMode = 'streaming'
+      vManager.videoSettings = {
+        device: '/dev/video0', width: 1280, height: 720,
+        format: 'image/jpeg', rotation: 0, bitrate: 1100, fps: 30,
+        compression: 'H264', useUDP: false, useUDPIP: '127.0.0.1',
+        useUDPPort: 5600, useTimestamp: false, isRecording: false,
+        mavStreamSelected: '127.0.0.1', mediaDestination: ''
+      }
+      // simulate a stream that is already running (the orphan/leak risk)
+      const killSpy = sinon.spy()
+      const oldChild = { kill: killSpy }
+      vManager.deviceStream = oldChild
+      const oldInterval = setInterval(() => {}, 1000)
+      vManager.intervalObj = oldInterval
+      vManager.startCamera(function (err, result) {
+        try {
+          assert.equal(err, null)
+          assert.ok(result.active)
+          assert.ok(killSpy.calledWith('SIGTERM'))               // old orphan killed
+          assert.notStrictEqual(vManager.deviceStream, oldChild) // replaced by new child
+          assert.notStrictEqual(vManager.intervalObj, oldInterval) // old heartbeat cleared
+          streamChild = vManager.deviceStream
+          clearInterval(oldInterval)
+          done()
+        } catch (e) { clearInterval(oldInterval); done(e) }
+      })
+    }).timeout(5000)
+
+    it('unexpected child exit while active clears the heartbeat timer and marks stopped', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      const { EventEmitter } = require('events')
+      const fakeStdout = new EventEmitter()
+      const fakeStderr = new EventEmitter()
+      const fakeStream = new EventEmitter()
+      fakeStream.stdout = fakeStdout
+      fakeStream.stderr = fakeStderr
+      vManager.deviceStream = fakeStream
+      vManager.videoSettings = { device: '/dev/video0', isRecording: true }
+
+      vManager.setupStreamEvents('Streaming', function () {})
+      // stream reaches "running": mark active + a live 1 Hz heartbeat timer
+      fakeStdout.emit('data', Buffer.from('ready\n'))
+      vManager.active = true
+      const heartbeat = setInterval(() => {}, 1000)
+      vManager.intervalObj = heartbeat
+
+      // gstreamer crashes: the child exits and no stopCamera() was called
+      fakeStream.emit('close', 1)
+
+      setTimeout(() => {
+        try {
+          assert.equal(vManager.active, false)      // marked stopped
+          assert.equal(vManager.intervalObj, null)  // heartbeat timer cleared (no leak)
+          assert.equal(vManager.deviceStream, null) // dead child ref dropped
+          done()
+        } catch (e) { clearInterval(heartbeat); done(e) }
+      }, 30)
+    })
+
+    it('a stale child exit does not clobber a newer running stream', function (done) {
+      settings.clear()
+      const vManager = new VideoStream(settings)
+      const { EventEmitter } = require('events')
+      const oldStdout = new EventEmitter()
+      const oldStderr = new EventEmitter()
+      const oldChild = new EventEmitter()
+      oldChild.stdout = oldStdout
+      oldChild.stderr = oldStderr
+      vManager.deviceStream = oldChild
+      vManager.videoSettings = { device: '/dev/video0', isRecording: false }
+      vManager.setupStreamEvents('Streaming', function () {})
+
+      // a newer Start replaced the child + started a fresh heartbeat
+      const newChild = { kill: () => {} }
+      vManager.deviceStream = newChild
+      vManager.active = true
+      const newInterval = setInterval(() => {}, 1000)
+      vManager.intervalObj = newInterval
+
+      // the OLD child now exits late — it must NOT touch the new stream's state
+      oldChild.emit('close', 0)
+
+      setTimeout(() => {
+        try {
+          assert.strictEqual(vManager.deviceStream, newChild)   // not nulled
+          assert.strictEqual(vManager.active, true)             // not marked stopped
+          assert.strictEqual(vManager.intervalObj, newInterval) // heartbeat intact
+          clearInterval(newInterval)
+          done()
+        } catch (e) { clearInterval(newInterval); done(e) }
+      }, 30)
+    })
+  })
+
   describe('#sendCameraInformation() null stillSettings.width/height', function () {
     it('photo mode with null stillSettings width/height uses 0', function (done) {
       settings.clear()

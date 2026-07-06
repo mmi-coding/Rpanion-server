@@ -32,6 +32,10 @@ function getPythonPath() {
 // Export the paths
 export = {
     usersFile: path.join(baseDir, 'config', 'user.json'),
+    // Where ensureInitialAdmin() writes the auto-generated first-boot admin
+    // password (mode 0600) so the operator can retrieve it on-device. Deleted
+    // once the password is changed.
+    initialPasswordFile: path.join(baseDir, 'config', 'initial-password.txt'),
     settingsFile: path.join(baseDir, 'config', 'settings.json'),
     flightsLogsDir: path.join(baseDir, 'flightlogs'),
     kmzDir: path.join(baseDir, 'flightlogs', 'kmzlogs'),

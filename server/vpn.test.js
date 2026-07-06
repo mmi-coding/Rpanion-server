@@ -36,7 +36,8 @@ case "$1 $2" in
   zt-tunneled) echo "200 info abc 1.10.1 TUNNELED" ;;
   *) echo "200 info abc 1.10.1 ONLINE" ;;
   esac ;;
-"zerotier-cli listnetworks") echo "[]" ;;
+"zerotier-cli listnetworks")
+  if [ "$FAKE_SCENARIO" = "zt-badjson" ]; then echo "not json"; else echo "[]"; fi ;;
 "zerotier-cli join")
   if [ "$FAKE_SCENARIO" = "zt-joinfail" ]; then echo "500 join failed"; else echo "200 join OK"; fi ;;
 "zerotier-cli leave")
@@ -67,7 +68,7 @@ exit 0`)
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-vpn-'))
     fakeWgPy = path.join(tmpDir, 'fake-wgpy')
     fs.writeFileSync(fakeWgPy,
-      '#!/bin/sh\nif [ "$FAKE_SCENARIO" = "py-fail" ]; then echo pyboom >&2; exit 1; fi\necho "[]"\n',
+      '#!/bin/sh\nif [ "$FAKE_SCENARIO" = "py-fail" ]; then echo pyboom >&2; exit 1; fi\nif [ "$FAKE_SCENARIO" = "py-badjson" ]; then echo "not json"; exit 0; fi\necho "[]"\n',
       { mode: 0o755 })
   })
 
@@ -146,6 +147,18 @@ exit 0`)
       VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
         assert.equal(statusJSON.installed, true)
         assert.equal(statusJSON.status, false)
+        done()
+      })
+    })
+
+    it('should not crash on malformed network JSON (R4)', function (done) {
+      // partial/garbled zerotier-cli output must yield a safe result, not throw
+      process.env.FAKE_SCENARIO = 'zt-badjson'
+      VPNManager.getVPNStatusZerotier(null, (stderr, statusJSON) => {
+        assert.ok(stderr.includes('Unable to parse'))
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, false)
+        assert.deepEqual(statusJSON.text, [])
         done()
       })
     })
@@ -340,6 +353,18 @@ exit 0`)
         done()
       })
     })
+
+    it('should not crash on malformed config JSON (R4)', function (done) {
+      // partial/garbled wireguardconfig.py output must yield a safe result
+      process.env.FAKE_SCENARIO = 'py-badjson'
+      VPNManager.getVPNStatusWireguard(null, (stderr, statusJSON) => {
+        assert.ok(stderr.includes('Unable to parse'))
+        assert.equal(statusJSON.installed, true)
+        assert.equal(statusJSON.status, false)
+        assert.deepEqual(statusJSON.text, [])
+        done()
+      })
+    })
   })
 
   describe('#addWireguardProfile()', function () {
@@ -350,9 +375,30 @@ exit 0`)
       })
     })
 
-    it('should install a profile', function (done) {
-      VPNManager.addWireguardProfile('drone.conf', '/tmp/upload', (err) => {
+    it('should install a profile (temp cleanup tolerates a missing file)', function (done) {
+      // tmp file never created → fs.unlink errors, but that must not surface
+      const missing = path.join(tmpDir, 'nope-upload')
+      VPNManager.addWireguardProfile('drone.conf', missing, (err) => {
         assert.equal(err, null)
+        done()
+      })
+    })
+
+    it('should copy with an argv array + basename and remove the temp file (S10)', function (done) {
+      // a path-traversal filename must be collapsed to a basename under
+      // /etc/wireguard, and the copy must go through argv (no shell "&& rm")
+      const src = path.join(tmpDir, 'wg-upload-src')
+      fs.writeFileSync(src, '[Interface]\n')
+      VPNManager.addWireguardProfile('../../../etc/pwn.conf', src, (err) => {
+        assert.equal(err, null)
+        const cpCalls = fake.calls('cp')
+        const last = cpCalls[cpCalls.length - 1]
+        // argv: "<src> <dest>" — no shell metacharacters, no traversal left
+        assert.equal(last, src + ' /etc/wireguard/pwn.conf')
+        assert.ok(!last.includes('..'))
+        assert.ok(!last.includes('&&'))
+        // the temp upload was unlinked after a successful copy
+        assert.equal(fs.existsSync(src), false)
         done()
       })
     })
