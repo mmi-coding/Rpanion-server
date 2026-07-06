@@ -96,6 +96,11 @@ class NTRIPPage extends basePage {
             <div className="col-sm-10">
               <input type="number" min="100" max="60000" step="1" className="form-control" name="port" disabled={this.state.active === true} onChange={this.changeHandler} value={this.state.port} />
               <input type="checkbox" name="useTLS" disabled={this.state.active === true} onChange={this.toggleuseTLS} checked={this.state.useTLS} /><label>Use TLS</label>
+              {this.state.useTLS === false &&
+                <small id="tls-cleartext-warning" className="form-text text-warning d-block">
+                  ⚠ TLS is off — the caster username and password are sent unencrypted over the network. Leave it off only if your caster does not support TLS.
+                </small>
+              }
             </div>
           </div>
           <div className="form-group row">

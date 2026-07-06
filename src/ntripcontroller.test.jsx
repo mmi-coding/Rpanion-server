@@ -137,6 +137,25 @@ describe('#ntripControllerPage()', function () {
     page.unmount()
   })
 
+  // S14: cleartext-credentials warning shown only when TLS is off
+  test('shows a cleartext warning when TLS is off', async function () {
+    mockFetch({ '/api/ntripconfig': { ...defaultConfig, useTLS: false } })
+    const page = renderPage(<NTRIPPage />)
+    await page.flush()
+    const warn = page.container.querySelector('#tls-cleartext-warning')
+    expect(warn).not.toBeNull()
+    expect(warn.textContent).toContain('unencrypted')
+    page.unmount()
+  })
+
+  test('hides the cleartext warning when TLS is on', async function () {
+    mockFetch({ '/api/ntripconfig': { ...defaultConfig, useTLS: true } })
+    const page = renderPage(<NTRIPPage />)
+    await page.flush()
+    expect(page.container.querySelector('#tls-cleartext-warning')).toBeNull()
+    page.unmount()
+  })
+
   // -------------------------------------------------------------------------
   // changeHandler — updates various fields
   // -------------------------------------------------------------------------
