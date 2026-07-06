@@ -6,6 +6,22 @@ as nmcli does not support ad-hoc networks
 
 const { exec, execSync } = require('child_process')
 
+// S10 defense-in-depth. setAdapter() interpolates device/channel/ssid/
+// password/ipaddress/gateway into ONE chained shell string
+// (`nmcli ... managed no && sleep 1 && ip link ... && iwconfig ... && ...`).
+// That `&&`/`sleep` short-circuit sequence can't be expressed faithfully as a
+// single execFile argv array, so instead we refuse to hand /bin/sh any value
+// carrying a shell metacharacter, quote, backslash, whitespace or glob char.
+// routes/adhoc.ts already constrains these fields (isAlphanumeric / isIP /
+// isInt / isIn) so no valid activation is affected — this only bites a caller
+// that bypasses that middleware, e.g. an out-of-band-edited settings.json that
+// the constructor re-activates on boot.
+const SHELL_META = /[;&|$`<>()'"\\ \t\n\r*?{}[\]!#~]/
+
+function hasShellMeta (value: any): boolean {
+  return SHELL_META.test(String(value))
+}
+
 class adhocManager {
   device: any
   devicesettings: any
@@ -139,6 +155,26 @@ class adhocManager {
 
   setAdapter (toState: boolean, device: string, settings: any, callback: (...args: any[]) => void) {
     // active or deactivate an ad-hoc connection
+
+    // S10: reject shell metacharacters on any value that gets interpolated into
+    // the chained exec/execSync command below, before it can reach /bin/sh.
+    // Only the fields that are actually interpolated for this call are checked,
+    // mirroring the command string (settings fields only matter when activating;
+    // password/gateway only when their optional clause is emitted).
+    const suspects: any[] = [device]
+    if (toState) {
+      suspects.push(settings.channel, settings.ssid, settings.ipaddress)
+      if (settings.wpaType !== 'none') {
+        suspects.push(settings.password)
+      }
+      if (settings.gateway !== '') {
+        suspects.push(settings.gateway)
+      }
+    }
+    if (suspects.some(hasShellMeta)) {
+      return callback(new Error('Refusing adhoc command: a value contains shell metacharacters'))
+    }
+
     this.settings.setValue('adhoc.devicesettings', settings)
     this.settings.setValue('adhoc.device', toState ? device : null)
     if (toState) {

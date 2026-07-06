@@ -430,8 +430,28 @@ class videoStream {
     return vsHelpers.scanInterfaces()
   }
 
+  // Tear down a running stream's child process and its periodic timers without
+  // touching persisted settings. Guards Start against orphaning the previous
+  // gstreamer child (which keeps the camera device open) and leaking its 1 Hz
+  // heartbeat / HUD timers (R10). Safe no-op when nothing is running.
+  _stopRunningStream() {
+    if (this.intervalObj) {
+      clearInterval(this.intervalObj);
+      this.intervalObj = null;
+    }
+    this.stopHudInterval();
+    if (this.deviceStream) {
+      this.deviceStream.kill('SIGTERM');
+      this.deviceStream = null;
+    }
+  }
+
   startCamera(callback: any) {
     console.log(`Attempting to start camera in mode: ${this.cameraMode}`);
+    // Never let a Start stack on top of a still-running stream: that would
+    // orphan the old child (holding the camera device) and leak its heartbeat
+    // timer. Stop/kill any existing child + clear its timers first (R10).
+    this._stopRunningStream();
     try {
       if (this.cameraMode === 'streaming') {
         // startVideoStreaming is async, so we must catch rejections
@@ -829,6 +849,13 @@ class videoStream {
     let callbackCalled = false;
     let stdoutBuffer = ''; // Buffer for accumulating data chunks
 
+    // The child process this handler set is bound to. A later Start (or a
+    // stopCamera) can replace this.deviceStream, so the async close handler
+    // must identity-check before it mutates shared state — otherwise a stale
+    // child's exit would clobber the newer stream's timers/flags (R10). Same
+    // guard the camera-preview close handler uses.
+    const child = this.deviceStream;
+
     // Importing cv2 and Picamera2 on a Pi can take a minute or more
     // Safety Timeout: If nothing happens in 90 seconds, unblock the UI
     const timeout = setTimeout(() => {
@@ -941,14 +968,28 @@ class videoStream {
       if (msg) console.error(`${modeName} error: ${msg}`);
     });
 
-    this.deviceStream.on('close', (code: number | null) => {
+    child.on('close', (code: number | null) => {
       clearTimeout(timeout);
-      this.stopHudInterval();
       console.log(`${modeName} exited with code ${code}`);
-      this.active = false;
-      // Clear the video recording flag (setRecordingFlag persists)
-      if (this.videoSettings) {
-        this.setRecordingFlag(false);
+      // Only tear down shared state if THIS child is still the active stream. A
+      // newer Start or a stopCamera may have already replaced/killed us, in
+      // which case that newer owner is responsible for the timers + flags (R10).
+      if (this.deviceStream === child) {
+        this.stopHudInterval();
+        // An unexpected exit (gstreamer crash) must not leak the 1 Hz heartbeat
+        // timer. Cleanly mark the stream stopped and drop the dead child ref
+        // rather than auto-restarting — a restart loop would keep re-seizing the
+        // camera device and spamming the FC. Restart is an explicit user action.
+        if (this.intervalObj) {
+          clearInterval(this.intervalObj);
+          this.intervalObj = null;
+        }
+        this.active = false;
+        this.deviceStream = null;
+        // Clear the video recording flag (setRecordingFlag persists)
+        if (this.videoSettings) {
+          this.setRecordingFlag(false);
+        }
       }
       if (!callbackCalled) {
         callbackCalled = true;

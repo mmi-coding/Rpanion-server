@@ -133,6 +133,16 @@ class FCLink {
       this.parent.eventEmitter.emit('stopLink', this.id)
     })
 
+    // an unhandled child 'error' (EACCES/EAGAIN/ENOMEM/ENOENT — very plausible on
+    // a memory-pressured Pi Zero, and this spawn also runs on the 1 Hz reconnect)
+    // is thrown by Node and crashes the whole process. Log + drive the same
+    // stop/teardown path as a normal close instead of throwing.
+    this.router.on('error', (err: Error) => {
+      console.error(`Link ${this.id}: router process error: ${err.message}`)
+      this.active = false
+      this.parent.eventEmitter.emit('stopLink', this.id)
+    })
+
     console.log('Opened Router')
 
     // only build the mavlink processor on a fresh link, not a reconnect
@@ -186,6 +196,20 @@ class FCLink {
     }
   }
 
+  deviceAvailable () {
+    // UART reconnect needs the serial device still enumerated; a null path means
+    // it is gone (unplugged / not yet re-enumerated). Reconnecting anyway would
+    // spawn a router dialling 'null:baud' every second (log-spam/CPU, compounds
+    // dflogger accumulation). UDP inputs are always available.
+    if (this.device.inputType === 'UART') {
+      const serialPath = serialDetection.getSerialPathFromValue(this.device.serial, this.parent.serialDevices)
+      // getSerialPathFromValue returns null when the device is not enumerated;
+      // != null rejects both null and undefined in a single (coverable) branch
+      return serialPath != null
+    }
+    return true
+  }
+
   startInterval () {
     // 1-sec loop: heartbeats (if enabled) + reconnect on link timeout
     this.intervalObj = setInterval(() => {
@@ -193,6 +217,10 @@ class FCLink {
         this.m.sendHeartbeat()
       }
       if (this.m && this.m.conStatusInt() === -1) {
+        if (!this.deviceAvailable()) {
+          console.log('Link ' + this.id + ': serial device not present, skipping reconnect')
+          return
+        }
         console.log('Link ' + this.id + ': Trying to reconnect FC...')
         this.closeLink(() => {
           this.startLink((err: string | null) => {
@@ -222,21 +250,35 @@ class FCLink {
     console.log('Starting DataFlash logger')
     const pythonPath = logpaths.getPythonPath()
     const dfloggerPath = path.join(__dirname, '..', 'python', 'dflogger.py')
-    this.dflogger = spawn(pythonPath, [
+    const proc = spawn(pythonPath, [
       dfloggerPath,
       '--connection', 'udp:127.0.0.1:' + this.loggerPort,
       '--logdir', logpaths.flightsLogsDir,
       '--rotate-on-disarm'
     ])
-    this.dflogger.stdout.on('data', (data: Buffer) => {
+    this.dflogger = proc
+    proc.stdout.on('data', (data: Buffer) => {
       console.log(`DFLogger: ${data}`)
     })
-    this.dflogger.stderr.on('data', (data: Buffer) => {
+    proc.stderr.on('data', (data: Buffer) => {
       console.error(`DFLogger stderr: ${data}`)
     })
-    this.dflogger.on('close', (code: number | null) => {
+    // an unhandled child 'error' (spawn EACCES/EAGAIN/ENOMEM, stale-venv ENOENT)
+    // is thrown by Node and crashes the whole process — log and null instead.
+    proc.on('error', (err: Error) => {
+      console.error(`DFLogger process error: ${err.message}`)
+      // identity-check: a stale error must not clear a newer live logger ref
+      if (this.dflogger === proc) {
+        this.dflogger = null
+      }
+    })
+    proc.on('close', (code: number | null) => {
       console.log(`DFLogger exited with code ${code}`)
-      this.dflogger = null
+      // identity-check: a late-exiting OLD process must not null the NEW logger
+      // (kill-before-respawn on link flaps would otherwise accumulate loggers)
+      if (this.dflogger === proc) {
+        this.dflogger = null
+      }
     })
   }
 

@@ -1,4 +1,6 @@
 const fs = require('fs').promises;
+const path = require('path');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
 const logpaths = require('./paths')
@@ -170,11 +172,108 @@ class userLogin {
       }
 
       user.passwordhash = await bcrypt.hash(password, 10)
+      // The password is no longer the auto-generated/default one — clear the
+      // "must change" flag so the default-credentials banner stops showing.
+      if (user.mustChangePassword) {
+        delete user.mustChangePassword
+      }
 
       await this._saveUsers(users)
+      // Remove the stale on-disk initial-password hint (best-effort; usually
+      // absent because the operator already changed it or never had one).
+      try {
+        await fs.unlink(logpaths.initialPasswordFile)
+      } catch (e) { /* not present — nothing to remove */ }
       return true
     } catch (error) {
       console.error('Error changing password:', error)
+      return false
+    }
+  }
+
+  /**
+   * Guarantees a usable admin login always exists — the never-locked-out
+   * invariant. If the users file is missing/unreadable/empty or has no admin
+   * account, a fresh admin is created with a random password, which is written
+   * (mode 0600) to logpaths.initialPasswordFile for on-device retrieval. Called
+   * once at server startup. On a device that already has an admin this is a
+   * no-op, so an operator's changed password is never reverted.
+   *
+   * @returns {Promise<{provisioned: boolean, password?: string, error?: boolean}>}
+   */
+  async ensureInitialAdmin() {
+    try {
+      let users: any[] = []
+      try {
+        users = await this._loadUsers()
+      } catch (e) {
+        users = [] // missing/corrupt file → provision a fresh admin
+      }
+      if (!Array.isArray(users)) {
+        users = []
+      }
+      const hasAdmin = users.some((u: any) => (u.role || 'admin') === 'admin')
+      if (hasAdmin) {
+        return { provisioned: false }
+      }
+
+      // base64url keeps the password shell/URL-safe for the operator to paste.
+      const password = crypto.randomBytes(12).toString('base64url')
+      const passwordhash = await bcrypt.hash(password, 10)
+      const next = users.filter((u: any) => u.username !== 'admin')
+      next.push({ username: 'admin', passwordhash, role: 'admin', mustChangePassword: true })
+
+      await fs.mkdir(path.dirname(this.usersFile), { recursive: true })
+      await this._saveUsers(next)
+
+      try {
+        await fs.writeFile(
+          logpaths.initialPasswordFile,
+          'Rpanion auto-generated initial admin login — CHANGE IT after first login.\n\n' +
+          '  username: admin\n' +
+          '  password: ' + password + '\n',
+          { mode: 0o600 }
+        )
+        await fs.chmod(logpaths.initialPasswordFile, 0o600)
+      } catch (e) {
+        // best-effort: the password is also emitted on the console below
+        console.error('Could not write initial-password file:', e)
+      }
+      console.warn('[rpanion] No admin account found — generated a random initial ' +
+        'admin password (username: admin). Retrieve it from ' + logpaths.initialPasswordFile +
+        ' and change it after logging in.')
+      return { provisioned: true, password }
+    } catch (error) {
+      console.error('ensureInitialAdmin failed:', error)
+      return { provisioned: false, error: true }
+    }
+  }
+
+  /**
+   * Whether an admin is still using the shipped default ("admin") or an
+   * auto-generated initial password (mustChangePassword flag). Drives the
+   * "change the default password" banner. Checks the named user if given, else
+   * any admin account.
+   *
+   * @param {string} [username]
+   * @returns {Promise<boolean>}
+   */
+  async defaultCredentialsInUse(username?: string) {
+    try {
+      const users = await this._loadUsers()
+      const candidates = username
+        ? users.filter((u: any) => u.username === username)
+        : users.filter((u: any) => (u.role || 'admin') === 'admin')
+      for (const u of candidates) {
+        if (u.mustChangePassword === true) {
+          return true
+        }
+        if (await bcrypt.compare('admin', u.passwordhash)) {
+          return true
+        }
+      }
+      return false
+    } catch (error) {
       return false
     }
   }

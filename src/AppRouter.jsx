@@ -77,6 +77,9 @@ function AppRouter () {
   const [isAuthenticated, setIsAuthenticated] = useState(null)
   const [isAuthEnabled, setIsAuthEnabled] = useState(true)
   const [role, setRole] = useState(null)
+  // S1: server reports when the default/auto-generated admin password is still
+  // in use so we can nag the operator to change it.
+  const [mustChangePassword, setMustChangePassword] = useState(false)
   // Sidebar starts expanded on desktop, collapsed (off-canvas drawer) on phones.
   const [navOpen, setNavOpen] = useState(() => window.matchMedia('(min-width: 768px)').matches)
   // Theme is read from the attribute the index.html bootstrap script already set.
@@ -125,6 +128,7 @@ function AppRouter () {
           setIsAuthEnabled(false)
         }
         setRole(data?.role ?? null)
+        setMustChangePassword(data?.mustChangePassword === true)
       }
     })
     .catch(() => {
@@ -143,7 +147,14 @@ function AppRouter () {
   }
 
   return (
-    <div id="wrapper" className={`d-flex${navOpen ? '' : ' gs-collapsed'}`}>
+    <>
+      {isAuthenticated && mustChangePassword && (
+        <div id="default-pw-banner" className="alert alert-warning mb-0 rounded-0 text-center" role="alert">
+          <strong>Security:</strong> the admin account is still using the default password.{' '}
+          <NavLink to="/users">Change it now</NavLink> to secure this aircraft.
+        </div>
+      )}
+      <div id="wrapper" className={`d-flex${navOpen ? '' : ' gs-collapsed'}`}>
       <div id="sidebar-wrapper">
         <div id="sidebarheading" className="sidebar-heading">
           <span className="gs-pip" aria-hidden="true"></span>
@@ -250,7 +261,8 @@ function AppRouter () {
           </Routes>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 

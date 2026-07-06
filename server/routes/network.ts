@@ -236,9 +236,14 @@ export = function networkRoutes ({ authenticateToken, networkManager }: { authen
     check('conSettings.channel').optional().isInt(),
     check('conSettings.attachedIface').optional().escape(),
     check('conSettings.mode').optional().isIn(['infrastructure', 'ap']),
-    check('conName').escape(),
-    check('conType').escape(),
-    check('conAdapter').escape()
+    // S2: these three values become argv elements of `sudo nmcli connection add
+    // type <conType> ifname <conAdapter> con-name <conName> …`. .escape() does
+    // NOT neutralise shell metacharacters (`;` `|` `$()`), so allowlist instead:
+    // conType to the connection types addConnection() actually supports, and the
+    // name/interface fields to a strict interface/connection-name charset.
+    check('conType').isIn(['wifi', 'ethernet']),
+    check('conName').matches(/^[A-Za-z0-9 _-]+$/),
+    check('conAdapter').matches(/^[A-Za-z0-9 _-]+$/)
   ],
   (req: Request, res: Response) => {
     // Finds the validation errors in this request and wraps them in an object with handy functions

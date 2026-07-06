@@ -107,6 +107,15 @@ class SecondaryStreams {
     stream.process.stderr.on('data', (data: Buffer) => {
       console.error(`secondary ${stream.id} stderr: ${data}`)
     })
+    // an unhandled child 'error' (ENOENT on a stale/invalid venv path, or spawn
+    // EACCES/EAGAIN/ENOMEM on a memory-pressured Pi Zero) is thrown by Node and
+    // crashes the whole server. Log + drop the dead process ref so isRunning()
+    // reports false; the 'stopped' teardown still fires via the close handler
+    // (Node emits 'close' after a failed spawn), so we don't emit it twice here.
+    stream.process.on('error', (err: Error) => {
+      console.error(`secondary stream ${stream.id} process error: ${err.message}`)
+      stream.process = null
+    })
     stream.process.on('close', (code: number | null) => {
       console.log(`secondary stream ${stream.id} exited with code ${code}`)
       this.eventEmitter.emit('stopped', stream.id)

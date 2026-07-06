@@ -1,4 +1,6 @@
 const assert = require('assert')
+const fs = require('fs')
+const path = require('path')
 const sinon = require('sinon')
 const { FakeBin } = require('../test/fakeBin')
 const networkManager = require('./networkManager')
@@ -1459,6 +1461,103 @@ describe('Network Manager Functions', function () {
           assert.ok(err)
           done()
         } catch (e) {
+          done(e)
+        }
+      })
+    })
+
+    it('should fail when wired connection add exits non-zero', function (done) {
+      // covers the `error || stderr` LHS on the wired add execFile
+      process.env.FAKE_SCENARIO = 'add-fail'
+      const settings = { ipaddresstype: 'auto', attachedIface: 'eth0' }
+      networkManager.addConnection.call(networkManager, 'WiredConn', 'ethernet', 'eth0', settings, function (err) {
+        try {
+          assert.ok(err)
+          done()
+        } catch (e) {
+          done(e)
+        }
+      })
+    })
+
+    it('should fail when uuid lookup exits non-zero after wired add (error2 path)', function (done) {
+      // covers the `error2 || stderr2` LHS on the wired uuid lookup execFile
+      process.env.FAKE_SCENARIO = 'uuid-fail'
+      const settings = { ipaddresstype: 'auto', attachedIface: 'eth0' }
+      networkManager.addConnection.call(networkManager, 'WiredConn', 'ethernet', 'eth0', settings, function (err) {
+        try {
+          assert.ok(err)
+          done()
+        } catch (e) {
+          done(e)
+        }
+      })
+    })
+
+    it('should fail when uuid lookup has stderr (exit 0) after wired add (stderr2 path)', function (done) {
+      // covers the `error2 || stderr2` RHS on the wired uuid lookup execFile
+      process.env.FAKE_SCENARIO = 'uuid-stderr'
+      const settings = { ipaddresstype: 'auto', attachedIface: 'eth0' }
+      networkManager.addConnection.call(networkManager, 'WiredConn', 'ethernet', 'eth0', settings, function (err) {
+        try {
+          assert.ok(err)
+          done()
+        } catch (e) {
+          done(e)
+        }
+      })
+    })
+
+    it('should fail when final autoconnect yes has stderr after wired add', function (done) {
+      this.timeout(10000)
+      // covers the `!err && !error3 && !stderr3` → else branch (stderr3 truthy)
+      process.env.FAKE_SCENARIO = 'auto-stderr'
+      const settings = { ipaddresstype: 'auto', attachedIface: 'eth0' }
+      networkManager.addConnection.call(networkManager, 'WiredConn', 'ethernet', 'eth0', settings, function (err) {
+        try {
+          assert.ok(err)
+          done()
+        } catch (e) {
+          done(e)
+        }
+      })
+    })
+
+    // S2: prove the wired path shells out via execFile (argv array), not exec()
+    // (a shell string). An injection payload in conName/conAdapter must reach the
+    // fake `sudo` as a single, verbatim argv element — the shell never tokenises,
+    // substitutes ($(...)), or executes it.
+    it('passes injection payloads as single argv elements (no shell)', function (done) {
+      this.timeout(10000)
+      const recorder = new FakeBin()
+      const argvLog = path.join(recorder.dir, 'argv.log')
+      // Record every positional arg on its own line, then behave like a happy
+      // nmcli (return a UUID for the lookup, succeed otherwise).
+      recorder.install('sudo', [
+        `printf '%s\\n' "$@" >> "${argvLog}"`,
+        'case "$*" in',
+        '  "nmcli -g connection.uuid con show"*) printf "UUID-INJ\\n" ;;',
+        'esac',
+        'exit 0'
+      ].join('\n'))
+      recorder.activate()
+
+      const payloadName = 'evil; touch /tmp/pwned'
+      const payloadAdapter = 'eth0 $(id)'
+      const settings = { ipaddresstype: 'auto', attachedIface: 'eth0' }
+      networkManager.addConnection.call(networkManager, payloadName, 'ethernet', payloadAdapter, settings, function (err, result) {
+        try {
+          assert.equal(err, null)
+          assert.equal(result, 'AddOK')
+          const lines = fs.readFileSync(argvLog, 'utf8').split('\n').filter(function (l) { return l !== '' })
+          // Each malicious value appears verbatim as exactly one argv element —
+          // impossible if it had been concatenated into a shell command line.
+          assert.ok(lines.includes(payloadName), 'conName must be one argv element')
+          assert.ok(lines.includes(payloadAdapter), 'conAdapter must be one argv element')
+          recorder.cleanup()
+          done()
+        } catch (e) {
+          recorder.cleanup()
           done(e)
         }
       })

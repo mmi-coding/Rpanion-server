@@ -19,8 +19,12 @@ function generateSecretKey () {
 export = function authModule ({ userMgmt }: { userMgmt: any }) {
   const RPANION_SECRET_KEY = process.env.RPANION_SECRET_KEY || generateSecretKey()
   const tokenBlacklist = new Set()
-  // RBAC: read-only users may not perform mutating (POST) requests. These POST
-  // endpoints are exempt because they are not configuration mutations.
+  // Non-idempotent HTTP methods a read-only user may not use. Enforcing on the
+  // verb (not just POST) closes the bypass where a PUT/PATCH/DELETE mutation
+  // (e.g. DELETE /api/hudfonts/:id) sidesteps the RBAC gate.
+  const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+  // RBAC: read-only users may not perform mutating requests. These endpoints are
+  // exempt because they are not configuration mutations (auth/logout housekeeping).
   const WRITE_ALLOWLIST = new Set(['/api/auth', '/api/logout'])
 
   // Middleware to check if the request has a valid token
@@ -61,19 +65,35 @@ export = function authModule ({ userMgmt }: { userMgmt: any }) {
       return sendError(401, 'Invalid token')
     }
 
-    // Verify token
-    jwt.verify(token, RPANION_SECRET_KEY, (err: any, user: any) => {
+    // Verify token. Pin the algorithm to HS256 (the one used to sign) so a token
+    // presenting a different `alg` header cannot be accepted (defence in depth).
+    jwt.verify(token, RPANION_SECRET_KEY, { algorithms: ['HS256'] }, (err: any, user: any) => {
       if (err) {
         return sendError(403, 'Invalid token')
       }
       req.user = user
-      // RBAC: read-only users may only read. Block mutating (POST) requests
-      // except the auth/logout housekeeping endpoints.
-      if (req.method === 'POST' && user.role === 'readonly' && !WRITE_ALLOWLIST.has(req.path)) {
+      // RBAC: read-only users may only read. Block every mutating (non-idempotent)
+      // request except the auth/logout housekeeping endpoints.
+      if (MUTATING_METHODS.has(req.method) && user.role === 'readonly' && !WRITE_ALLOWLIST.has(req.path)) {
         return sendError(403, 'Read-only user: write access denied')
       }
       next()
     })
+  }
+
+  // RBAC: hard admin gate for the few routes that expose a root-level primitive
+  // (e.g. the camera-switcher "command" mode runs an operator-supplied shell
+  // command as root — see server/cameraSwitcher.ts). Mount it AFTER
+  // authenticateToken, which always sets req.user when auth is enforced. When
+  // auth is globally disabled (dev / DISABLE_AUTH=1) authenticateToken passes
+  // through without setting req.user, so an unset req.user is the signal that
+  // auth was intentionally bypassed and we honour it — no separate env check to
+  // drift from authenticateToken.
+  function requireAdmin (req: Request, res: Response, next: NextFunction) {
+    if (req.user && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin role required' })
+    }
+    return next()
   }
 
   const router = Router()
@@ -219,12 +239,18 @@ export = function authModule ({ userMgmt }: { userMgmt: any }) {
   router.post('/api/auth', authenticateToken, async (req: Request, res: Response) => {
     const authEnabled = !(process.env.NODE_ENV === 'development' || process.env.DISABLE_AUTH === '1')
 
+    // Surface whether the shipped default / auto-generated initial admin
+    // password is still in use, so the UI can nag the operator to change it (S1).
+    // defaultCredentialsInUse never throws (it returns false on any error).
+    const mustChangePassword = await userMgmt.defaultCredentialsInUse(req.user?.username)
+
     res.setHeader('Content-Type', 'application/json')
     res.send(JSON.stringify({
       authEnabled,
-      role: req.user?.role
+      role: req.user?.role,
+      mustChangePassword
     }))
   })
 
-  return { authenticateToken, router }
+  return { authenticateToken, requireAdmin, router }
 }

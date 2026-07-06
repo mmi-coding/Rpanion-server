@@ -3,7 +3,7 @@ import type { Request, Response } from 'express'
 const { Router } = require('express')
 const { check, validationResult } = require('express-validator')
 
-export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher }: { authenticateToken: any; toBool: any; camSwitcher: any }) {
+export = function cameraSwitcherRoutes ({ authenticateToken, requireAdmin, toBool, camSwitcher }: { authenticateToken: any; requireAdmin: any; toBool: any; camSwitcher: any }) {
   const router = Router()
 
   // Serve the camera switcher config and status
@@ -12,8 +12,10 @@ export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher
     res.send(JSON.stringify({ settings: camSwitcher.getSettings(), status: camSwitcher.getStatus() }))
   })
 
-  // change camera switcher settings
-  router.post('/api/cameraswitchermodify', authenticateToken, [
+  // change camera switcher settings. requireAdmin: "command" mode stores an
+  // operator-supplied shell command that doSwitch runs as root, so configuring
+  // the switcher is an admin-only privilege (S4).
+  router.post('/api/cameraswitchermodify', authenticateToken, requireAdmin, [
     check('enabled').isBoolean(),
     check('rcChannel').isInt({ min: 1, max: 18 }),
     check('threshold').isInt({ min: 800, max: 2200 }),
@@ -58,8 +60,9 @@ export = function cameraSwitcherRoutes ({ authenticateToken, toBool, camSwitcher
     })
   })
 
-  // manually switch the active camera source
-  router.post('/api/cameraswitcherswitch', authenticateToken, [check('source').isIn(['A', 'B'])], function (req: Request, res: Response) {
+  // manually switch the active camera source. requireAdmin: in "command" mode a
+  // switch executes the operator-supplied shell command as root (S4).
+  router.post('/api/cameraswitcherswitch', authenticateToken, requireAdmin, [check('source').isIn(['A', 'B'])], function (req: Request, res: Response) {
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
       console.log('Bad POST vars in /api/cameraswitcherswitch', { message: JSON.stringify(errors.array()) })

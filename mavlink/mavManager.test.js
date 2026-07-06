@@ -1309,4 +1309,126 @@ describe('MAVLink Functions', function () {
       udpStream.send(Buffer.from([0xfd, 0x06]), 19000, '127.0.0.1')
     })
   })
+
+  // -------------------------------------------------------------------------
+  // R1: unguarded RX handler. A malformed/truncated frame must not escape the
+  // 'data' callback and crash the process.
+  // -------------------------------------------------------------------------
+  it('#malformedFrame() RangeError from protocol.data is caught, no crash', function () {
+    const m = new mavManager(2, '127.0.0.1', 19100)
+
+    // A frame whose msgid IS in the REGISTRY but whose payload decode throws a
+    // RangeError (truncated payload -> read past buffer end). Emitted directly on
+    // the parser stream since the splitter would otherwise drop a bad frame.
+    assert.doesNotThrow(() => {
+      m.mav.emit('data', {
+        header: { msgid: minimal.Heartbeat.MSG_ID, sysid: 1, compid: 1 },
+        payload: Buffer.alloc(2),
+        protocol: { data: () => { throw new RangeError('Attempt to access memory outside buffer bounds') } }
+      })
+    })
+
+    m.close()
+  })
+
+  // -------------------------------------------------------------------------
+  // R1: null STATUSTEXT text -> data.text.trim() throws TypeError; must be caught
+  // -------------------------------------------------------------------------
+  it('#nullStatusText() null STATUSTEXT text does not crash the handler', function () {
+    const m = new mavManager(2, '127.0.0.1', 19200)
+
+    // Pretend the vehicle is already locked so the STATUSTEXT branch is reached
+    m.targetSystem = 42
+    m.targetComponent = 150
+
+    assert.doesNotThrow(() => {
+      m.mav.emit('data', {
+        header: { msgid: common.StatusText.MSG_ID, sysid: 42, compid: 150 },
+        payload: Buffer.alloc(0),
+        protocol: { data: () => ({ text: null }) }
+      })
+    })
+
+    // The throw happened before the accumulator was appended to
+    assert.equal(m.statusText, '')
+
+    m.close()
+  })
+
+  // -------------------------------------------------------------------------
+  // R1: parser 'error' event must be handled, not thrown out of the event loop
+  // -------------------------------------------------------------------------
+  it('#parserError() error event on the parser stream is logged, not thrown', function () {
+    const m = new mavManager(2, '127.0.0.1', 19300)
+
+    // Without the .on('error') listener this would throw (default EventEmitter
+    // behaviour for an unhandled 'error') and crash the process.
+    assert.doesNotThrow(() => {
+      m.mav.emit('error', new Error('simulated parser error'))
+    })
+
+    m.close()
+  })
+
+  // -------------------------------------------------------------------------
+  // R2: a transient UDP send error must be logged, NOT tear down the stream
+  // (the old non-arrow callback lost 'this' and threw a TypeError instead)
+  // -------------------------------------------------------------------------
+  it('#sendDataSendError() transient send error is logged and stream survives', function () {
+    const m = new mavManager(2, '127.0.0.1', 19400)
+
+    // Pretend the remote is locked so sendData proceeds to the send() call
+    m.RinudpPort = 14550
+    m.RinudpIP = '127.0.0.1'
+
+    const closeSpy = sinon.spy(m.udpStream, 'close')
+    sinon.stub(m.udpStream, 'send').callsFake((buf, port, ip, cb) => {
+      cb(new Error('EMSGSIZE'))
+    })
+
+    // Must not throw (arrow fn keeps 'this') and must not close the socket
+    assert.doesNotThrow(() => m.sendHeartbeat())
+    assert.equal(closeSpy.called, false, 'a transient send error must not tear down the stream')
+
+    m.close()
+  })
+
+  // -------------------------------------------------------------------------
+  // R5: statusText accumulator is bounded to the most-recent lines
+  // -------------------------------------------------------------------------
+  it('#statusTextCap() bounds the accumulator to the most-recent lines', function () {
+    const m = new mavManager(2, '127.0.0.1', 19500)
+
+    m.targetSystem = 42
+    m.targetComponent = 150
+
+    for (let i = 0; i < 120; i++) {
+      m.mav.emit('data', {
+        header: { msgid: common.StatusText.MSG_ID, sysid: 42, compid: 150 },
+        payload: Buffer.alloc(0),
+        protocol: { data: () => ({ text: 'msg' + i }) }
+      })
+    }
+
+    const lines = m.statusText.split('\n').filter(l => l.length > 0)
+    assert.ok(lines.length <= 50, 'statusText should be capped at <=50 lines, got ' + lines.length)
+    // newest retained, oldest dropped
+    assert.ok(lines.includes('msg119'), 'most-recent line should be retained')
+    assert.ok(!lines.includes('msg0'), 'oldest line should have been trimmed')
+
+    m.close()
+  })
+
+  // -------------------------------------------------------------------------
+  // R5: restart() resets the statusText accumulator
+  // -------------------------------------------------------------------------
+  it('#statusTextReset() restart() clears the statusText accumulator', function () {
+    const m = new mavManager(2, '127.0.0.1', 19600)
+
+    m.statusText = 'stale message 1\nstale message 2\n'
+    m.restart()
+    assert.equal(m.statusText, '', 'statusText must be reset on restart')
+
+    m.close()
+  })
 })

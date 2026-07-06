@@ -5,8 +5,11 @@
     * starting and stopping the PPP connection, and retrieving data transfer stats.
     * Used for the PPP feature in ArduPilot
 */
-const { spawn, execSync } = require('child_process');
+const { spawn, execSync, execFileSync } = require('child_process');
 const serialDetection = require('./serialDetection')
+
+// Escape a device path so it can be embedded literally in a pkill -f (ERE) pattern.
+const escapeRegexForPkill = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 class PPPConnection {
   isQuitting: any
@@ -23,6 +26,12 @@ class PPPConnection {
   pppProcess: any
   isConnected: any
   settings: any
+  pppDevicePath: any
+  reconnectTimer: any
+  reconnectAttempts: any
+  reconnectBaseMs: any
+  reconnectMaxMs: any
+  reconnectDelayMs: any
     constructor(settings: any) {
         this.settings = settings
         this.isConnected = this.settings.value('ppp.enabled', false);
@@ -44,6 +53,16 @@ class PPPConnection {
         this.prevdata = null; // previous data for comparison
         this.isQuitting  = false;
         this.isManualStop = false; // flag to distinguish manual stop from process crash
+        // Reconnect-on-unexpected-exit state. pppDevicePath is the resolved serial
+        // path of the pppd *this* module spawned, so we can SIGTERM only our own
+        // pppd and never the LTE modem's own pppd (R13). The backoff timer restarts
+        // the link if pppd dies unexpectedly (R13).
+        this.pppDevicePath = null;
+        this.reconnectTimer = null;
+        this.reconnectAttempts = 0;
+        this.reconnectBaseMs = 1000;   // first reconnect delay
+        this.reconnectMaxMs = 30000;   // backoff ceiling (matches the modem reconnect window)
+        this.reconnectDelayMs = 0;     // last computed delay (exposed for status/tests)
 
         if (this.isConnected) {
             // populate serial devices list and start PPP connection
@@ -84,6 +103,7 @@ class PPPConnection {
     quitting() {
         // stop the PPP connection if rpanion is quitting
         this.isQuitting = true;
+        this._cancelReconnect();
         if (this.pppProcess) {
             console.log('Stopping PPP connection on quit...');
             // Remove all event listeners to prevent close handler from firing
@@ -91,10 +111,74 @@ class PPPConnection {
             this.pppProcess.kill();
             this.pppProcess = null;
             try {
-                execSync('sudo pkill -SIGTERM pppd && sleep 1');
+                // Kill ONLY the pppd we started (scoped by its device path), never the
+                // LTE modem's own pppd; then give it a moment to release the port.
+                this._killScopedPppd();
+                execSync('sleep 1');
             } catch (error) {
                 console.error('Error stopping PPP connection on shutdown:', error);
             }
+        }
+    }
+
+    // SIGTERM only the pppd this module spawned, matched by its device path, so a
+    // system-wide `pkill pppd` can never take down the LTE modem's own pppd (R13).
+    // No-op (never a system-wide kill) if we never recorded a device path.
+    _killScopedPppd() {
+        if (!this.pppDevicePath) {
+            return;
+        }
+        const pattern = 'pppd ' + escapeRegexForPkill(this.pppDevicePath);
+        // argv form (no shell) — the device path can never be interpreted as a command.
+        execFileSync('sudo', ['pkill', '-SIGTERM', '-f', pattern]);
+    }
+
+    // Schedule a reconnect attempt with exponential backoff (capped). Guarded so it
+    // never fires during shutdown or after an operator-initiated stop, and never
+    // stacks more than one pending timer (R13).
+    _scheduleReconnect() {
+        if (this.isQuitting || this.isManualStop) {
+            return;
+        }
+        if (this.reconnectTimer) {
+            return;
+        }
+        const delay = Math.min(this.reconnectBaseMs * Math.pow(2, this.reconnectAttempts), this.reconnectMaxMs);
+        this.reconnectDelayMs = delay;
+        this.reconnectAttempts += 1;
+        console.log(`PPP: scheduling reconnect attempt ${this.reconnectAttempts} in ${delay} ms`);
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.startPPP(this.device, this.baudRate, this.localIP, this.remoteIP, (err: Error | null) => {
+                if (err) {
+                    console.error('PPP reconnect attempt failed:', err.message);
+                    this._scheduleReconnect();
+                } else {
+                    console.log('PPP reconnect: link re-established');
+                }
+            });
+        }, delay);
+    }
+
+    // Cancel any pending reconnect timer (operator stop / shutdown / fresh start).
+    _cancelReconnect() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+    }
+
+    // Common child-exit path for both the 'close' and 'error' events. On an
+    // unexpected death (not a shutdown, operator stop, or signal termination) mark
+    // the link down and start the backoff reconnect (R13).
+    _handleChildExit(isSignalTermination: boolean) {
+        const expected = this.isQuitting || this.isManualStop || isSignalTermination;
+        this.pppProcess = null;
+        this.isManualStop = false;
+        if (!expected) {
+            this.isConnected = false;
+            this.setSettings();
+            this._scheduleReconnect();
         }
     }
 
@@ -146,7 +230,10 @@ class PPPConnection {
         this.baudRate = baudRate;
         this.localIP = localIP;
         this.remoteIP = remoteIP;
-        
+        this.pppDevicePath = devicePath; // remember which pppd is ours (scoped kill)
+        // A fresh start supersedes any pending reconnect timer.
+        this._cancelReconnect();
+
         const args = [
             "pppd",
             devicePath,
@@ -170,6 +257,15 @@ class PPPConnection {
         //detached: true,
         stdio: ['ignore', 'pipe', 'pipe'] // or 'ignore' for all three to fully detach
         });
+        // Without this listener, a spawn failure (ENOENT / EACCES / fork failure
+        // under memory pressure on a Pi Zero 2 W) emits an 'error' event with no
+        // handler, which Node re-throws as an uncaught exception → whole-process
+        // crash → link blackout (R3). Route it through the shared exit handler so a
+        // failed spawn triggers the same backoff reconnect as an unexpected death.
+        this.pppProcess.on('error', (err: Error) => {
+            console.error('PPP process error (failed to start or crashed):', err);
+            this._handleChildExit(false);
+        });
         this.pppProcess.stdout.on('data', (data: Buffer) => {
             console.log("PPP Output: ", data.toString().trim());
             // Check for non support baud rates "speed <baud> not supported"
@@ -188,12 +284,7 @@ class PPPConnection {
             // Don't treat signal-based terminations as unexpected (code 5 is typical for SIGTERM/SIGINT)
             // These usually happen during application shutdown when Ctrl+C is pressed
             const isSignalTermination = signal !== null || code === 5 || code === 2;
-            if (!this.isQuitting && !this.isManualStop && !isSignalTermination) {
-                this.isConnected = false;
-                this.setSettings();
-            }
-            this.pppProcess = null; // reset the process reference
-            this.isManualStop = false; // reset flag for next connection
+            this._handleChildExit(isSignalTermination);
         });
         this.isConnected = true;
         this.setSettings();
@@ -201,6 +292,11 @@ class PPPConnection {
     }
 
     stopPPP(callback: (err: Error | null, result: any) => void) {
+        // An operator stop always cancels any in-flight reconnect and resets backoff,
+        // even mid-reconnect (when isConnected is briefly false), so the loop can be
+        // halted from the UI.
+        this._cancelReconnect();
+        this.reconnectAttempts = 0;
         if (!this.isConnected) {
             return callback(new Error('PPP is not connected'), this._stateSnapshot());
         }
@@ -210,7 +306,12 @@ class PPPConnection {
             // Set flag to prevent the close event handler from updating state
             this.isManualStop = true;
             this.pppProcess.kill();
-            execSync('sudo pkill -SIGTERM pppd');
+            try {
+                // Kill only our pppd (scoped by device path), never the modem's own pppd.
+                this._killScopedPppd();
+            } catch (error: any) {
+                console.error('Error stopping PPP connection:', error);
+            }
             this.isConnected = false;
             this.setSettings();
         }

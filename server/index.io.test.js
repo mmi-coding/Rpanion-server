@@ -1448,6 +1448,73 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   })
 
   // =========================================================================
+  // R7 — FCStatus broadcast loop error boundary (try/catch around the 1 Hz body)
+  // =========================================================================
+  describe('FCStatus broadcast loop error boundary (R7)', function () {
+    it('a throwing status emitter is caught and does not propagate', function () {
+      // Make the very first emitter throw; without the try/catch this would
+      // escape the setInterval callback as an uncaughtException → process.exit.
+      sinon.stub(hooks.fcManager, 'getAllStatus').throws(new Error('boom'))
+      var logSpy = sinon.stub(console, 'log')
+      assert.doesNotThrow(function () { hooks.broadcastStatus() })
+      assert.ok(logSpy.called, 'expected the catch branch to log')
+    })
+  })
+
+  // =========================================================================
+  // S8 — token redaction in the pino request serialiser
+  // =========================================================================
+  describe('pino token redaction (S8)', function () {
+    it('redactToken strips the ?token= value but leaves other params', function () {
+      assert.strictEqual(hooks.redactToken('/api/x?token=secret&y=1'), '/api/x?token=[REDACTED]&y=1')
+      assert.strictEqual(hooks.redactToken('/api/x?y=1&token=secret'), '/api/x?y=1&token=[REDACTED]')
+      // no token present → unchanged
+      assert.strictEqual(hooks.redactToken('/api/x?y=1'), '/api/x?y=1')
+    })
+
+    it('reqSerializer redacts the token in the serialised url', function () {
+      var out = hooks.reqSerializer({ method: 'GET', url: '/media/a.jpg?token=abc123', headers: {} })
+      assert.ok(!/abc123/.test(out.url), 'raw token must not be present')
+      assert.ok(/token=\[REDACTED\]/.test(out.url), 'token must be redacted')
+      assert.strictEqual(out.method, 'GET')
+    })
+  })
+
+  // =========================================================================
+  // R9 — boot-time subsystem init guard (safeInit)
+  // =========================================================================
+  describe('safeInit boot guard (R9)', function () {
+    it('returns the initialiser result on success', function () {
+      assert.strictEqual(hooks.safeInit('ok', function () { return 42 }), 42)
+    })
+
+    it('catches a throwing initialiser and returns null so boot continues', function () {
+      var errSpy = sinon.stub(console, 'error')
+      var r = hooks.safeInit('boom', function () { throw new Error('bad init') })
+      assert.strictEqual(r, null)
+      assert.ok(errSpy.called, 'expected the failure to be logged')
+    })
+  })
+
+  // =========================================================================
+  // S5 — HTTP/socket.io bind-address policy
+  // =========================================================================
+  describe('resolveBindAddress bind policy (S5)', function () {
+    it('defaults to 0.0.0.0 and honours RPANION_BIND_ADDRESS', function () {
+      var saved = process.env.RPANION_BIND_ADDRESS
+      try {
+        delete process.env.RPANION_BIND_ADDRESS
+        assert.strictEqual(hooks.resolveBindAddress(), '0.0.0.0')
+        process.env.RPANION_BIND_ADDRESS = '10.13.13.2'
+        assert.strictEqual(hooks.resolveBindAddress(), '10.13.13.2')
+      } finally {
+        if (saved === undefined) delete process.env.RPANION_BIND_ADDRESS
+        else process.env.RPANION_BIND_ADDRESS = saved
+      }
+    })
+  })
+
+  // =========================================================================
   // /api/camera/start — full validation + mediaDestination boundary checks
   // =========================================================================
   describe('POST /api/camera/start', function () {

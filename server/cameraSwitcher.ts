@@ -199,6 +199,13 @@ class cameraSwitcher {
     if (this.options.switchMode === 'command') {
       const cmd = source === 'A' ? this.options.commandA : this.options.commandB
       if (cmd !== '') {
+        // SECURITY (S4): this is an intended command-exec primitive for CSI
+        // multiplexer boards — `cmd` is an operator-supplied shell string run as
+        // root. It is NOT sanitised here by design (i2cset/GPIO commands need
+        // shell features). The trust boundary is the route layer: both the route
+        // that stores these commands (/api/cameraswitchermodify) and the one that
+        // triggers a switch (/api/cameraswitcherswitch) are gated by requireAdmin,
+        // so only an authenticated admin can set or fire the command.
         exec(cmd, (error: Error | null, stdout: string, stderr: string) => {
           if (error) {
             console.error('Camera switch command failed: ' + stderr)

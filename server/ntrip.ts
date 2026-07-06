@@ -26,7 +26,8 @@ class ntrip {
       // the interval of send nmea, unit is millisecond
       interval: 2000,
       active: false,
-      useTls: false
+      // Default new configs to TLS so caster credentials are never sent in cleartext (S14)
+      useTls: true
     }
 
     // status. 0=not active, 1=waiting for FC, 2=waiting for GPS lock, 3=waiting for NTRIP server, 4=getting packets
@@ -53,9 +54,13 @@ class ntrip {
     this.options.username = this.settings.value('ntrip.username', '')
     this.options.password = this.settings.value('ntrip.password', '')
     this.options.active = this.settings.value('ntrip.active', false)
-    this.options.useTls = this.settings.value('ntrip.useTls', false)
-    //NOTE: can allow untrusted/self-signed TLS by setting environment variable NODE_TLS_REJECT_UNAUTHORIZED='0'. 
-    // Adding this as option rejectUnauthorized to settings would also be possible.
+    // Default new configs to TLS (S14). settings.value returns a stored value whenever
+    // one exists, so an operator who explicitly saved useTls=false for a plaintext-only
+    // caster keeps it — only brand-new configs pick up the secure-by-default true.
+    this.options.useTls = this.settings.value('ntrip.useTls', true)
+    // Do NOT disable certificate validation globally via NODE_TLS_REJECT_UNAUTHORIZED=0
+    // (it turns off TLS verification for the whole process). A self-signed caster should
+    // instead be handled per-connection via the client's tlsOptions.rejectUnauthorized.
 
     this.client = null
     this.startStopNTRIP()
@@ -72,8 +77,22 @@ class ntrip {
       this.options.useTls)
   }
 
+  teardownClient () {
+    // Fully release the current client before dropping the reference: close()
+    // destroys its socket and stops the NMEA interval timer, and removeAllListeners()
+    // stops a stale socket from ever re-emitting RTCM into its replacement.
+    if (this.client) {
+      this.client.close() // close NTRIP-client's socket and stop its loop
+      this.client.removeAllListeners()
+      this.client = null
+    }
+  }
+
   startStopNTRIP () {
     if (this.options.active) { // NTRIP enabled
+      // Close any previous client first (R11): re-saving while active would otherwise
+      // leak the old TCP socket + NMEA interval timer and double-send RTCM to the FC.
+      this.teardownClient()
       this.errorDescription = "Offline";
       this.client = new NtripClient(this.options)
       this.client.headers['Ntrip-Version'] = 'Ntrip/2.0'
@@ -109,10 +128,7 @@ class ntrip {
     } else { // NTRIP disabled
       this.errorDescription = "Disabled";
       // stop the client
-      if (this.client) {
-        this.client.close() // close NTRIP-client's socket and stop its loop
-        this.client = null
-      }
+      this.teardownClient()
 
       this.status = 0
       console.log('NTRIP stopped')

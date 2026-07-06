@@ -2,8 +2,24 @@ import type { Request, Response, NextFunction } from 'express'
 const express = require('express')
 const fileUpload = require('express-fileupload')
 const compression = require('compression')
-const pino = require('pino-http')()
+const pinoHttp = require('pino-http')
 const process = require('process')
+
+// S8: a JWT may ride in a ?token= query param (auth.ts accepts it so <img>/
+// <a download>/EventSource can authenticate). pino-http logs req.url verbatim,
+// so without this the token lands in the systemd journal (readable by anything
+// in the `adm` group). Redact the token value from any URL before it is logged.
+const redactToken = (url: string): string =>
+  url.replace(/([?&]token=)[^&#]*/gi, '$1[REDACTED]')
+
+// pino-http request serialiser: standard fields, but with the token stripped
+// from the logged URL. Exposed via testHooks for a deterministic unit test.
+function reqSerializer (req: any) {
+  const serialised = pinoHttp.stdSerializers.req(req)
+  serialised.url = redactToken(serialised.url)
+  return serialised
+}
+const pino = pinoHttp({ serializers: { req: reqSerializer } })
 const { common } = require('node-mavlink')
 
 const networkManager = require('./networkManager')
@@ -52,14 +68,25 @@ const toBool = (v: unknown) => v === true || v === 'true'
 // set up rate limiter: maximum of fifty requests per minute
 const RateLimit = require('express-rate-limit')
 const pppConnection = require('./pppConnection')
+// Skip rate-limiting in development so the full test suite (~150+ requests
+// from 127.0.0.1) never hits the ceiling.  Production behaviour is unchanged.
+// Set ENABLE_RATE_LIMIT=1 to force the limiters on even in development (e.g. to
+// test the 429 path).  Shared by both the global and the per-login limiter.
+const skipRateLimit = (req: Request) => process.env.NODE_ENV === 'development' && !process.env.ENABLE_RATE_LIMIT
 const limiter = RateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 50,
-  // Skip rate-limiting in development so the full test suite (~150+ requests
-  // from 127.0.0.1) never hits the 50-req/min ceiling.  Production behaviour
-  // is unchanged.  Set ENABLE_RATE_LIMIT=1 to force the limiter on even in
-  // development (e.g. to test the 429 path).
-  skip: (req: Request) => process.env.NODE_ENV === 'development' && !process.env.ENABLE_RATE_LIMIT
+  skip: skipRateLimit
+})
+
+// S11: a much stricter limiter for the login endpoint specifically, to blunt
+// credential brute-force.  ~5 attempts/minute/IP — well above a human typo
+// rate, far below what a brute-forcer needs.  Applied to /api/login *in
+// addition to* the global limiter (see app.use below, before authRouter).
+const loginLimiter = RateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 5,
+  skip: skipRateLimit
 })
 
 
@@ -70,12 +97,28 @@ app.use(limiter)
 // .otf; configs are far smaller; every upload route is authenticated + validated)
 app.use(fileUpload({ limits: { fileSize: 6 * 1024 * 1024 }, abortOnLimit: true, useTempFiles: true, tempFileDir: '/tmp/', safeFileNames: true, preserveExtension: 4 }))
 
+// R9: boot-time subsystem init guard.  A single bad subsystem — a corrupt
+// settings.json, or cloudUpload's `execSync ssh-keygen` failing on an empty
+// ~/.ssh — must not throw at module load and abort the whole boot, which would
+// leave systemd in an unrecoverable 10 s crash-loop with no companion for the
+// entire flight.  Runs `fn`; on throw it logs and returns null so the remaining
+// subsystems still initialise (degraded), rather than taking down the process.
+// Exposed via testHooks so both branches are exercised deterministically.
+function safeInit (label: string, fn: () => any): any {
+  try {
+    return fn()
+  } catch (err) {
+    console.error(`Subsystem '${label}' failed to initialise; continuing degraded.`, err)
+    return null
+  }
+}
+
 // Init settings before running the other classes
-settings.init({
+safeInit('settings.init', () => settings.init({
   appName: 'Rpanion-server', // required,
   reverseDNS: 'com.server.rpanion', // required for macOS
   filename: logpaths.settingsFile
-})
+}))
 
 const vManager = new videoStream(settings)
 const secondaryStreams = new (require('./secondaryStreams'))(settings, vManager)
@@ -90,7 +133,11 @@ const fcParams = new FCParams(fcManager, mavTelemetry)
 const droneCan = new DroneCANMonitor(fcManager)
 const logManager = new flightLogger()
 const ntripClient = new ntrip(settings)
-const cloud = new cloudManager(settings)
+// R9: cloudUpload's constructor runs `execSync ssh-keygen` when ~/.ssh is empty
+// — the highest-risk boot-time initializer.  Guard it so a keygen failure
+// degrades cloud upload rather than aborting boot (its routes are lazy and the
+// status broadcast is try/catch-wrapped, so a null `cloud` cannot crash boot).
+const cloud = safeInit('cloudUpload', () => new cloudManager(settings))
 const logConversion = new logConversionManager(settings)
 const adhocManager = new Adhoc(settings)
 const userMgmt = new userLogin()
@@ -127,7 +174,7 @@ const telemetryInjector = new TelemetryInjector(settings)
 
 // Authentication: the authenticateToken middleware (injected into every route
 // module) + the auth/user routes (mounted after the body parser, below).
-const { authenticateToken, router: authRouter } = require('./auth')({ userMgmt })
+const { authenticateToken, requireAdmin, router: authRouter } = require('./auth')({ userMgmt })
 
 // Graceful shutdown implementation
 let isShuttingDown = false
@@ -379,6 +426,35 @@ fcManager.eventEmitter.on('disarmed', () => {
 
 let FCStatusLoop: NodeJS.Timeout | null = null
 
+// R7: the 1 Hz status broadcast pulls from ~15 subsystems.  A bare setInterval
+// body has no error boundary — any one emitter throwing propagates out of the
+// timer as an uncaughtException, which the global handler turns into
+// process.exit (a ~10 s in-flight blackout, recurring every second).  Wrap the
+// whole body so one bad subsystem is logged and the loop continues.
+// Exposed via testHooks so the catch path is exercised deterministically.
+function broadcastStatus () {
+  try {
+    io.sockets.emit('FCStatus', fcManager.getAllStatus())
+    io.sockets.emit('NTRIPStatus', ntripClient.conStatusStr())
+    io.sockets.emit('CloudBinStatus', cloud.conStatusBinStr())
+    io.sockets.emit('LogConversionStatus', logConversion.conStatusLogStr())
+    io.sockets.emit('PPPStatus', pppConnectionManager.conStatusStr())
+    io.sockets.emit('VideoStreamStatus', vManager.getStreamingStatus())
+    io.sockets.emit('CameraSwitcherStatus', camSwitcher.getStatus())
+    io.sockets.emit('LTEStatus', lteModem.getStatus())
+    io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
+    io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
+    io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
+    // live per-element HUD values for the editor's "show live values" preview
+    io.sockets.emit('HUDLive', hudOverlay.liveHudValues(mavTelemetry.getSnapshot(), new Date().toTimeString().slice(0, 8)))
+    io.sockets.emit('FCParamStatus', fcParams.getProgress())
+    io.sockets.emit('DroneCANNodes', { scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() })
+    io.sockets.emit('DroneCANNodeParams', droneCan.getParamScan())
+  } catch (err) {
+    console.log('Error in FCStatus broadcast loop:', err)
+  }
+}
+
 app.use(express.urlencoded({ extended: true }))
 app.use(pino)
 
@@ -386,8 +462,36 @@ app.use(pino)
 app.use(compression())
 app.use(express.json())
 
+// S9: security headers (helmet is not a dependency, so set them manually).
+// X-Frame-Options + frame-ancestors stop the GS UI being framed for a
+// clickjacking overlay (e.g. a hidden "Reboot FC"); nosniff blocks MIME
+// sniffing; the CSP is deliberately conservative (compatibility-first: inline
+// styles/scripts and same-origin bundles + websockets are needed by the built
+// React/Bootstrap/socket.io UI) — tightening script-src to a nonce/hash is a
+// documented on-device hardening follow-up (ties to S12).
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline'",
+    "connect-src 'self' ws: wss:"
+  ].join('; '))
+  next()
+})
+
 // Serve the static files from the React app
 app.use(express.static(path.join(__dirname, '..', '/build')))
+
+// S11: throttle login attempts (stricter than the global limiter) before the
+// auth router that owns /api/login.
+app.use('/api/login', loginLimiter)
 
 // Auth + user management routes (extracted to ./auth.js)
 app.use(authRouter)
@@ -423,7 +527,7 @@ app.use(require('./routes/secondaryStreams')({ authenticateToken, secondaryStrea
 app.use(require('./routes/hud')({ authenticateToken, vManager, hudFonts }))
 
 // Camera switcher routes (extracted to ./routes/cameraSwitcher.js)
-app.use(require('./routes/cameraSwitcher')({ authenticateToken, toBool, camSwitcher }))
+app.use(require('./routes/cameraSwitcher')({ authenticateToken, requireAdmin, toBool, camSwitcher }))
 
 // Custom video pipeline routes (extracted to ./routes/customPipelines.js)
 app.use(require('./routes/customPipelines')({ authenticateToken, toBool, customPipelines, vManager }))
@@ -443,10 +547,12 @@ app.use(require('./routes/networkPriority')({ authenticateToken, networkPriority
 // Dynamic DNS routes (extracted to ./routes/dynamicDns.js)
 app.use(require('./routes/dynamicDns')({ authenticateToken, toBool, ddns }))
 
-// Serve the logfiles
-app.use('/logdownload', express.static(logpaths.flightsLogsDir))
-// Serve the media files
-app.use('/media', express.static(MEDIA_ROOT))
+// Serve the logfiles — S3: authenticate first (flight telemetry/imagery must
+// not be downloadable unauthenticated).  authenticateToken accepts a ?token=
+// query param (auth.ts) so <a download> links can carry the JWT.
+app.use('/logdownload', authenticateToken, express.static(logpaths.flightsLogsDir))
+// Serve the media files — S3: same auth gate as /logdownload.
+app.use('/media', authenticateToken, express.static(MEDIA_ROOT))
 
 // Flight controller routes (extracted to ./routes/flightController.js)
 app.use(require('./routes/flightController')({ authenticateToken, fcManager }))
@@ -469,24 +575,7 @@ io.on('connection', function () {
     return
   }
   // send Flight Controller and NTRIP status out 1 per second
-  FCStatusLoop = setInterval(function () {
-    io.sockets.emit('FCStatus', fcManager.getAllStatus())
-    io.sockets.emit('NTRIPStatus', ntripClient.conStatusStr())
-    io.sockets.emit('CloudBinStatus', cloud.conStatusBinStr())
-    io.sockets.emit('LogConversionStatus', logConversion.conStatusLogStr())
-    io.sockets.emit('PPPStatus', pppConnectionManager.conStatusStr())
-    io.sockets.emit('VideoStreamStatus', vManager.getStreamingStatus())
-    io.sockets.emit('CameraSwitcherStatus', camSwitcher.getStatus())
-    io.sockets.emit('LTEStatus', lteModem.getStatus())
-    io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
-    io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
-    io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
-    // live per-element HUD values for the editor's "show live values" preview
-    io.sockets.emit('HUDLive', hudOverlay.liveHudValues(mavTelemetry.getSnapshot(), new Date().toTimeString().slice(0, 8)))
-    io.sockets.emit('FCParamStatus', fcParams.getProgress())
-    io.sockets.emit('DroneCANNodes', { scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() })
-    io.sockets.emit('DroneCANNodeParams', droneCan.getParamScan())
-  }, 1000)
+  FCStatusLoop = setInterval(broadcastStatus, 1000)
 })
 
 // NetworkManager (wired/WiFi) routes (extracted to ./routes/network.js)
@@ -530,6 +619,15 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next()
 })
 
+// S5: which address the HTTP/socket.io server binds to. Defaults to 0.0.0.0 (all
+// interfaces) so the field WiFi-AP and eth0 access paths keep working; operators
+// harden by setting RPANION_BIND_ADDRESS (e.g. the wg0 VPN address). If that
+// address cannot be bound at startup we fall back to 0.0.0.0 so the web UI is
+// never made unreachable (see the listen() error handler in the run block).
+function resolveBindAddress (): string {
+  return process.env.RPANION_BIND_ADDRESS || '0.0.0.0'
+}
+
 // Test-only seam: exposes module-level singletons so test/index.io.test.js
 // can emit events, trigger shutdown, and connect via the real socket.io server.
 // Attached to `app` (which is the module export) so require('./index').testHooks
@@ -552,6 +650,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   httpServer: http,
   io,
   gracefulShutdown,
+  // Seams for the S8/R7/R9 unit tests (deterministic branch coverage).
+  safeInit,
+  redactToken,
+  reqSerializer,
+  broadcastStatus,
+  resolveBindAddress,
   getIsShuttingDown: () => isShuttingDown,
   setIsShuttingDown: (v: boolean) => { isShuttingDown = v }
 };
@@ -560,12 +664,25 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 /* istanbul ignore next -- direct-run guard: file is always required (not run directly) in the test harness */
 if (require.main === module) {
   const port = process.env.PORT || 3001;
-  /* istanbul ignore next -- http.listen callback: only executed when running standalone */
-  http.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+  const host = resolveBindAddress();
+  // Never lock the operator out: if a misconfigured RPANION_BIND_ADDRESS can't be
+  // bound, fall back to all-interfaces so the web UI stays reachable.
+  http.on('error', (err: any) => {
+    if (host !== '0.0.0.0') {
+      console.error(`[rpanion] could not bind to ${host} (${err && err.code}); falling back to 0.0.0.0`);
+      http.listen(port, '0.0.0.0');
+    } else {
+      throw err;
+    }
+  });
+  http.listen(port, host, () => {
+    console.log(`Server running on ${host}:${port}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
     console.log('Press Ctrl+C to stop');
   });
+  // Never-locked-out invariant: guarantee a usable admin login always exists
+  // (self-heals a random-password admin if the users file is missing/adminless).
+  userMgmt.ensureInitialAdmin().catch((e: any) => console.error('ensureInitialAdmin:', e));
 }
 
 export = app;

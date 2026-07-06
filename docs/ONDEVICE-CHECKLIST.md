@@ -471,3 +471,57 @@ formatting parity with `video-server.py`, the toggle + status line + chip swap).
 - [ ] **Editor preview == burned-in HUD:** start a Graphic HUD video stream and compare a few chips (e.g. `ALT`, `HDG`, `GPS`, `HOME`) against the on-video text — parity is unit-tested by construction and the live values are correct, but a side-by-side against a running stream is still worth a look (esp. `HOME` distance/bearing, which needs `GLOBAL_POSITION_INT` + `HOME_POSITION`)
 - [ ] **No FC connected** → status reads **● Waiting for telemetry** and every readout shows `--`. The `--` placeholder path is confirmed live (battery/current/gload all `--`); the fully-disconnected **Waiting** banner is unit-tested but not yet observed on-device (the FC was connected throughout) — pull the link mid-session and confirm it flips back within ~5 s (stale flag)
 - [ ] Pi Zero 2 W: the extra 1 Hz `HUDLive` emit (small text map) adds no meaningful CPU (verified on a Pi 4 only)
+
+## Security & resiliency audit fixes (2026-07-06): PPP data path (R3 part, R13)
+
+WSL-verified via unit tests (`server/pppConnection.test.js`): the spawn `error`
+listener no longer lets a failed spawn crash the process; the reconnect backoff
+schedules/cancels/caps correctly; `stopPPP`/`quitting` cancel it; the kill is
+scoped to our device path and no-ops when no path was recorded. The real pppd,
+the real modem, and the sudoers grant can only be checked on the Pi.
+
+- [ ] **Reinstall the .deb** so the updated `debian/postinst` sudoers drop-in is
+  applied — the grant changed from `pkill -SIGTERM pppd` to
+  `pkill -SIGTERM -f pppd*`. Without it, `stopPPP`/`quitting` fail silently
+  (sudo denies the new argv) and the PPP link won't tear down.
+- [ ] **Scoped kill spares the modem's pppd.** With the LTE modem in PPP mode
+  (its own `pppd` on `/dev/ttyUSB2`) *and* the PPP page connected on the FC UART,
+  hit Stop on the PPP page. Confirm our pppd dies but the modem's `pppd`/data
+  call stays up (`ifconfig ppp0` for the modem still shows the interface; the
+  modem PPP status page stays connected). Previously the system-wide `pkill pppd`
+  took both down.
+- [ ] **Auto-reconnect on unexpected pppd death.** With PPP connected, `sudo pkill`
+  the FC-UART pppd out-of-band (simulating a crash). Confirm the module logs
+  `scheduling reconnect attempt N` and brings the link back, with the delay
+  growing (1s → 2s → … capped 30s) if it keeps failing, and resetting after a
+  clean operator Stop.
+- [ ] **No crash on spawn failure.** Point `ppp.uart` at a device that will make
+  `sudo pppd` fail (or induce a fork failure), enable PPP, and confirm the server
+  logs `PPP process error` and stays up (no `process.exit` / systemd restart).
+
+## Security hardening — S1 admin provisioning + S5 bind (2026-07-06)
+
+The self-heal, packaging and interface-bind paths only exist on a real Pi install.
+
+- [ ] **Fresh-install self-provisioning.** Install the new `.deb` on a Pi with **no**
+  existing `/etc/rpanion-server/config/user.json`. Confirm the server boots, creates
+  the file with a random-password `admin`, and writes the plaintext to
+  `/etc/rpanion-server/config/initial-password.txt` (mode `0600`, owned `rpanion`).
+  Log in with that password. **`admin:admin` must NOT work** (the default is no
+  longer shipped — `build-deb.sh` no longer copies `config/user.json`).
+- [ ] **Redeploy does not revert the password.** Change the admin password in the UI,
+  then reinstall/redeploy the `.deb`. Confirm the changed password still works and
+  `ensureInitialAdmin` is a no-op (it only provisions when no admin exists).
+- [ ] **Never-locked-out heal.** With the service stopped, `rm` the users file, start
+  the service, and confirm a fresh random admin + `initial-password.txt` are
+  regenerated (the box can always be recovered without a reflash).
+- [ ] **Banner clears on change.** With the default/initial password in use, confirm
+  the amber "default password" banner shows; change the password and confirm the
+  banner disappears and `initial-password.txt` is deleted.
+- [ ] **S5 bind restriction.** Set `RPANION_BIND_ADDRESS` (systemd drop-in) to the
+  `wg0` VPN address. Confirm the web UI (`:3001`) and RTSP (`:8554`) are reachable
+  over the VPN but **not** on the LTE/uplink interface. Then set it to a bogus/absent
+  address and confirm the server **falls back to `0.0.0.0`** and stays reachable
+  (never-locked-out). **Note:** MAVLink TCP `5760` still binds all interfaces
+  (`mavlink-routerd` has no address flag) — restrict it with a firewall rule and/or
+  enable MAVLink2 signing.
