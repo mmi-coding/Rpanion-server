@@ -570,3 +570,28 @@ The self-heal, packaging and interface-bind paths only exist on a real Pi instal
 - [ ] **deploy-fork.sh fail-fast (R1).** Sanity-run a redeploy; confirm it still
   completes end-to-end under `set -e` and the final step now verifies
   `systemctl is-active rpanion-server` (exits 1 if the service is down).
+
+## MAVLink command-path hardening (F6 — from ChaCha20/MAVSec review 2026-07-08)
+
+Context: the LTE hop is already ChaCha20-Poly1305-encrypted inside WireGuard, so
+in-protocol MAVLink encryption (MAVSec) adds nothing and would require forked FC
+firmware + a patched GCS. The remaining exposure is the unauthenticated
+`mavlink-routerd` TCP 5760 bound on all interfaces.
+
+- [ ] **Firewall 5760 to the VPN.** Add an nftables rule (candidate: postinst
+  drop-in) allowing TCP 5760 only from `lo` and `wg0`, then verify: Mission
+  Planner over the VPN connects; `pymavlink` on the Pi via
+  `tcp:127.0.0.1:5760` still works; a client on the field WiFi AP is refused;
+  the webUI (`:3001`) is untouched (never-lockout).
+- [ ] **Enable MAVLink2 signing on the FC telemetry link.** On the Pixhawk set
+  `SERIALn_PROTOCOL=2` for the companion-link serial port, then in Mission
+  Planner: Setup → Advanced → MAVLink Signing → create/select key → USE.
+  Verify: signed MP session can change params; an unsigned client on 5760 can
+  still *read* telemetry (expected — signing is not encryption) but its
+  commands/param writes are ignored. Confirm `MAV_OPTIONS` bit 0 and
+  `MAV1_OPTIONS` bit 0 are clear (they re-admit unsigned MAVLink2). USB stays
+  exempt, so bench access via USB cable is unaffected (battery OFF per the
+  bench-power rule).
+- [ ] **Re-check the sysid-255 note.** With signing on, re-verify the
+  pymavlink write path from the Pi (source sysid 245/252/254 — see the
+  MAVLink sysid-255 collision note) still works when using the signing key.
