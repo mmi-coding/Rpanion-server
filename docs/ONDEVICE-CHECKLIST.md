@@ -537,3 +537,21 @@ The self-heal, packaging and interface-bind paths only exist on a real Pi instal
   (never-locked-out). **Note:** MAVLink TCP `5760` still binds all interfaces
   (`mavlink-routerd` has no address flag) — restrict it with a firewall rule and/or
   enable MAVLink2 signing.
+
+## Audit remediation 2026-07-07 (bugs pass)
+
+- [ ] **Sudoers `ip` path (B3).** On the Pi, as the `rpanion` user run
+  `sudo -n ip link set wwan0 down && sudo -n ip link set wwan0 up` and confirm no
+  password prompt/denial. The drop-in now grants both `/usr/bin/ip` and
+  `/usr/sbin/ip` spellings (sudo matches whichever secure_path resolves).
+  Then verify the QMI data path end-to-end from the LTE Modem page
+  (connect → interface up → disconnect → interface down).
+- [ ] **Adhoc WiFi under sudo (B3).** Activate and deactivate adhoc mode from the
+  webUI and confirm the `sudo nmcli/ip/iwconfig/route` chain succeeds (new
+  sudoers entries: `ip addr flush/add`, `iwconfig`, `route add default gw`).
+- [ ] **Cloud upload survives slow syncs (B4).** With a >20 s rsync upload of a
+  large `.bin` over LTE, confirm the transfer completes ("skipping this
+  interval" in the journal instead of a kill/restart every 20 s).
+- [ ] **Mid-flight log pruning (B5).** With flight logging running, confirm the
+  5-minute prune tick deletes oldest logs once the 2 GiB / 500-file cap is
+  crossed and never touches the live binlog.

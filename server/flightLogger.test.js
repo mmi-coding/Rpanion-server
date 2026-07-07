@@ -1,6 +1,7 @@
 process.env.NODE_ENV = 'development'
 
 const assert = require('assert')
+const sinon = require('sinon')
 const Path = require('path')
 const fs = require('fs')
 const os = require('os')
@@ -184,6 +185,50 @@ describe('Logging Functions', function () {
     // both files survive because every unlink threw and was swallowed
     assert.ok(fs.existsSync(Path.join(dir, 'a.bin')))
     assert.ok(fs.existsSync(Path.join(dir, 'b.bin')))
+  })
+
+  it('#autoPruneTickCallsPruneWithActiveBinlog()', function () {
+    const Lgr = new Logger()
+    const clock = sinon.useFakeTimers()
+    try {
+      const pruneStub = sinon.stub(Lgr, 'pruneLogs').returns([])
+
+      // ticks pass the live binlog through so it is never pruned
+      Lgr.startAutoPrune(() => '/logs/active.bin', 1000)
+      clock.tick(1000)
+      assert.ok(pruneStub.calledWith('/logs/active.bin'))
+
+      // restarting replaces the previous interval; no binlog -> undefined
+      Lgr.startAutoPrune(() => null, 1000)
+      clock.tick(1000)
+      assert.ok(pruneStub.calledWith(undefined))
+
+      // default interval variant, then quitting clears it (and is idempotent)
+      Lgr.startAutoPrune(() => null)
+      Lgr.quitting()
+      assert.equal(Lgr.pruneIntervalObj, null)
+      Lgr.quitting()
+    } finally {
+      clock.restore()
+      sinon.restore()
+    }
+  })
+
+  it('#autoPruneTickSurvivesPruneError()', function () {
+    const Lgr = new Logger()
+    const clock = sinon.useFakeTimers()
+    const logSpy = sinon.spy(console, 'log')
+    try {
+      // a prune failure must be logged, not escape the timer as an uncaught
+      sinon.stub(Lgr, 'pruneLogs').throws(new Error('folder vanished'))
+      Lgr.startAutoPrune(() => null, 1000)
+      assert.doesNotThrow(() => clock.tick(1000))
+      assert.ok(logSpy.getCalls().some((c) => String(c.args[0]).includes('Error pruning flight logs')))
+      Lgr.quitting()
+    } finally {
+      clock.restore()
+      sinon.restore()
+    }
   })
 
   it('#getlogs()', function (done) {

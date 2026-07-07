@@ -1462,6 +1462,76 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
   })
 
   // =========================================================================
+  // R12b — the auto-prune tick reads the live binlog through this getter so
+  // the actively-written log is never pruned mid-flight.
+  // =========================================================================
+  describe('flight-log auto-prune wiring (R12b)', function () {
+    it('getActiveBinlog returns the FC manager binlog (null when no FC link)', function () {
+      // no FC connected in the test harness → links empty → null
+      assert.strictEqual(hooks.getActiveBinlog(), null)
+    })
+  })
+
+  // =========================================================================
+  // R9b — null-cloud degradation: broadcast and shutdown must tolerate the
+  // null that safeInit leaves behind when cloudUpload failed to construct.
+  // =========================================================================
+  describe('null cloud degradation (R9b)', function () {
+    afterEach(function () {
+      // put the real cloud singleton back for the rest of the suite
+      hooks.setCloud(hooks.cloud)
+    })
+
+    it('broadcastStatus emits a placeholder CloudBinStatus and every event after it', function () {
+      sinon.stub(hooks.fcManager, 'getAllStatus').returns({})
+      sinon.stub(hooks.ntripClient, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.logConversion, 'conStatusLogStr').returns('idle')
+      sinon.stub(hooks.pppConnectionManager, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.vManager, 'getStreamingStatus').returns({ active: false })
+      sinon.stub(hooks.camSwitcher, 'getStatus').returns({ active: 'A' })
+      sinon.stub(hooks.lteModem, 'getStatus').returns({ available: false })
+      sinon.stub(hooks.cellularTuning, 'getStatus').returns({ adaptiveBitrate: false })
+      var emitSpy = sinon.spy(hooks.io.sockets, 'emit')
+
+      hooks.setCloud(null)
+      assert.doesNotThrow(function () { hooks.broadcastStatus() })
+
+      var events = emitSpy.getCalls().map(function (c) { return c.args[0] })
+      var cloudCall = emitSpy.getCalls().find(function (c) { return c.args[0] === 'CloudBinStatus' })
+      assert.ok(cloudCall, 'CloudBinStatus should still be emitted')
+      assert.strictEqual(cloudCall.args[1], 'Unavailable (failed to start)')
+      // the events ordered AFTER the cloud emit must not be skipped
+      ;['PPPStatus', 'VideoStreamStatus', 'LTEStatus', 'MAVTelemetry', 'HUDLive', 'DroneCANNodeParams'].forEach(function (ev) {
+        assert.ok(events.indexOf(ev) !== -1, ev + ' should be emitted with a null cloud')
+      })
+    })
+
+    it('gracefulShutdown completes cleanly with a null cloud (exit 0, later quitting() still called)', function (done) {
+      this.timeout(15000)
+      hooks.setIsShuttingDown(false)
+      var processExitStub = sinon.stub(process, 'exit')
+      sinon.stub(hooks.vManager, 'stopCamera')
+      sinon.stub(hooks.pppConnectionManager, 'quitting')
+      var logConvQuitStub = sinon.stub(hooks.logConversion, 'quitting')
+      sinon.stub(hooks.lteModem, 'quitting')
+      sinon.stub(hooks.cellularTuning, 'quitting')
+
+      hooks.setCloud(null)
+      hooks.gracefulShutdown('TEST', 0).then(function () {
+        try {
+          assert.ok(processExitStub.calledWith(0), 'should exit 0, not the error-path exit(1)')
+          assert.ok(logConvQuitStub.called, 'quitting() calls after cloud must still run')
+          hooks.setIsShuttingDown(false)
+          done()
+        } catch (e) { hooks.setIsShuttingDown(false); done(e) }
+      }).catch(function (err) {
+        hooks.setIsShuttingDown(false)
+        done(err)
+      })
+    })
+  })
+
+  // =========================================================================
   // S8 — token redaction in the pino request serialiser
   // =========================================================================
   describe('pino token redaction (S8)', function () {

@@ -40,6 +40,13 @@ class cloudUpload {
     this.intervalObj = setInterval(() => {
       console.log('Upload interval')
       if (this.options.doBinUpload) {
+        // A large log over a metered LTE link can easily take longer than one
+        // interval; killing and restarting the transfer each tick means it
+        // never completes. Let the running rsync finish instead.
+        if (this.rsyncPid && this.rsyncPid.exitCode === null) {
+          console.log('Cloud sync still running, skipping this interval')
+          return
+        }
         console.log('Doing binfile')
         // Upload only .bin logs: descend into all directories (*/), include
         // .bin files, then exclude everything else. Without the trailing
@@ -56,11 +63,6 @@ class cloudUpload {
 
         if (this.options.syncDeletions) {
           rsync.set('delete')
-        }
-
-        // Kill old rsync and create new one
-        if (this.rsyncPid) {
-          this.rsyncPid.kill()
         }
 
         this.rsyncPid = rsync.execute(function (error: any, code: any, cmd: any) {

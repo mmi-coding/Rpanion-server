@@ -132,12 +132,18 @@ const fcParams = new FCParams(fcManager, mavTelemetry)
 // DroneCAN node enumeration via CAN forwarding, for the FC Configuration page
 const droneCan = new DroneCANMonitor(fcManager)
 const logManager = new flightLogger()
+// R12b: keep the log-retention cap enforced during flight (boot-only pruning
+// lets a long flight fill the SD card). fcManager.binlog tracks the live log.
+// Named (not inline) so the R12b test can assert what the prune tick receives.
+const getActiveBinlog = () => fcManager.binlog
+logManager.startAutoPrune(getActiveBinlog)
 const ntripClient = new ntrip(settings)
 // R9: cloudUpload's constructor runs `execSync ssh-keygen` when ~/.ssh is empty
 // — the highest-risk boot-time initializer.  Guard it so a keygen failure
 // degrades cloud upload rather than aborting boot (its routes are lazy and the
 // status broadcast is try/catch-wrapped, so a null `cloud` cannot crash boot).
-const cloud = safeInit('cloudUpload', () => new cloudManager(settings))
+// `let` (not const) so the R9 null-degradation tests can swap it via testHooks.setCloud.
+let cloud = safeInit('cloudUpload', () => new cloudManager(settings))
 const logConversion = new logConversionManager(settings)
 const adhocManager = new Adhoc(settings)
 const userMgmt = new userLogin()
@@ -239,12 +245,17 @@ async function gracefulShutdown(signal: string, exitCode = 0) {
     }
 
     pppConnectionManager.quitting()
-    cloud.quitting()
+    // cloud is null when safeInit degraded it (R9); an unguarded call here would
+    // throw and turn a clean stop into exit(1), skipping the quitting() calls below.
+    if (cloud) {
+      cloud.quitting()
+    }
     logConversion.quitting()
     lteModem.quitting()
     cellularTuning.quitting()
     ddns.quitting()
     telemetryInjector.quitting()
+    logManager.quitting()
     console.log('All services stopped')
     
     clearTimeout(forceShutdownTimer)
@@ -436,7 +447,10 @@ function broadcastStatus () {
   try {
     io.sockets.emit('FCStatus', fcManager.getAllStatus())
     io.sockets.emit('NTRIPStatus', ntripClient.conStatusStr())
-    io.sockets.emit('CloudBinStatus', cloud.conStatusBinStr())
+    // cloud is null when safeInit degraded it (R9); without the guard this line
+    // throws every tick and the try/catch below silently skips every emit after
+    // it (PPP, video, LTE, telemetry, HUD, DroneCAN) — a blacked-out dashboard.
+    io.sockets.emit('CloudBinStatus', cloud ? cloud.conStatusBinStr() : 'Unavailable (failed to start)')
     io.sockets.emit('LogConversionStatus', logConversion.conStatusLogStr())
     io.sockets.emit('PPPStatus', pppConnectionManager.conStatusStr())
     io.sockets.emit('VideoStreamStatus', vManager.getStreamingStatus())
@@ -657,7 +671,12 @@ function resolveBindAddress (): string {
   broadcastStatus,
   resolveBindAddress,
   getIsShuttingDown: () => isShuttingDown,
-  setIsShuttingDown: (v: boolean) => { isShuttingDown = v }
+  setIsShuttingDown: (v: boolean) => { isShuttingDown = v },
+  // R9 null-degradation seam: lets tests run broadcastStatus/gracefulShutdown
+  // with a null cloud (the state safeInit leaves behind on ssh-keygen failure).
+  setCloud: (v: any) => { cloud = v },
+  // R12b seam: the getter wired into logManager.startAutoPrune at boot.
+  getActiveBinlog
 };
 
 // Only start the server if this file is being run directly (not imported)

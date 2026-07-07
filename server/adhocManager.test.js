@@ -6,11 +6,13 @@ const AdhocManager = require('./adhocManager')
 
 describe('Adhoc Manager Functions', function () {
   // nmcli/iwlist/iwconfig/ip/route/sleep are all faked; FAKE_SCENARIO picks
-  // the adapter state. grep/awk in the gateway pipeline stay real.
+  // the adapter state. grep/awk in the gateway pipeline stay real. sudo is
+  // faked as a passthrough (setAdapter runs its commands under sudo).
   let fake
 
   before(function () {
     fake = new FakeBin()
+    fake.install('sudo', 'exec "$@"')
     fake.install('nmcli', 'if [ "$1" = "-t" ]; then\n' +
       '  case "$FAKE_SCENARIO" in\n' +
       '  nm-err|refresh-err) echo "nmcli boom" >&2; exit 1 ;;\n' +
