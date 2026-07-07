@@ -150,6 +150,30 @@ describe('#LoggerPage()', function () {
     page.unmount()
   })
 
+  test('page-load fetch failures show an error and still clear the spinner (R5)', async function () {
+    // no routes: every componentDidMount fetch rejects
+    mockFetch({})
+    const page = renderPage(<LoggerPage />)
+    await page.flush()
+    expect(document.body.textContent).toContain('Failed to fetch')
+    const details = page.container.querySelector('.pagedetails')
+    expect(details.style.display).toBe('block')
+    page.unmount()
+  })
+
+  test('handleDoLogConversion failure sets an error (R5)', async function () {
+    mockFetch({ ...defaultFetch }) // no POST route: the toggle fetch rejects
+    const page = renderPage(<LoggerPage />)
+    await page.flush()
+    const toggleBtn = [...page.container.querySelectorAll('button')].find(b =>
+      b.textContent === 'Disable' || b.textContent === 'Enable'
+    )
+    page.click(toggleBtn)
+    await page.flush()
+    expect(document.body.textContent).toContain('Failed to toggle log conversion')
+    page.unmount()
+  })
+
   test('handleDoLogConversion POSTs and updates state', async function () {
     const fetch = mockFetch({
       ...defaultFetch,

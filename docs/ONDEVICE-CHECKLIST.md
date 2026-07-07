@@ -563,3 +563,10 @@ The self-heal, packaging and interface-bind paths only exist on a real Pi instal
 - [ ] **Hardlink .deb staging (P10).** Run `deploy/build-deb.sh` on the Pi and check
   disk usage does not double during "Staging production-only node_modules"
   (`df` before/after); resulting .deb installs and the service starts.
+- [ ] **Video crash → systemd restart (R2).** Start a stream, then unplug the
+  camera (or kill the source). The journal must show "GStreamer ERROR: …" and
+  video-server.py exiting non-zero, and systemd `Restart=on-failure` must
+  restart it (previously a dead pipeline idled forever / exited 0).
+- [ ] **deploy-fork.sh fail-fast (R1).** Sanity-run a redeploy; confirm it still
+  completes end-to-end under `set -e` and the final step now verifies
+  `systemctl is-active rpanion-server` (exits 1 if the service is down).

@@ -70,14 +70,17 @@ class NetworkPriorityPage extends basePage {
 
   setPriority = (uuid) => {
     const inp = this.state.inputs[uuid]
+    // in-flight guard: over a slow link repeated clicks would queue duplicate
+    // priority changes; disable all Set buttons until the POST settles
+    this.setState({ settingPriority: true })
     fetch('/api/networksetpriority', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${this.state.token}` },
       body: JSON.stringify({ conName: uuid, priority: parseInt(inp.priority, 10), metric: parseInt(inp.metric, 10) })
     })
       .then(response => response.json())
-      .then(data => { this.setState({ infoMessage: data.error ? ('Error setting priority: ' + data.error) : 'Priority updated. It applies on the next reconnect.' }) })
-      .catch(error => { this.setState({ error: 'Error setting priority: ' + error }) })
+      .then(data => { this.setState({ settingPriority: false, infoMessage: data.error ? ('Error setting priority: ' + data.error) : 'Priority updated. It applies on the next reconnect.' }) })
+      .catch(error => { this.setState({ settingPriority: false, error: 'Error setting priority: ' + error }) })
   }
 
   renderTitle () {
@@ -123,7 +126,7 @@ class NetworkPriorityPage extends basePage {
                 <td>{c.type}</td>
                 <td><Form.Control type="number" style={{ width: 90 }} value={this.state.inputs[c.uuid].priority} onChange={(e) => this.handleInput(c.uuid, 'priority', e.target.value)} /></td>
                 <td><Form.Control type="number" style={{ width: 90 }} value={this.state.inputs[c.uuid].metric} onChange={(e) => this.handleInput(c.uuid, 'metric', e.target.value)} /></td>
-                <td><Button size="sm" onClick={() => this.setPriority(c.uuid)}>Set</Button></td>
+                <td><Button size="sm" disabled={this.state.settingPriority === true} onClick={() => this.setPriority(c.uuid)}>Set</Button></td>
               </tr>
             ))}
           </tbody>

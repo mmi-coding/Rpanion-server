@@ -6,6 +6,10 @@
 #
 # Idempotent enough to re-run. Does NOT reboot; enabling the serial UART for the
 # flight controller takes effect on the next reboot (a note is printed at the end).
+# R1: fail fast — without -e a failed npm build still installed the stale .deb
+# and printed DONE, leaving a half-provisioned device that looked successful.
+# Steps that may legitimately fail carry an explicit `|| true`.
+set -e
 set -x
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
@@ -36,7 +40,8 @@ step "purge ModemManager (it grabs the flight-controller serial port)"
 sudo apt-get purge -y modemmanager || true
 
 step "Node.js 24"
-NODEMAJ=0; command -v node >/dev/null && NODEMAJ=$(node -v | sed 's/v//' | cut -d. -f1)
+NODEMAJ=0
+if command -v node >/dev/null; then NODEMAJ=$(node -v | sed 's/v//' | cut -d. -f1); fi
 if [ "$NODEMAJ" -lt 22 ]; then
   sudo apt-get remove -y nodejs nodejs-doc || true
   curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
@@ -70,5 +75,10 @@ npm run package
 sudo apt-get install -y "$REPO"/rpanion-server_*.deb
 
 step "DONE"
-systemctl is-active rpanion-server && echo "rpanion-server is running on :3001"
+if systemctl is-active rpanion-server; then
+  echo "rpanion-server is running on :3001"
+else
+  echo "ERROR: rpanion-server is NOT active after install" >&2
+  exit 1
+fi
 echo "NOTE: reboot to apply the serial-UART change for the flight controller."

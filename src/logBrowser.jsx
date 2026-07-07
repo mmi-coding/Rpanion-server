@@ -48,12 +48,14 @@ class LoggerPage extends basePage {
         body: JSON.stringify({
             doLogConversion: !this.state.doLogConversion,
         })
-      }).then(response => response.json()).then(state => { this.setState(state) });
+      }).then(response => response.json()).then(state => { this.setState(state) }).catch(() => { this.setState({ error: 'Failed to toggle log conversion' }) });
   }
   componentDidMount() {
-    fetch(`/api/logfiles`, {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() });
-    fetch(`/api/diskinfo`, {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state) });
-    fetch(`/api/logconversioninfo`, {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() })
+    // every page-load fetch carries a .catch: a single dropped request over a
+    // flaky link must not leave the loading spinner up forever
+    fetch(`/api/logfiles`, {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() }).catch(() => { this.setState({ error: 'Failed to fetch log files' }); this.loadDone() });
+    fetch(`/api/diskinfo`, {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state) }).catch(() => { this.setState({ error: 'Failed to fetch disk info' }) });
+    fetch(`/api/logconversioninfo`, {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() }).catch(() => { this.setState({ error: 'Failed to fetch log conversion info' }); this.loadDone() })
   }
 
   renderTitle() {

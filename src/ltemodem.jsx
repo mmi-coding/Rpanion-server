@@ -118,6 +118,9 @@ class LTEModemPage extends basePage {
 
     handleSubmit = async (event) => {
         event.preventDefault();
+        // in-flight guard: over a slow link a double-click would double-save
+        // (the scan/test/connection buttons on this page already have one)
+        this.setState({ savingSettings: true });
         try {
             const response = await fetch('/api/ltemodemmodify', {
                 method: 'POST',
@@ -130,12 +133,12 @@ class LTEModemPage extends basePage {
             });
             const data = await response.json();
             if (data.error) {
-                this.setState({ error: data.error });
+                this.setState({ error: data.error, savingSettings: false });
             } else {
-                this.setState({ error: null, config: { ...this.state.config, ...data.settings } });
+                this.setState({ error: null, config: { ...this.state.config, ...data.settings }, savingSettings: false });
             }
         } catch (error) {
-            this.setState({ error: 'Failed to save LTE modem settings' });
+            this.setState({ error: 'Failed to save LTE modem settings', savingSettings: false });
         }
     };
 
@@ -505,7 +508,7 @@ class LTEModemPage extends basePage {
                     </div>
                     <div className="form-group row">
                         <div className="col-sm-11">
-                            <Button type="submit" className="btn btn-primary">Save</Button>
+                            <Button type="submit" className="btn btn-primary" disabled={this.state.savingSettings === true}>Save</Button>
                         </div>
                     </div>
                 </Form>

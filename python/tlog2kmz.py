@@ -49,6 +49,11 @@ def mavtogpx_filepath():
 def convert_tlog_files(folder):
     """Convert any tlog files to GPX,  KML, KMZ and PNG."""
     mavlog = glob.glob(os.path.join(folder, "*.tlog"))
+    # R4: an empty folder made max() raise ValueError and killed the
+    # conversion run (this is triggered automatically by the Node side)
+    if not mavlog:
+        print("[tlog2kmz.py] No tlog files in {0}, nothing to do".format(folder))
+        return True
     latest_file = max(mavlog, key=os.path.getctime)
     kmzlogs = glob.glob(os.path.join(folder, "kmzlogs", "*.kmz"))
     passed = True
@@ -67,19 +72,20 @@ def convert_tlog_files(folder):
             # print("[tlog2kmz.py] KMZ file for {file} already exists, ignoring".format(file=m))
             continue
 
+        # R4: argv lists (no shell=True) — filenames with spaces/quotes are
+        # passed verbatim instead of being re-tokenised by /bin/sh
+        gpx = m + '.gpx'
+        kml = m + '.kml'
         try:
             run_cmd([sys.executable, mavtogpx_filepath(), m], show=True)
-            gpx = m + '.gpx'
-            kml = m + '.kml'    
-            run_cmd('gpsbabel -i gpx -f %s '
-                        '-o kml,units=m,floating=1,extrude=1 -F %s' %
-                        (gpx, kml))
+            run_cmd(['gpsbabel', '-i', 'gpx', '-f', gpx,
+                     '-o', 'kml,units=m,floating=1,extrude=1', '-F', kml])
         except subprocess.CalledProcessError:
             passed = False
 
         try:
-            run_cmd('zip %s.kmz %s.kml' % (m, m))
-            run_cmd('mv {0}.kmz '.format(m) + os.path.join(folder, "kmzlogs"))
+            run_cmd(['zip', m + '.kmz', kml])
+            run_cmd(['mv', m + '.kmz', os.path.join(folder, "kmzlogs")])
         except subprocess.CalledProcessError:
             passed = False
 
@@ -88,11 +94,11 @@ def convert_tlog_files(folder):
         # run_cmd("../MAVProxy/MAVProxy/tools/mavflightview.py --imagefile=%s.png %s" % (m, m))
 
         # clean up
-        try:
-            run_cmd('rm %s.kml' % (m))
-            run_cmd('rm %s.gpx' % (m))
-        except subprocess.CalledProcessError:
-            pass
+        for tmpfile in (kml, gpx):
+            try:
+                os.remove(tmpfile)
+            except OSError:
+                pass
     return passed
 
 

@@ -93,6 +93,20 @@ describe('#NetworkPriorityPage()', function () {
     page.unmount()
   })
 
+  test('Set button disables while the POST is in flight (R6)', async function () {
+    let resolvePost = null
+    mockFetch({ ...defaultFetch, 'POST /api/networksetpriority': () => new Promise((resolve) => { resolvePost = () => resolve({ error: null }) }) })
+    const page = renderPage(<NetworkPriorityPage />)
+    await page.flush()
+    const findSet = () => [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Set')
+    page.click(findSet())
+    expect(findSet().disabled).toBe(true)
+    act(() => { resolvePost() })
+    await page.flush()
+    expect(findSet().disabled).toBe(false)
+    page.unmount()
+  })
+
   test('Set shows an error when the backend reports one', async function () {
     mockFetch({ ...defaultFetch, 'POST /api/networksetpriority': { error: 'nmcli boom' } })
     const page = renderPage(<NetworkPriorityPage />)
