@@ -4,7 +4,12 @@ import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 
 import { renderPage, mockFetch } from '../test/ui.jsx'
-import AppRouter from './AppRouter.jsx'
+import AppRouter, { pageImporters } from './AppRouter.jsx'
+// AppRouter code-splits its pages (React.lazy). Pre-import the routes these
+// tests visit so the dynamic import resolves deterministically within a
+// flush() instead of racing vitest's on-demand module transform.
+import './about.jsx'
+import './logout.jsx'
 
 vi.mock('socket.io-client', () => import('../test/socketMock.js'))
 
@@ -39,6 +44,15 @@ function stubViewport (isDesktop) {
     dispatchEvent () { return false }
   }))
 }
+
+describe('#AppRouter() lazy route chunks', function () {
+  test('every code-split page importer resolves to a component', async function () {
+    for (const [name, importer] of Object.entries(pageImporters)) {
+      const mod = await importer()
+      expect(typeof mod.default, `route chunk "${name}" must default-export a component`).toBe('function')
+    }
+  })
+})
 
 describe('#AppRouter()', function () {
   beforeEach(() => {

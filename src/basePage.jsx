@@ -1,5 +1,5 @@
 import { Component} from 'react';
-import io from 'socket.io-client';
+import { getAppSocket } from './appSocket.js';
 import SocketIOFooter from './footerSocketIO';
 import Modal from 'react-bootstrap/Modal';
 import Button from 'react-bootstrap/Button';
@@ -21,42 +21,20 @@ class basePage extends Component {
       infoMessage: null,
     }
 
-    // check authentication
+    // read the stored auth token. AppRouter already verifies it against
+    // /api/auth on every navigation — re-verifying here doubled the auth
+    // round-trips per page change; an invalid token just 401s the page's own
+    // fetches and AppRouter redirects to the login screen.
     const tokenString = localStorage.getItem('token')
     const userToken = JSON.parse(tokenString)
     this.state.token = userToken?.token
 
-    //verify token, set to null if not valid
-    if (this.state.token) {
-      fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.state.token}`, // Include token in the Authorization header
-        },
-      })
-      .then((response) => {
-        if (!response.ok) {
-          this.setState({ token: null })
-          return
-        }
-        return response.json();
-      })
-      .then(() => {
-      })
-      .catch((error) => {
-        // Handle errors
-        console.error(error)
-        this.setState({ token: null })
-      });
-    }
-
-
     if (this.state.usedSocketIO) {
-      this.socket = io({
-        extraHeaders: {
-          authorization: `Bearer ${this.state.token}`
-        }
-      })
+      // shared app-level connection (see appSocket.js) — pages register their
+      // listeners on it and remove them on unmount, no reconnect per page
+      this.socket = getAppSocket(this.state.token)
+      // an already-open shared socket fires no new 'connect' event
+      this.state.socketioStatus = this.socket.connected === true
 
       // Socket.io client
       this.socket.on('disconnect', function () {
@@ -76,7 +54,11 @@ class basePage extends Component {
 
   componentWillUnmount() {
     if (this.state.usedSocketIO) {
-      this.socket.disconnect();
+      // The socket is shared: remove every listener this page registered
+      // (its own .on(...) handlers plus basePage's connect/disconnect) but
+      // keep the connection open for the next page. Only one page is mounted
+      // at a time, so a blanket removeAllListeners cannot clobber anyone.
+      this.socket.removeAllListeners();
     }
   }
 

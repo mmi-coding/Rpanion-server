@@ -43,12 +43,16 @@ trap 'mv -f package.json.debbak package.json 2>/dev/null || true; if [ -d node_m
 find server mavlink \( -name '*.ts' -o -name '*.test.js' -o -name '*.js.map' \) -delete
 sed -i "s/\"architecture\": \"[^\"]*\"/\"architecture\": \"$ARCH\"/" package.json
 
-# Stage a production-only node_modules for packaging: copy the full tree, then
-# prune devDeps from the copy. node-deb is itself a devDep, so it is run from the
-# intact backup (node_modules.dev). prune only deletes dirs — no native rebuild.
+# Stage a production-only node_modules for packaging: hardlink-copy the full
+# tree (cp -al: no data duplication — the previous cp -a transiently doubled
+# the tree, a real ENOSPC risk on a Pi SD card), then prune devDeps from the
+# copy. node-deb is itself a devDep, so it is run from the intact backup
+# (node_modules.dev). prune only unlinks whole package dirs and npm writes
+# metadata atomically (write+rename breaks the hardlink), so the .dev tree is
+# never mutated — and no native rebuild happens (unlike a fresh npm ci).
 echo "Staging production-only node_modules (pruning devDeps)..."
 mv node_modules node_modules.dev
-cp -a node_modules.dev node_modules
+cp -al node_modules.dev node_modules
 npm prune --omit=dev --no-audit --no-fund >/dev/null
 
 rm -rf ./python/.venv

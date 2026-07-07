@@ -48,9 +48,19 @@ class Home extends basePage {
       this.componentDidMount()
     })
 
-    // Poll live system stats (CPU / temp / RAM / disk / uptime) for the dashboard (#31)
+    // Live system stats (CPU / temp / RAM / disk / uptime) for the dashboard
+    // (#31): one HTTP fetch for a fast first paint, then pushed over the
+    // shared socket every 3 s while subscribed (replaces the old HTTP poll).
     this.loadSystemStatus()
-    this.sysTimer = setInterval(this.loadSystemStatus.bind(this), 3000)
+    this.socket.on('SystemStatus', (msg) => {
+      this.setState({ systemStatus: msg })
+    })
+    // (re-)join the push room on every connect — room membership is
+    // server-side and lost on reconnect
+    this.socket.on('connect', () => {
+      this.socket.emit('subscribeStatus', 'systemstatus')
+    })
+    this.socket.emit('subscribeStatus', 'systemstatus')
   }
 
   componentDidMount () {
@@ -58,7 +68,7 @@ class Home extends basePage {
   }
 
   componentWillUnmount () {
-    clearInterval(this.sysTimer)
+    this.socket.emit('unsubscribeStatus', 'systemstatus')
     super.componentWillUnmount()
   }
 

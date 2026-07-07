@@ -23,10 +23,13 @@ interface MsgState {
   msgid: number
   sysid: number
   compid: number
-  fields: { [k: string]: FieldValue }
+  raw: any
   count: number
   lastMs: number
   intervalMs: number
+  // lazy-flatten cache: `fields` is valid while flatCount === count
+  flatCount: number
+  flatFields: { [k: string]: FieldValue }
 }
 
 interface MsgSnapshot {
@@ -56,8 +59,39 @@ class MavTelemetry {
     const clazz = REGISTRY[msgid]
     const name: string = (clazz !== undefined) ? clazz.MSG_NAME : ('UNKNOWN_' + msgid)
 
-    // flatten the decoded message into displayable scalar fields
+    const now: number = Date.now()
+    const prev: MsgState | undefined = this.messages[name]
+    let intervalMs = 0
+    if (prev !== undefined) {
+      const delta = now - prev.lastMs
+      // exponential smoothing once a prior interval exists, else seed with delta
+      intervalMs = (prev.intervalMs > 0) ? Math.round(prev.intervalMs * 0.7 + delta * 0.3) : delta
+    }
+
+    // This runs for every packet on the FC datastream (easily 100+ msg/s), so
+    // it must stay allocation-light on the Pi: store the decoded object as-is
+    // and flatten it lazily in getSnapshot() (1 Hz, changed messages only).
+    this.messages[name] = {
+      msgid,
+      sysid: packet.header.sysid,
+      compid: packet.header.compid,
+      raw: data,
+      count: ((prev !== undefined) ? prev.count : 0) + 1,
+      lastMs: now,
+      intervalMs,
+      flatCount: (prev !== undefined) ? prev.flatCount : -1,
+      flatFields: (prev !== undefined) ? prev.flatFields : {}
+    }
+  }
+
+  // flatten a decoded message into displayable scalar fields, cached per
+  // message type until a newer packet of that type arrives
+  private flattenFields (m: MsgState): { [k: string]: FieldValue } {
+    if (m.flatCount === m.count) {
+      return m.flatFields
+    }
     const fields: { [k: string]: FieldValue } = {}
+    const data = m.raw
     if (data !== null && data !== undefined && typeof data === 'object') {
       for (const key of Object.keys(data)) {
         const v: any = data[key]
@@ -72,25 +106,9 @@ class MavTelemetry {
         }
       }
     }
-
-    const now: number = Date.now()
-    const prev: MsgState | undefined = this.messages[name]
-    let intervalMs = 0
-    if (prev !== undefined) {
-      const delta = now - prev.lastMs
-      // exponential smoothing once a prior interval exists, else seed with delta
-      intervalMs = (prev.intervalMs > 0) ? Math.round(prev.intervalMs * 0.7 + delta * 0.3) : delta
-    }
-
-    this.messages[name] = {
-      msgid,
-      sysid: packet.header.sysid,
-      compid: packet.header.compid,
-      fields,
-      count: ((prev !== undefined) ? prev.count : 0) + 1,
-      lastMs: now,
-      intervalMs
-    }
+    m.flatFields = fields
+    m.flatCount = m.count
+    return fields
   }
 
   // name-sorted snapshot for the webUI, with rate (Hz) and a staleness flag
@@ -107,7 +125,7 @@ class MavTelemetry {
         rate,
         count: m.count,
         stale: (now - m.lastMs) > STALE_MS,
-        fields: m.fields
+        fields: this.flattenFields(m)
       }
     })
   }

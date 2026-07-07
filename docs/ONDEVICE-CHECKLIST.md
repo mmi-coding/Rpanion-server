@@ -555,3 +555,11 @@ The self-heal, packaging and interface-bind paths only exist on a real Pi instal
 - [ ] **Mid-flight log pruning (B5).** With flight logging running, confirm the
   5-minute prune tick deletes oldest logs once the 2 GiB / 500-file cap is
   crossed and never touches the live binlog.
+- [ ] **Sensor-mode cache (P9).** Load the camera page twice on a Pi with the CSI
+  camera: first load probes Picamera2 and writes
+  `~/.cache/rpanion-server/sensor-modes.json`; second load must list the same
+  resolutions near-instantly (no libcamera pipeline start in the journal). Delete
+  the cache file to force a re-probe after swapping camera modules.
+- [ ] **Hardlink .deb staging (P10).** Run `deploy/build-deb.sh` on the Pi and check
+  disk usage does not double during "Staging production-only node_modules"
+  (`df` before/after); resulting .deb installs and the service starts.

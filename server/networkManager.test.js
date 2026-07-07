@@ -125,6 +125,11 @@ function buildSudoBody (scanOutput) {
     '    if echo "$*" | grep -q "connection delete"; then',
     '      echo "del error" >&2; exit 1',
     '    fi ;;',
+    // ---- iface-batch-fail: the batched interface-name query errors ----
+    '  iface-batch-fail)',
+    '    if echo "$*" | grep -q "connection.uuid,connection.interface-name"; then',
+    '      echo "iface error" >&2; exit 1',
+    '    fi ;;',
     // ---- conshow-fail: execSync nmcli connection show ----
     '  conshow-fail)',
     '    if echo "$*" | grep -q "NAME,UUID,TYPE,DEVICE"; then',
@@ -204,11 +209,15 @@ function buildSudoBody (scanOutput) {
     '    printf "inactive:UUID-4:802-3-ethernet:--\\n"',
     '    printf "three:UUID-3:wifi\\n"',
     '    ;;',
-    // connection.interface-name sub-query: UUID-2 always errors (inner catch coverage)
-    '  "nmcli -s -t -f connection.interface-name connection show UUID-2")',
-    '    echo "iface error" >&2; exit 1 ;;',
-    '  nmcli\\ -s\\ -t\\ -f\\ connection.interface-name\\ connection\\ show\\ *)',
-    '    echo "connection.interface-name:eth0" ;;',
+    // batched connection.interface-name query (one call for every UUID);
+    // UUID-2 has no bound iface, UUID-3 exercises the "queried but not listed" row
+    '  nmcli\\ -s\\ -t\\ -f\\ connection.uuid,connection.interface-name\\ connection\\ show\\ *)',
+    '    printf "connection.uuid:UUID-1\\nconnection.interface-name:eth0\\n"',
+    '    printf "connection.uuid:UUID-2\\nconnection.interface-name:\\n"',
+    '    printf "connection.uuid:UUID-4\\nconnection.interface-name:eth0\\n"',
+    '    printf "connection.uuid:UUID-3\\nconnection.interface-name:wlan0\\n"',
+    '    printf "junk-no-colon\\n"',
+    '    ;;',
     // getConnectionDetails default output
     '  nmcli\\ -s\\ -t\\ -f\\ ipv4.addresses*)',
     "    printf 'ipv4.addresses:192.168.7.2/24\\n'",
@@ -633,12 +642,27 @@ describe('Network Manager Functions', function () {
           assert.ok(uuids.includes('UUID-1'), 'UUID-1 expected')
           assert.ok(uuids.includes('UUID-2'), 'UUID-2 expected')
           assert.ok(uuids.includes('UUID-4'), 'UUID-4 expected')
-          // UUID-1 should have attachedIface from sub-query
+          // UUID-1 should have attachedIface from the batched query
           const u1 = list.find(function (c) { return c.value === 'UUID-1' })
           assert.equal(u1.attachedIface, 'eth0')
-          // UUID-2 sub-query throws (inner catch) → attachedIface is ''
+          // UUID-2 has no bound interface in the batch output → ''
           const u2 = list.find(function (c) { return c.value === 'UUID-2' })
           assert.equal(u2.attachedIface, '')
+          done()
+        } catch (e) {
+          done(e)
+        }
+      })
+    })
+
+    it('should degrade to empty attachedIface when the batched iface query fails', function (done) {
+      process.env.FAKE_SCENARIO = 'iface-batch-fail'
+      networkManager.getConnections(function (err, list) {
+        try {
+          assert.equal(err, null)
+          // connections are still listed, just without their bound interface
+          assert.ok(list.length > 0)
+          list.forEach(function (c) { assert.equal(c.attachedIface, '') })
           done()
         } catch (e) {
           done(e)

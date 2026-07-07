@@ -443,8 +443,10 @@ let FCStatusLoop: NodeJS.Timeout | null = null
 // process.exit (a ~10 s in-flight blackout, recurring every second).  Wrap the
 // whole body so one bad subsystem is logged and the loop continues.
 // Exposed via testHooks so the catch path is exercised deterministically.
+let statusTick = 0
 function broadcastStatus () {
   try {
+    statusTick++
     io.sockets.emit('FCStatus', fcManager.getAllStatus())
     io.sockets.emit('NTRIPStatus', ntripClient.conStatusStr())
     // cloud is null when safeInit degraded it (R9); without the guard this line
@@ -458,12 +460,32 @@ function broadcastStatus () {
     io.sockets.emit('LTEStatus', lteModem.getStatus())
     io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
     io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
-    io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
+    // one snapshot per tick: getSnapshot() sorts + allocates, so computing it
+    // twice (MAVTelemetry + HUDLive) doubled the per-second cost for nothing
+    const telemSnapshot = mavTelemetry.getSnapshot()
+    io.sockets.emit('MAVTelemetry', telemSnapshot)
     // live per-element HUD values for the editor's "show live values" preview
-    io.sockets.emit('HUDLive', hudOverlay.liveHudValues(mavTelemetry.getSnapshot(), new Date().toTimeString().slice(0, 8)))
+    io.sockets.emit('HUDLive', hudOverlay.liveHudValues(telemSnapshot, new Date().toTimeString().slice(0, 8)))
     io.sockets.emit('FCParamStatus', fcParams.getProgress())
     io.sockets.emit('DroneCANNodes', { scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() })
     io.sockets.emit('DroneCANNodeParams', droneCan.getParamScan())
+
+    // Room-gated feeds: sampled ONLY while a page subscribed (replaces the
+    // pages' HTTP polling — home polled /api/systemstatus every 3 s, network
+    // priority polled /api/networkbandwidth every 2 s). Cadence matches what
+    // the pages used to poll at.
+    const sysRoom = io.sockets.adapter.rooms.get('systemstatus')
+    if (sysRoom !== undefined && sysRoom.size > 0 && statusTick % 3 === 0) {
+      aboutPage.getLiveStats((stats: any, err: any) => {
+        if (!err) {
+          io.to('systemstatus').emit('SystemStatus', stats)
+        }
+      })
+    }
+    const bwRoom = io.sockets.adapter.rooms.get('bandwidth')
+    if (bwRoom !== undefined && bwRoom.size > 0 && statusTick % 2 === 0) {
+      io.to('bandwidth').emit('NetworkBandwidth', { interfaces: networkPriority.getBandwidth() })
+    }
   } catch (err) {
     console.log('Error in FCStatus broadcast loop:', err)
   }
@@ -583,7 +605,23 @@ io.engine.use((req: any, res: any, next: any) => {
   }
 })
 
-io.on('connection', function () {
+// Rooms a page may subscribe to for push updates that are too expensive (or
+// too page-specific) to broadcast to everyone every second. Pages join on
+// mount and leave on unmount; broadcastStatus only samples a feed when its
+// room is non-empty (replaces the pages' per-second HTTP polling).
+const STATUS_ROOMS = ['systemstatus', 'bandwidth']
+
+io.on('connection', function (socket: any) {
+  socket.on('subscribeStatus', (room: string) => {
+    if (STATUS_ROOMS.indexOf(room) !== -1) {
+      socket.join(room)
+    }
+  })
+  socket.on('unsubscribeStatus', (room: string) => {
+    if (STATUS_ROOMS.indexOf(room) !== -1) {
+      socket.leave(room)
+    }
+  })
   // only set interval if not already set
   if (FCStatusLoop !== null) {
     return
@@ -676,7 +714,10 @@ function resolveBindAddress (): string {
   // with a null cloud (the state safeInit leaves behind on ssh-keygen failure).
   setCloud: (v: any) => { cloud = v },
   // R12b seam: the getter wired into logManager.startAutoPrune at boot.
-  getActiveBinlog
+  getActiveBinlog,
+  // room-gated push feeds (systemstatus/bandwidth) test seams
+  networkPriority,
+  aboutPage
 };
 
 // Only start the server if this file is being run directly (not imported)

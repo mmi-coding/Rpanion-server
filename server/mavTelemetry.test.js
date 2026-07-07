@@ -70,6 +70,22 @@ describe('MavTelemetry', function () {
     assert.equal(snap[1].rate, 0) // single HEARTBEAT
   })
 
+  it('caches flattened fields until a newer packet of that type arrives', function () {
+    const t = new MavTelemetry()
+    t.onMessage({ header: { msgid: 30, sysid: 1, compid: 1 } }, { roll: 0.5 })
+
+    // second snapshot with no new packet reuses the cached fields object
+    const first = t.getSnapshot()[0].fields
+    const second = t.getSnapshot()[0].fields
+    assert.strictEqual(second, first)
+
+    // a newer packet invalidates the cache and the fresh value shows up
+    t.onMessage({ header: { msgid: 30, sysid: 1, compid: 1 } }, { roll: 0.9 })
+    const third = t.getSnapshot()[0].fields
+    assert.notStrictEqual(third, first)
+    assert.equal(third.roll, 0.9)
+  })
+
   it('flags stale messages and clears', function () {
     const t = new MavTelemetry()
     t.onMessage({ header: { msgid: 30, sysid: 1, compid: 1 } }, { roll: 0 })

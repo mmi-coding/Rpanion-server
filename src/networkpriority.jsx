@@ -14,7 +14,7 @@ function formatBytes (n) {
 
 class NetworkPriorityPage extends basePage {
   constructor (props) {
-    super(props)
+    super(props, true) // socket.io: bandwidth is pushed, not polled
     this.state = {
       ...this.state,
       connections: [],
@@ -25,12 +25,22 @@ class NetworkPriorityPage extends basePage {
 
   componentDidMount () {
     this.fetchConnections()
+    // one HTTP fetch for a fast first paint, then pushed over the shared
+    // socket every 2 s while subscribed (replaces the old 2 s HTTP poll)
     this.fetchBandwidth()
-    this.timer = setInterval(this.fetchBandwidth, 2000)
+    this.socket.on('NetworkBandwidth', (msg) => {
+      this.setState({ bandwidth: msg.interfaces || [] })
+    })
+    // (re-)join the push room on every connect — room membership is
+    // server-side and lost on reconnect
+    this.socket.on('connect', () => {
+      this.socket.emit('subscribeStatus', 'bandwidth')
+    })
+    this.socket.emit('subscribeStatus', 'bandwidth')
   }
 
   componentWillUnmount () {
-    clearInterval(this.timer)
+    this.socket.emit('unsubscribeStatus', 'bandwidth')
     super.componentWillUnmount()
   }
 

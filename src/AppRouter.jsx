@@ -1,33 +1,81 @@
 import { Route, Routes, NavLink, useLocation, Navigate } from 'react-router-dom'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense, lazy } from 'react'
+import Spinner from 'react-bootstrap/Spinner'
 
-import About from './about.jsx'
+// Home stays eager: it is the landing page, so lazy-loading it would only add
+// a round-trip to first paint. Every other page is code-split (React.lazy →
+// its own Vite chunk) so the initial download over a slow LTE link carries
+// just the shell + Home instead of all ~30 pages.
 import Home from './home.jsx'
-import NetworkConfig from './networkconfig.jsx'
-import VideoPage from './video.jsx'
-import FCConfig from './flightcontroller.jsx'
-import LogBrowser from './logBrowser.jsx'
-import NetworkClients from './networkClients.jsx'
-import NTRIPPage from './ntripcontroller.jsx'
-import AdhocConfig from './adhocwifi.jsx'
-import CloudConfig from './cloud.jsx'
-import VPN from './vpnconfig.jsx'
-import WireguardHubPage from './wireguardhub.jsx'
-import TailscalePage from './tailscale.jsx'
-import DDNSPage from './ddns.jsx'
-import NetworkPriorityPage from './networkpriority.jsx'
-import Logout from './logout.jsx'
-import UserManagement from './userManagement.jsx'
-import PPPPage from './ppp.jsx'
-import CameraSwitcherPage from './cameraswitcher.jsx'
-import SecondaryStreamsPage from './secondarystreams.jsx'
-import HudEditorPage from './hudeditor.jsx'
-import PipelineEditorPage from './pipelineeditor.jsx'
-import LTEModemPage from './ltemodem.jsx'
-import CellularTuningPage from './cellulartuning.jsx'
-import TelemetryInjectorPage from './telemetryinjector.jsx'
-import MavInspectorPage from './mavinspector.jsx'
-import FCConfigPage from './fcconfig.jsx'
+
+// Exported for tests: resolving every importer proves each route's dynamic
+// import path is valid (a typo here would otherwise only fail at runtime,
+// when the operator first navigates to the broken page).
+export const pageImporters = {
+  about: () => import('./about.jsx'),
+  networkconfig: () => import('./networkconfig.jsx'),
+  video: () => import('./video.jsx'),
+  flightcontroller: () => import('./flightcontroller.jsx'),
+  logBrowser: () => import('./logBrowser.jsx'),
+  networkClients: () => import('./networkClients.jsx'),
+  ntripcontroller: () => import('./ntripcontroller.jsx'),
+  adhocwifi: () => import('./adhocwifi.jsx'),
+  cloud: () => import('./cloud.jsx'),
+  vpnconfig: () => import('./vpnconfig.jsx'),
+  wireguardhub: () => import('./wireguardhub.jsx'),
+  tailscale: () => import('./tailscale.jsx'),
+  ddns: () => import('./ddns.jsx'),
+  networkpriority: () => import('./networkpriority.jsx'),
+  logout: () => import('./logout.jsx'),
+  userManagement: () => import('./userManagement.jsx'),
+  ppp: () => import('./ppp.jsx'),
+  cameraswitcher: () => import('./cameraswitcher.jsx'),
+  secondarystreams: () => import('./secondarystreams.jsx'),
+  hudeditor: () => import('./hudeditor.jsx'),
+  pipelineeditor: () => import('./pipelineeditor.jsx'),
+  ltemodem: () => import('./ltemodem.jsx'),
+  cellulartuning: () => import('./cellulartuning.jsx'),
+  telemetryinjector: () => import('./telemetryinjector.jsx'),
+  mavinspector: () => import('./mavinspector.jsx'),
+  fcconfig: () => import('./fcconfig.jsx')
+}
+
+const About = lazy(pageImporters.about)
+const NetworkConfig = lazy(pageImporters.networkconfig)
+const VideoPage = lazy(pageImporters.video)
+const FCConfig = lazy(pageImporters.flightcontroller)
+const LogBrowser = lazy(pageImporters.logBrowser)
+const NetworkClients = lazy(pageImporters.networkClients)
+const NTRIPPage = lazy(pageImporters.ntripcontroller)
+const AdhocConfig = lazy(pageImporters.adhocwifi)
+const CloudConfig = lazy(pageImporters.cloud)
+const VPN = lazy(pageImporters.vpnconfig)
+const WireguardHubPage = lazy(pageImporters.wireguardhub)
+const TailscalePage = lazy(pageImporters.tailscale)
+const DDNSPage = lazy(pageImporters.ddns)
+const NetworkPriorityPage = lazy(pageImporters.networkpriority)
+const Logout = lazy(pageImporters.logout)
+const UserManagement = lazy(pageImporters.userManagement)
+const PPPPage = lazy(pageImporters.ppp)
+const CameraSwitcherPage = lazy(pageImporters.cameraswitcher)
+const SecondaryStreamsPage = lazy(pageImporters.secondarystreams)
+const HudEditorPage = lazy(pageImporters.hudeditor)
+const PipelineEditorPage = lazy(pageImporters.pipelineeditor)
+const LTEModemPage = lazy(pageImporters.ltemodem)
+const CellularTuningPage = lazy(pageImporters.cellulartuning)
+const TelemetryInjectorPage = lazy(pageImporters.telemetryinjector)
+const MavInspectorPage = lazy(pageImporters.mavinspector)
+const FCConfigPage = lazy(pageImporters.fcconfig)
+
+// Shown while a code-split page chunk downloads (matches basePage's spinner).
+function PageLoading () {
+  return (
+    <div className="text-center mt-4">
+      <Spinner animation="border" role="status" />
+      <p><span className="sr-only">Loading...</span></p>
+    </div>
+  )
+}
 
 // Sidebar navigation. Home is a standalone top item; the rest are grouped into
 // collapsible categories. `code` is the short "waypoint" tag shown when the rail
@@ -227,6 +275,7 @@ function AppRouter () {
           <span className="gs-topbar-brand">Rpanion · Ground Station</span>
         </div>
         <div className="container-fluid">
+          <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route exact path="/" element={<Home showLogin={!isAuthenticated} />} />
             <Route exact path="/controller" element={<FCConfig />} />
@@ -259,6 +308,7 @@ function AppRouter () {
             <Route exact path="/users" element={<UserManagement/>} />
             <Route path="*" element={<NoMatch />} />
           </Routes>
+          </Suspense>
         </div>
       </div>
       </div>
