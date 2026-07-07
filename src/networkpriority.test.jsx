@@ -3,6 +3,7 @@ import React, { act } from 'react'
 import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest'
 
 import { renderPage, mockFetch } from '../test/ui.jsx'
+import { lastSocket } from '../test/socketMock.js'
 import NetworkPriorityPage from './networkpriority.jsx'
 
 vi.mock('socket.io-client', () => import('../test/socketMock.js'))
@@ -37,6 +38,34 @@ describe('#NetworkPriorityPage()', function () {
     page.unmount()
   })
 
+  test('NetworkBandwidth socket push updates the table (and tolerates a missing payload)', async function () {
+    mockFetch(defaultFetch)
+    const page = renderPage(<NetworkPriorityPage />)
+    await page.flush()
+    act(() => {
+      lastSocket().fire('NetworkBandwidth', { interfaces: [{ name: 'wwan0', rxBytes: 1, txBytes: 1, rxRate: 1, txRate: 1 }] })
+    })
+    expect(page.container.textContent).toContain('wwan0')
+    // a payload with no interfaces empties the table rather than crashing
+    act(() => { lastSocket().fire('NetworkBandwidth', {}) })
+    expect(page.container.textContent).not.toContain('wwan0')
+    page.unmount()
+  })
+
+  test('subscribes to the bandwidth room on connect and unsubscribes on unmount', async function () {
+    mockFetch(defaultFetch)
+    const page = renderPage(<NetworkPriorityPage />)
+    await page.flush()
+    const socket = lastSocket()
+    expect(socket.emit).toHaveBeenCalledWith('subscribeStatus', 'bandwidth')
+    socket.emit.mockClear()
+    act(() => { socket.fire('connect') })
+    expect(socket.emit).toHaveBeenCalledWith('subscribeStatus', 'bandwidth')
+    socket.emit.mockClear()
+    page.unmount()
+    expect(socket.emit).toHaveBeenCalledWith('unsubscribeStatus', 'bandwidth')
+  })
+
   test('exposes HelpTips and a HelpSection', async function () {
     mockFetch(defaultFetch)
     const page = renderPage(<NetworkPriorityPage />)
@@ -61,6 +90,20 @@ describe('#NetworkPriorityPage()', function () {
     const body = JSON.parse(call[1].body)
     expect(body).toMatchObject({ conName: 'u1', priority: 10, metric: 50 })
     expect(document.body.textContent).toContain('Priority updated')
+    page.unmount()
+  })
+
+  test('Set button disables while the POST is in flight (R6)', async function () {
+    let resolvePost = null
+    mockFetch({ ...defaultFetch, 'POST /api/networksetpriority': () => new Promise((resolve) => { resolvePost = () => resolve({ error: null }) }) })
+    const page = renderPage(<NetworkPriorityPage />)
+    await page.flush()
+    const findSet = () => [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Set')
+    page.click(findSet())
+    expect(findSet().disabled).toBe(true)
+    act(() => { resolvePost() })
+    await page.flush()
+    expect(findSet().disabled).toBe(false)
     page.unmount()
   })
 

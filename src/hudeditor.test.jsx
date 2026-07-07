@@ -358,6 +358,25 @@ describe('#HudEditorPage()', function () {
     page.unmount()
   })
 
+  test('Save/Reset buttons disable while the POST is in flight (R6)', async function () {
+    let resolvePost = null
+    fetchWith({ 'POST /api/hudlayout': () => new Promise((resolve) => { resolvePost = () => resolve({ layout: { global, elements }, error: null }) }) })
+    const page = renderPage(<HudEditorPage />)
+    await page.flush()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    act(() => { findButton(page, 'Save Layout').click() })
+    // both buttons lock while the request is pending (double-click guard)
+    expect(findButton(page, 'Save Layout').disabled).toBe(true)
+    expect(findButton(page, 'Reset to Defaults').disabled).toBe(true)
+    act(() => { resolvePost() })
+    await page.flush()
+    expect(findButton(page, 'Save Layout').disabled).toBe(false)
+    expect(findButton(page, 'Reset to Defaults').disabled).toBe(false)
+    act(() => { vi.advanceTimersByTime(4000) })
+    vi.useRealTimers()
+    page.unmount()
+  })
+
   test('Save failure is caught', async function () {
     const { page } = renderEd(() => fetchWith({ 'POST /api/hudlayout': () => { throw new Error('net') } }))
     await page.flush()

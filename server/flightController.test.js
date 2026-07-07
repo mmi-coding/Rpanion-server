@@ -400,6 +400,18 @@ describe('FCDetails (multi-link orchestrator #311)', function () {
     assert.ok(FC.mavlinkRouterPath.includes('mavlink-routerd'))
   })
 
+  it('#validMavlinkRouter() - resolved path is cached (no re-probe every reconnect tick)', function () {
+    settings.clear()
+    const FC = new FCManagerClass(settings)
+    assert.equal(FC.validMavlinkRouter(), true)
+    // once resolved, a second call must not shell out to `which` again —
+    // make any further probe fail loudly to prove the cache is hit
+    process.env.FAKE_SCENARIO = 'which-empty'
+    sinon.stub(fs, 'existsSync').returns(false)
+    assert.equal(FC.validMavlinkRouter(), true)
+    assert.ok(FC.mavlinkRouterPath.includes('mavlink-routerd'))
+  })
+
   it('#checkSerialPortIssues() - ModemManager installed', function () {
     settings.clear()
     const FC = new FCManagerClass(settings)

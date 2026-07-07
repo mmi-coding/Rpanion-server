@@ -41,6 +41,15 @@ export default function io () {
     }),
     emit: vi.fn(),
     disconnect: vi.fn(),
+    // basePage calls this on unmount (shared app socket: listeners are removed
+    // per page, the connection stays open)
+    removeAllListeners: vi.fn(() => {
+      for (const event of Object.keys(handlers)) {
+        delete handlers[event]
+      }
+    }),
+    // the shared socket may already be connected when a page mounts
+    connected: false,
     // test-side: invoke every handler registered for `event`
     fire: (event, ...args) => {
       for (const cb of handlers[event] || []) {

@@ -88,6 +88,25 @@ describe('Telemetry Injector', function () {
     }, 40)
   })
 
+  it('_send socket error is handled (logged, socket dropped, recreated on next send)', function (done) {
+    const t = make()
+    t.ingest({ name: 'a', value: 1 }) // creates sendSock with the error handler
+    const sock = t.sendSock
+    const errorsBefore = t.stats.errors
+    // an async socket error must not become an uncaughtException
+    sock.emit('error', new Error('EPERM'))
+    assert.equal(t.stats.errors, errorsBefore + 1)
+    assert.equal(t.sendSock, null) // dropped, so the next send recreates it
+    t.ingest({ name: 'b', value: 2 })
+    assert.notEqual(t.sendSock, null)
+    // close() throwing inside the handler is swallowed
+    const sock2 = t.sendSock
+    sinon.stub(sock2, 'close').throws(new Error('already closed'))
+    sock2.emit('error', new Error('boom'))
+    assert.equal(t.sendSock, null)
+    setTimeout(() => { t.quitting(); done() }, 40)
+  })
+
   it('start() launches the serial listener when configured', function () {
     const t = make()
     const fake = new PassThrough()

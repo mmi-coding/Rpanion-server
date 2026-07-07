@@ -66,6 +66,33 @@ describe('#homePage()', function () {
     page.unmount()
   })
 
+  test('SystemStatus socket push updates the System card', async function () {
+    mockFetch({})
+    const page = renderPage(<Home />)
+    await page.flush()
+    act(() => {
+      lastSocket().fire('SystemStatus', { cpuLoad: 88, cpuTempC: 61, memUsedMB: 900, memTotalMB: 4096, diskUsedGB: 9, diskTotalGB: 32, uptimeSec: 120 })
+    })
+    expect(page.container.textContent).toContain('88%')
+    expect(page.container.textContent).toContain('61 °C')
+    page.unmount()
+  })
+
+  test('subscribes to the systemstatus room on connect and unsubscribes on unmount', async function () {
+    mockFetch({})
+    const page = renderPage(<Home />)
+    await page.flush()
+    const socket = lastSocket()
+    expect(socket.emit).toHaveBeenCalledWith('subscribeStatus', 'systemstatus')
+    // reconnect re-joins the room (server-side membership is lost on reconnect)
+    socket.emit.mockClear()
+    act(() => { socket.fire('connect') })
+    expect(socket.emit).toHaveBeenCalledWith('subscribeStatus', 'systemstatus')
+    socket.emit.mockClear()
+    page.unmount()
+    expect(socket.emit).toHaveBeenCalledWith('unsubscribeStatus', 'systemstatus')
+  })
+
   // -------------------------------------------------------------------------
   // Socket: FCStatus
   // -------------------------------------------------------------------------

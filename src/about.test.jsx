@@ -34,6 +34,19 @@ describe('#AboutPage()', function () {
     page.unmount()
   })
 
+  test('page-load fetch failures show an error and still clear the spinner (R5)', async function () {
+    // no routes: every componentDidMount fetch rejects
+    mockFetch({})
+    const page = renderPage(<AboutPage />)
+    await page.flush()
+    // error surfaced via the basePage modal (portal → document.body)
+    expect(document.body.textContent).toContain('Failed to fetch')
+    // the spinner must not hang forever: loadDone ran on the error path
+    const details = page.container.querySelector('.pagedetails')
+    expect(details.style.display).toBe('block')
+    page.unmount()
+  })
+
   test('renders hardware info from fetches', async function () {
     mockFetch(defaultFetch)
     const page = renderPage(<AboutPage />)

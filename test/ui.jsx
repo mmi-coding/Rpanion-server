@@ -22,8 +22,18 @@ export function renderPage (element) {
   act(() => { root.render(element) })
   return {
     container,
-    // settle pending promises (fetch responses) and re-render
-    flush: async () => { await act(async () => {}) },
+    // settle pending promises (fetch responses, React.lazy dynamic imports)
+    // and re-render. The setTimeout(0) rides over a macrotask so code-split
+    // route chunks (AppRouter's React.lazy pages) finish loading too — but it
+    // must be skipped under vi.useFakeTimers, where a real timer never fires
+    // and flush() would deadlock until the 5 s test timeout.
+    flush: async () => {
+      await act(async () => {
+        if (!vi.isFakeTimers()) {
+          await new Promise(resolve => setTimeout(resolve, 0))
+        }
+      })
+    },
     // click a node with React event handling flushed
     click: (el) => { act(() => { el.click() }) },
     // set a controlled input's value and fire React's onChange

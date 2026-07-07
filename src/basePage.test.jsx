@@ -111,61 +111,28 @@ describe('#basePage()', function () {
   })
 
   // -----------------------------------------------------------------------
-  // Auth token verify — ok path
+  // Auth — the token is read but NOT re-verified (AppRouter already verifies
+  // per navigation; a second /api/auth here doubled the round-trips)
   // -----------------------------------------------------------------------
 
-  test('auth: token present + response.ok keeps token', async function () {
+  test('auth: stored token is read without an extra /api/auth fetch', async function () {
     localStorage.setItem('token', JSON.stringify({ token: 'abc' }))
-    mockFetch({
-      'POST /api/auth': {}
-    })
-    const page = renderPage(<TestPage />)
-    await page.flush()
-    // No error rendered — token kept
-    expect(document.body.textContent).not.toContain('Error')
-    page.unmount()
-  })
-
-  // -----------------------------------------------------------------------
-  // Auth token verify — !ok path (token nulled out)
-  // -----------------------------------------------------------------------
-
-  test('auth: !response.ok nulls token', async function () {
-    localStorage.setItem('token', JSON.stringify({ token: 'bad' }))
-    vi.stubGlobal('fetch', vi.fn(async (url, opts = {}) => {
-      return { ok: false, status: 401, json: async () => ({}) }
-    }))
-    const page = renderPage(<TestPage />)
-    await page.flush()
-    // Still renders without crash; token was set to null
-    expect(page.container.textContent).toContain('Test Page')
-    page.unmount()
-  })
-
-  // -----------------------------------------------------------------------
-  // Auth token verify — catch path (network error)
-  // -----------------------------------------------------------------------
-
-  test('auth: fetch throws nulls token', async function () {
-    localStorage.setItem('token', JSON.stringify({ token: 'bad' }))
-    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('net error'))))
-    const page = renderPage(<TestPage />)
-    await page.flush()
-    expect(page.container.textContent).toContain('Test Page')
-    page.unmount()
-  })
-
-  // -----------------------------------------------------------------------
-  // No token (null) — verify block skipped entirely
-  // -----------------------------------------------------------------------
-
-  test('no token in localStorage — no fetch for /api/auth', async function () {
     const fetchSpy = vi.fn()
     vi.stubGlobal('fetch', fetchSpy)
     const page = renderPage(<TestPage />)
     await page.flush()
-    // No fetch call should happen since there is no token
     expect(fetchSpy).not.toHaveBeenCalled()
+    expect(page.container.textContent).toContain('Test Page')
+    page.unmount()
+  })
+
+  test('auth: no token in localStorage still renders (token undefined)', async function () {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const page = renderPage(<TestPage />)
+    await page.flush()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(page.container.textContent).toContain('Test Page')
     page.unmount()
   })
 
@@ -218,13 +185,42 @@ describe('#basePage()', function () {
     page.unmount()
   })
 
-  test('socket page: disconnect() called on unmount', async function () {
+  test('socket page: unmount removes the page listeners but keeps the shared socket open', async function () {
     mockFetch({})
     const page = renderPage(<SocketPage />)
     await page.flush()
     const socket = lastSocket()
+    // the shared socket persists across tests in this file, so count relative
+    const callsBefore = socket.removeAllListeners.mock.calls.length
     page.unmount()
-    expect(socket.disconnect).toHaveBeenCalledTimes(1)
+    expect(socket.removeAllListeners.mock.calls.length).toBe(callsBefore + 1)
+    expect(socket.disconnect).not.toHaveBeenCalled()
+  })
+
+  test('socket page: a second page reuses the shared socket (no reconnect per navigation)', async function () {
+    mockFetch({})
+    const first = renderPage(<SocketPage />)
+    await first.flush()
+    const socket = lastSocket()
+    first.unmount()
+    const second = renderPage(<SocketPage />)
+    await second.flush()
+    expect(lastSocket()).toBe(socket)
+    second.unmount()
+  })
+
+  test('socket page: already-connected shared socket shows Connected immediately', async function () {
+    mockFetch({})
+    const first = renderPage(<SocketPage />)
+    await first.flush()
+    first.unmount()
+    // simulate the shared socket having connected while no page was mounted
+    lastSocket().connected = true
+    const second = renderPage(<SocketPage />)
+    await second.flush()
+    expect(second.container.textContent).toContain('Connected')
+    second.unmount()
+    lastSocket().connected = false
   })
 
   test('socket page: connect event sets socketioStatus=true → shows Connected', async function () {

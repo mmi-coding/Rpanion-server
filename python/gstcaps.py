@@ -27,6 +27,31 @@ def getcapval(caps):
     return allval
 
 
+# Sensor-mode cache: instantiating Picamera2() spins up the whole libcamera
+# pipeline per camera — multi-second and memory-heavy on a Pi Zero 2 W, and it
+# runs on every camera-page load. A sensor's mode list is fixed per model, so
+# cache it keyed by (camera id, model). Kept under ~/.cache (not /tmp: avoids
+# other users spoofing the file) and best-effort — any failure just re-probes.
+MODE_CACHE_FILE = os.path.join(os.path.expanduser('~'), '.cache', 'rpanion-server', 'sensor-modes.json')
+
+
+def load_mode_cache():
+    try:
+        with open(MODE_CACHE_FILE, 'r') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_mode_cache(cache):
+    try:
+        os.makedirs(os.path.dirname(MODE_CACHE_FILE), exist_ok=True)
+        with open(MODE_CACHE_FILE, 'w') as f:
+            json.dump(cache, f)
+    except OSError:
+        pass
+
+
 # Return true if running on RPi
 def is_raspberry_pi():
     try:
@@ -58,6 +83,7 @@ retDevices = []
 if is_raspberry_pi():
     try:
         from picamera2 import Picamera2
+        mode_cache = load_mode_cache()
         for cam in Picamera2.global_camera_info():
             name = "CSI Port Camera ({0})".format(cam['Model'])
             path = cam['Id']
@@ -66,12 +92,21 @@ if is_raspberry_pi():
                 continue
 
             caps = []
-            # open the camera and query. Note that different versions of Picamera have different ways of querying
-            try:
-                picam2 = Picamera2(cam['Id'])
-            except TypeError:
-                picam2 = Picamera2(cam['Num'])
-            modes = picam2.sensor_modes
+            cache_key = "{0}|{1}".format(cam['Id'], cam['Model'])
+            if cache_key in mode_cache:
+                modes = mode_cache[cache_key]
+            else:
+                # open the camera and query. Note that different versions of Picamera have different ways of querying
+                try:
+                    picam2 = Picamera2(cam['Id'])
+                except TypeError:
+                    picam2 = Picamera2(cam['Num'])
+                # keep only what we use (size + fps): sensor_modes entries hold
+                # non-JSON-serialisable format objects
+                modes = [{'size': [m['size'][0], m['size'][1]], 'fps': m['fps']} for m in picam2.sensor_modes]
+                picam2.close()
+                mode_cache[cache_key] = modes
+                save_mode_cache(mode_cache)
             for mode in modes:
                 #print("Camera size W{0} H{1} and max fps {2}".format(mode['size'][0], mode['size'][1], math.floor(mode['fps'])))
                 # Figure out largest standard resolution

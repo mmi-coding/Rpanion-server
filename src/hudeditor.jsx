@@ -250,6 +250,8 @@ class HudEditorPage extends basePage {
   }
 
   save = () => {
+    // in-flight guard: over a slow link a double-click would double-save
+    this.setState({ saving: true });
     fetch('/api/hudlayout', {
       method: 'POST',
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.state.token}` },
@@ -259,14 +261,15 @@ class HudEditorPage extends basePage {
       this.setState({
         elements: layout.elements || this.state.elements,
         global: layout.global || this.state.global,
-        message: 'Layout saved.', error: data.error
+        message: 'Layout saved.', error: data.error, saving: false
       });
       setTimeout(() => this.setState({ message: null }), 4000);
-    }).catch(() => this.setState({ error: 'Could not save layout' }));
+    }).catch(() => this.setState({ error: 'Could not save layout', saving: false }));
   }
 
   resetDefault = () => {
     // an empty layout is normalized back to the defaults by the server
+    this.setState({ saving: true });
     fetch('/api/hudlayout', {
       method: 'POST',
       headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.state.token}` },
@@ -277,10 +280,10 @@ class HudEditorPage extends basePage {
         elements: layout.elements || this.state.elements,
         global: layout.global || this.state.global,
         selectedType: null,
-        message: 'Reset to defaults.'
+        message: 'Reset to defaults.', saving: false
       });
       setTimeout(() => this.setState({ message: null }), 4000);
-    }).catch(() => this.setState({ error: 'Could not reset layout' }));
+    }).catch(() => this.setState({ error: 'Could not reset layout', saving: false }));
   }
 
   renderTitle() {
@@ -679,8 +682,8 @@ class HudEditorPage extends basePage {
 
         {this.renderPalette()}
 
-        <Button onClick={this.save}>Save Layout</Button>{' '}
-        <Button variant="secondary" onClick={this.resetDefault}>Reset to Defaults</Button>
+        <Button disabled={this.state.saving === true} onClick={this.save}>Save Layout</Button>{' '}
+        <Button variant="secondary" disabled={this.state.saving === true} onClick={this.resetDefault}>Reset to Defaults</Button>
       </div>
     );
   }

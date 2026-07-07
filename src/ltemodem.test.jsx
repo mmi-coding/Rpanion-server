@@ -513,6 +513,23 @@ describe('#ltemodemp age()', function () {
         page.unmount()
     })
 
+    test('Save button disables while the POST is in flight (R6)', async function () {
+        let resolvePost = null
+        mockFetch({
+            '/api/ltemodem': { settings: defaultConfig, status: defaultStatus, serialPorts: [] },
+            'POST /api/ltemodemmodify': () => new Promise((resolve) => { resolvePost = () => resolve({ settings: defaultConfig }) })
+        })
+        const page = renderPage(<LTEModemPage />)
+        await page.flush()
+        const findSave = () => [...page.container.querySelectorAll('button')].find(b => b.textContent === 'Save')
+        page.click(findSave())
+        expect(findSave().disabled).toBe(true)
+        act(() => { resolvePost() })
+        await page.flush()
+        expect(findSave().disabled).toBe(false)
+        page.unmount()
+    })
+
     test('handleSubmit sets error when API returns data.error', async function () {
         mockFetch({
             '/api/ltemodem': { settings: defaultConfig, status: defaultStatus, serialPorts: [] },

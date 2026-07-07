@@ -132,12 +132,18 @@ const fcParams = new FCParams(fcManager, mavTelemetry)
 // DroneCAN node enumeration via CAN forwarding, for the FC Configuration page
 const droneCan = new DroneCANMonitor(fcManager)
 const logManager = new flightLogger()
+// R12b: keep the log-retention cap enforced during flight (boot-only pruning
+// lets a long flight fill the SD card). fcManager.binlog tracks the live log.
+// Named (not inline) so the R12b test can assert what the prune tick receives.
+const getActiveBinlog = () => fcManager.binlog
+logManager.startAutoPrune(getActiveBinlog)
 const ntripClient = new ntrip(settings)
 // R9: cloudUpload's constructor runs `execSync ssh-keygen` when ~/.ssh is empty
 // — the highest-risk boot-time initializer.  Guard it so a keygen failure
 // degrades cloud upload rather than aborting boot (its routes are lazy and the
 // status broadcast is try/catch-wrapped, so a null `cloud` cannot crash boot).
-const cloud = safeInit('cloudUpload', () => new cloudManager(settings))
+// `let` (not const) so the R9 null-degradation tests can swap it via testHooks.setCloud.
+let cloud = safeInit('cloudUpload', () => new cloudManager(settings))
 const logConversion = new logConversionManager(settings)
 const adhocManager = new Adhoc(settings)
 const userMgmt = new userLogin()
@@ -239,12 +245,17 @@ async function gracefulShutdown(signal: string, exitCode = 0) {
     }
 
     pppConnectionManager.quitting()
-    cloud.quitting()
+    // cloud is null when safeInit degraded it (R9); an unguarded call here would
+    // throw and turn a clean stop into exit(1), skipping the quitting() calls below.
+    if (cloud) {
+      cloud.quitting()
+    }
     logConversion.quitting()
     lteModem.quitting()
     cellularTuning.quitting()
     ddns.quitting()
     telemetryInjector.quitting()
+    logManager.quitting()
     console.log('All services stopped')
     
     clearTimeout(forceShutdownTimer)
@@ -432,11 +443,16 @@ let FCStatusLoop: NodeJS.Timeout | null = null
 // process.exit (a ~10 s in-flight blackout, recurring every second).  Wrap the
 // whole body so one bad subsystem is logged and the loop continues.
 // Exposed via testHooks so the catch path is exercised deterministically.
+let statusTick = 0
 function broadcastStatus () {
   try {
+    statusTick++
     io.sockets.emit('FCStatus', fcManager.getAllStatus())
     io.sockets.emit('NTRIPStatus', ntripClient.conStatusStr())
-    io.sockets.emit('CloudBinStatus', cloud.conStatusBinStr())
+    // cloud is null when safeInit degraded it (R9); without the guard this line
+    // throws every tick and the try/catch below silently skips every emit after
+    // it (PPP, video, LTE, telemetry, HUD, DroneCAN) — a blacked-out dashboard.
+    io.sockets.emit('CloudBinStatus', cloud ? cloud.conStatusBinStr() : 'Unavailable (failed to start)')
     io.sockets.emit('LogConversionStatus', logConversion.conStatusLogStr())
     io.sockets.emit('PPPStatus', pppConnectionManager.conStatusStr())
     io.sockets.emit('VideoStreamStatus', vManager.getStreamingStatus())
@@ -444,12 +460,32 @@ function broadcastStatus () {
     io.sockets.emit('LTEStatus', lteModem.getStatus())
     io.sockets.emit('CellularTuningStatus', cellularTuning.getStatus())
     io.sockets.emit('TelemetryInjectorStatus', telemetryInjector.getStatus())
-    io.sockets.emit('MAVTelemetry', mavTelemetry.getSnapshot())
+    // one snapshot per tick: getSnapshot() sorts + allocates, so computing it
+    // twice (MAVTelemetry + HUDLive) doubled the per-second cost for nothing
+    const telemSnapshot = mavTelemetry.getSnapshot()
+    io.sockets.emit('MAVTelemetry', telemSnapshot)
     // live per-element HUD values for the editor's "show live values" preview
-    io.sockets.emit('HUDLive', hudOverlay.liveHudValues(mavTelemetry.getSnapshot(), new Date().toTimeString().slice(0, 8)))
+    io.sockets.emit('HUDLive', hudOverlay.liveHudValues(telemSnapshot, new Date().toTimeString().slice(0, 8)))
     io.sockets.emit('FCParamStatus', fcParams.getProgress())
     io.sockets.emit('DroneCANNodes', { scanning: droneCan.scanning, nodes: droneCan.getNodes(), stats: droneCan.getStats() })
     io.sockets.emit('DroneCANNodeParams', droneCan.getParamScan())
+
+    // Room-gated feeds: sampled ONLY while a page subscribed (replaces the
+    // pages' HTTP polling — home polled /api/systemstatus every 3 s, network
+    // priority polled /api/networkbandwidth every 2 s). Cadence matches what
+    // the pages used to poll at.
+    const sysRoom = io.sockets.adapter.rooms.get('systemstatus')
+    if (sysRoom !== undefined && sysRoom.size > 0 && statusTick % 3 === 0) {
+      aboutPage.getLiveStats((stats: any, err: any) => {
+        if (!err) {
+          io.to('systemstatus').emit('SystemStatus', stats)
+        }
+      })
+    }
+    const bwRoom = io.sockets.adapter.rooms.get('bandwidth')
+    if (bwRoom !== undefined && bwRoom.size > 0 && statusTick % 2 === 0) {
+      io.to('bandwidth').emit('NetworkBandwidth', { interfaces: networkPriority.getBandwidth() })
+    }
   } catch (err) {
     console.log('Error in FCStatus broadcast loop:', err)
   }
@@ -569,7 +605,23 @@ io.engine.use((req: any, res: any, next: any) => {
   }
 })
 
-io.on('connection', function () {
+// Rooms a page may subscribe to for push updates that are too expensive (or
+// too page-specific) to broadcast to everyone every second. Pages join on
+// mount and leave on unmount; broadcastStatus only samples a feed when its
+// room is non-empty (replaces the pages' per-second HTTP polling).
+const STATUS_ROOMS = ['systemstatus', 'bandwidth']
+
+io.on('connection', function (socket: any) {
+  socket.on('subscribeStatus', (room: string) => {
+    if (STATUS_ROOMS.indexOf(room) !== -1) {
+      socket.join(room)
+    }
+  })
+  socket.on('unsubscribeStatus', (room: string) => {
+    if (STATUS_ROOMS.indexOf(room) !== -1) {
+      socket.leave(room)
+    }
+  })
   // only set interval if not already set
   if (FCStatusLoop !== null) {
     return
@@ -657,7 +709,15 @@ function resolveBindAddress (): string {
   broadcastStatus,
   resolveBindAddress,
   getIsShuttingDown: () => isShuttingDown,
-  setIsShuttingDown: (v: boolean) => { isShuttingDown = v }
+  setIsShuttingDown: (v: boolean) => { isShuttingDown = v },
+  // R9 null-degradation seam: lets tests run broadcastStatus/gracefulShutdown
+  // with a null cloud (the state safeInit leaves behind on ssh-keygen failure).
+  setCloud: (v: any) => { cloud = v },
+  // R12b seam: the getter wired into logManager.startAutoPrune at boot.
+  getActiveBinlog,
+  // room-gated push feeds (systemstatus/bandwidth) test seams
+  networkPriority,
+  aboutPage
 };
 
 // Only start the server if this file is being run directly (not imported)

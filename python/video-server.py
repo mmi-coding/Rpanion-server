@@ -23,25 +23,28 @@ from gi.repository import Gst, GstRtspServer, GLib
 
 # Returns true if this is a Raspi5 or later
 # https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#raspberry-pi-revision-codes
+# Cached: the board revision cannot change at runtime, and this used to spawn
+# a shell (cat|awk) on every pipeline build.
+_IS_PI_5_OR_LATER = None
+
+
 def is_pi_5_or_later() -> bool:
-    cmd = "cat /proc/cpuinfo | awk '/Revision/ {print $3}'"
-    revcode = subprocess.check_output(cmd, shell=True)
-
-    if revcode == "":
-        return False
-
+    global _IS_PI_5_OR_LATER
+    if _IS_PI_5_OR_LATER is not None:
+        return _IS_PI_5_OR_LATER
     try:
+        cmd = "awk '/Revision/ {print $3}' /proc/cpuinfo"
+        # decode: check_output returns bytes, and the old `revcode == ""`
+        # guard compared bytes to str (always False)
+        revcode = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
         code = int(revcode, 16)
         new = (code >> 23) & 0x1
         model = (code >> 4) & 0xff
         # mem = (code >> 20) & 0x7
-
-        if new and model >= 0x17:
-            return True
-        else:
-            return False
-    except:
-        return False
+        _IS_PI_5_OR_LATER = bool(new and model >= 0x17)
+    except (subprocess.SubprocessError, ValueError, OSError):
+        _IS_PI_5_OR_LATER = False
+    return _IS_PI_5_OR_LATER
 
 
 def is_multicast(ip: str) -> bool:
@@ -1147,6 +1150,27 @@ if __name__ == '__main__':
     Gst.debug_set_active(True)
     Gst.debug_set_default_threshold(3)
 
+    # R2: a GStreamer pipeline error must end the process with a NON-ZERO exit
+    # so systemd's Restart=on-failure restarts the encoder. Without a bus
+    # watch the main loop just idled on a dead pipeline, and the old bare
+    # excepts turned every crash into a clean-looking exit 0.
+    fatal_error = {'code': 0}
+
+    def attach_bus_watch(pipeline, mainloop):
+        def on_bus_message(bus, msg):
+            if msg.type == Gst.MessageType.ERROR:
+                err, debug = msg.parse_error()
+                print("GStreamer ERROR: {0} ({1})".format(err, debug), flush=True)
+                fatal_error['code'] = 1
+                mainloop.quit()
+            elif msg.type == Gst.MessageType.EOS:
+                print("GStreamer EOS - stream ended", flush=True)
+                mainloop.quit()
+            return True
+        bus = pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect('message', on_bus_message)
+
     # Custom pipeline: validate up-front and fall back to the generated
     # pipeline if it's bad. Never let a stale custom pipeline kill the stream
     custom_pipeline = args.custom_pipeline
@@ -1180,7 +1204,7 @@ if __name__ == '__main__':
             try:
                 (videosource, height, width, bitrate, formatstr,
                  rotation, fps, timestamp) = cam.split(',')
-            except:
+            except ValueError:
                 print("Bad format: " + cam)
                 break
             if not (height.isdigit() and width.isdigit() and bitrate.isdigit() and rotation.isdigit() and fps.isdigit()):
@@ -1191,7 +1215,7 @@ if __name__ == '__main__':
 
         try:
             loop.run()
-        except:
+        except KeyboardInterrupt:
             print("Exiting RTSP Server")
             loop.quit()
     elif secondary_active and args.transport == "RTSP":
@@ -1208,7 +1232,7 @@ if __name__ == '__main__':
 
         try:
             loop.run()
-        except:
+        except KeyboardInterrupt:
             print("Exiting RTSP Server")
             loop.quit()
     elif secondary_active and args.transport == "RTP":
@@ -1229,16 +1253,17 @@ if __name__ == '__main__':
         if sel is not None:
             live_selectors.append(sel)
             applySwitchToSelector(sel)
+        attach_bus_watch(pipeline, loop)
         pipeline.set_state(Gst.State.PLAYING)
 
         print("Server sending UDP stream to " + args.udp)
 
         try:
             loop.run()
-        except:
+        except KeyboardInterrupt:
             print("Exiting UDP Server")
-            pipeline.set_state(Gst.State.NULL)
-            loop.quit()
+        pipeline.set_state(Gst.State.NULL)
+        loop.quit()
     elif args.transport == "RTSP":
         # RTSP
         s = GstServer(args.rtsp_port)
@@ -1263,6 +1288,7 @@ if __name__ == '__main__':
         print("PIPELINE:{0}".format(pipeline_str), flush=True)
         pipeline = Gst.parse_launch(pipeline_str)
         live_pipelines.append(pipeline)
+        attach_bus_watch(pipeline, loop)
         pipeline.set_state(Gst.State.PLAYING)
 
         print("Server sending UDP stream to " + args.udp)
@@ -1275,7 +1301,11 @@ if __name__ == '__main__':
 
         try:
             loop.run()
-        except:
+        except KeyboardInterrupt:
             print("Exiting UDP Server")
-            pipeline.set_state(Gst.State.NULL)
-            loop.quit()
+        pipeline.set_state(Gst.State.NULL)
+        loop.quit()
+
+    # R2: propagate a pipeline failure to systemd (Restart=on-failure)
+    if fatal_error['code'] != 0:
+        sys.exit(fatal_error['code'])

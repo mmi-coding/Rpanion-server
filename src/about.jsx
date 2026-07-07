@@ -35,9 +35,12 @@ class AboutPage extends basePage {
   }
 
   componentDidMount () {
-    fetch('/api/softwareinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => this.setState(state))
-    fetch('/api/diskinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => this.setState(state))
-    fetch('/api/hardwareinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() })
+    // every page-load fetch carries a .catch: a single dropped request over a
+    // flaky link must not leave the loading spinner up forever (loadDone is
+    // called on the hardwareinfo error path too)
+    fetch('/api/softwareinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => this.setState(state)).catch(() => { this.setState({ error: 'Failed to fetch software info' }) })
+    fetch('/api/diskinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => this.setState(state)).catch(() => { this.setState({ error: 'Failed to fetch disk info' }) })
+    fetch('/api/hardwareinfo', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(state => { this.setState(state); this.loadDone() }).catch(() => { this.setState({ error: 'Failed to fetch hardware info' }); this.loadDone() })
     fetch('/api/timezone', {headers: {Authorization: `Bearer ${this.state.token}`}}).then(response => response.json()).then(data => this.setState({ timezones: data.zones, timezone: data.current, selectedTimezone: data.current })).catch(() => {})
   }
 

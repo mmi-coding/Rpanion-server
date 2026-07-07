@@ -30,7 +30,11 @@ systemctl daemon-reload
 systemctl enable rpanion-server
 systemctl start rpanion-server
 
-# Allow relevant services to be disabled or enabled without password
+# Allow relevant services to be disabled or enabled without password.
+# NOTE: sudoers matches the literal path sudo resolves via secure_path, and
+# usrmerged images differ on whether `ip` resolves to /usr/bin or /usr/sbin —
+# so tools that live in sbin get BOTH spellings below (bit #224: a missing
+# rule fails silently as a password prompt the service never sees).
 cat <<'EOF' > /etc/sudoers.d/allow-vpn-control
 rpanion ALL=(ALL) NOPASSWD: \
   /usr/bin/systemctl disable wg-quick@*, \
@@ -53,6 +57,13 @@ rpanion ALL=(ALL) NOPASSWD: \
   /usr/bin/qmicli *, \
   /usr/sbin/udhcpc *, \
   /usr/bin/ip link set *, \
+  /usr/sbin/ip link set *, \
+  /usr/bin/ip addr flush *, \
+  /usr/sbin/ip addr flush *, \
+  /usr/bin/ip addr add *, \
+  /usr/sbin/ip addr add *, \
+  /usr/sbin/iwconfig *, \
+  /usr/sbin/route add default gw *, \
   /usr/sbin/iw dev * scan ap-force, \
   /usr/bin/pkill -SIGTERM -f pppd*, \
   /usr/bin/cat /var/lib/NetworkManager/dnsmasq-*

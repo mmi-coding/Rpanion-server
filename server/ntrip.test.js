@@ -191,10 +191,10 @@ describe('NTRIP Functions', function () {
     assert.equal(ntripClient.formatError('some failure'), 'some failure')
     assert.equal(ntripClient.formatError({ odd: true }), '[object Object]')
 
-    // unexpected HTTP headers are parsed for a hint; every recognised
-    // status code ends as the generic message (the switch falls through)
-    assert.equal(ntripClient.formatError(UNKOWN_HEADER_ERROR + ' HTTP/1.1 401 Unauthorized'), 'Connection failed')
-    assert.equal(ntripClient.formatError(UNKOWN_HEADER_ERROR + ' HTTP/1.1 404 Not Found'), 'Connection failed')
+    // unexpected HTTP headers are parsed for a hint; recognised status
+    // codes get a specific operator hint, everything else the generic message
+    assert.equal(ntripClient.formatError(UNKOWN_HEADER_ERROR + ' HTTP/1.1 401 Unauthorized'), 'Unauthorized (401). Incorrect credentials?')
+    assert.equal(ntripClient.formatError(UNKOWN_HEADER_ERROR + ' HTTP/1.1 404 Not Found'), 'Mountpoint not found (404)')
     assert.equal(ntripClient.formatError(UNKOWN_HEADER_ERROR + ' HTTP/1.1 503 Unavailable'), 'Connection failed')
 
     // a header that is not an HTTP status line is passed through

@@ -180,16 +180,19 @@ class adhocManager {
     if (toState) {
       // activate
       console.log('Activate Adhoc')
-      exec('nmcli dev set ' + device + ' managed no && sleep 1 && ip link set ' +
-      device + ' down && iwconfig ' +
-      device + ' mode ad-hoc ' + ' && iwconfig ' +
-      device + ' channel ' + settings.channel + ' && iwconfig ' +
+      // sudo on every command: the service runs unprivileged, and nmcli/ip/
+      // iwconfig/route all need root to reconfigure an interface (each one is
+      // granted in the postinst sudoers drop-in — see debian/postinst).
+      exec('sudo nmcli dev set ' + device + ' managed no && sleep 1 && sudo ip link set ' +
+      device + ' down && sudo iwconfig ' +
+      device + ' mode ad-hoc ' + ' && sudo iwconfig ' +
+      device + ' channel ' + settings.channel + ' && sudo iwconfig ' +
       device + ' essid \'' + settings.ssid + '\'  ' +
-      (settings.wpaType === 'none' ? '' : '&& iwconfig ' + device + ' key s:' + settings.password) +
-      ' && ip addr flush ' + device +
-      ' && ip addr add ' + settings.ipaddress + '/16 dev ' + device +
-      ' && ip link set ' + device + ' up' +
-      (settings.gateway === '' ? '' : '&& route add default gw ' + settings.gateway + ' ' + device), (error: Error | null, stdout: string, stderr: string) => {
+      (settings.wpaType === 'none' ? '' : '&& sudo iwconfig ' + device + ' key s:' + settings.password) +
+      ' && sudo ip addr flush ' + device +
+      ' && sudo ip addr add ' + settings.ipaddress + '/16 dev ' + device +
+      ' && sudo ip link set ' + device + ' up' +
+      (settings.gateway === '' ? '' : '&& sudo route add default gw ' + settings.gateway + ' ' + device), (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.log(`exec error: ${error}`)
           return callback(stderr)
@@ -201,7 +204,7 @@ class adhocManager {
             callback(null, netStatusList, netDeviceSelected, settings)
           } else {
             // reset back to managed
-            execSync('ip link set ' + device + ' down && sleep 1 && nmcli dev set ' + device + ' managed yes')
+            execSync('sudo ip link set ' + device + ' down && sleep 1 && sudo nmcli dev set ' + device + ' managed yes')
             callback(err, netStatusList, netDeviceSelected, settings)
           }
         })
@@ -209,7 +212,7 @@ class adhocManager {
     } else {
       // deactivate
       console.log('Deactivate Adhoc')
-      exec('ip link set ' + device + ' down && sleep 1 && nmcli dev set ' + device + ' managed yes', (error: Error | null, stdout: string, stderr: string) => {
+      exec('sudo ip link set ' + device + ' down && sleep 1 && sudo nmcli dev set ' + device + ' managed yes', (error: Error | null, stdout: string, stderr: string) => {
         if (stderr) {
           console.error(`exec error: ${error}`)
           return callback(stderr)

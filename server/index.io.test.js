@@ -1418,6 +1418,70 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
       })
     })
 
+    it('room subscribers get pushed SystemStatus/NetworkBandwidth; leaving stops the feed', function (done) {
+      this.timeout(10000)
+      sinon.stub(FlightController.prototype, 'getSystemStatus').returns({ numpackets: 0 })
+      sinon.stub(hooks.fcManager, 'getAllStatus').returns({})
+      sinon.stub(hooks.ntripClient, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.logConversion, 'conStatusLogStr').returns('idle')
+      sinon.stub(hooks.pppConnectionManager, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.vManager, 'getStreamingStatus').returns({ active: false })
+      sinon.stub(hooks.camSwitcher, 'getStatus').returns({ active: 'A' })
+      sinon.stub(hooks.lteModem, 'getStatus').returns({ available: false })
+      sinon.stub(hooks.cellularTuning, 'getStatus').returns({ adaptiveBitrate: false })
+      sinon.stub(hooks.aboutPage, 'getLiveStats').callsFake(function (cb) { cb({ cpuLoad: 42 }, null) })
+      sinon.stub(hooks.networkPriority, 'getBandwidth').returns([{ name: 'eth0', rxBytes: 1, txBytes: 1, rxRate: 0, txRate: 0 }])
+
+      var gotSys = null
+      var gotBw = null
+      var client = ioclient('http://127.0.0.1:' + ioPort, {
+        transports: ['websocket'],
+        forceNew: true
+      })
+      client.on('SystemStatus', function (d) { gotSys = d })
+      client.on('NetworkBandwidth', function (d) { gotBw = d })
+      client.on('connect_error', function (err) {
+        client.close()
+        done(new Error('connect_error: ' + err.message))
+      })
+
+      function tick6 () {
+        // six ticks guarantee at least one %2===0 and one %3===0 tick
+        for (var i = 0; i < 6; i++) { hooks.broadcastStatus() }
+      }
+
+      client.on('connect', function () {
+        client.emit('subscribeStatus', 'systemstatus')
+        client.emit('subscribeStatus', 'bandwidth')
+        client.emit('subscribeStatus', 'not-a-real-room') // ignored (invalid room)
+        setTimeout(function () {
+          tick6()
+          setTimeout(function () {
+            try {
+              assert.ok(gotSys !== null && gotSys.cpuLoad === 42, 'expected a SystemStatus push')
+              assert.ok(gotBw !== null && gotBw.interfaces.length === 1, 'expected a NetworkBandwidth push')
+            } catch (e) { client.close(); return done(e) }
+            client.emit('unsubscribeStatus', 'systemstatus')
+            client.emit('unsubscribeStatus', 'bandwidth')
+            client.emit('unsubscribeStatus', 'not-a-real-room') // ignored
+            setTimeout(function () {
+              gotSys = null
+              gotBw = null
+              tick6()
+              setTimeout(function () {
+                try {
+                  assert.strictEqual(gotSys, null, 'feed must stop after unsubscribe')
+                  assert.strictEqual(gotBw, null, 'feed must stop after unsubscribe')
+                  client.close()
+                  done()
+                } catch (e) { client.close(); done(e) }
+              }, 300)
+            }, 200)
+          }, 300)
+        }, 200)
+      })
+    })
+
     it('second connection does not start a second FCStatusLoop', function (done) {
       this.timeout(5000)
       // FCStatusLoop should already be set from the previous test
@@ -1458,6 +1522,112 @@ describe('Package C — events, FC/video routes, socket.io, camera/start, shutdo
       var logSpy = sinon.stub(console, 'log')
       assert.doesNotThrow(function () { hooks.broadcastStatus() })
       assert.ok(logSpy.called, 'expected the catch branch to log')
+    })
+  })
+
+  // =========================================================================
+  // room-gated push feeds — empty-room and sampler-error branches
+  // =========================================================================
+  describe('room-gated status feeds (edge branches)', function () {
+    afterEach(function () {
+      hooks.io.sockets.adapter.rooms.delete('systemstatus')
+      hooks.io.sockets.adapter.rooms.delete('bandwidth')
+    })
+
+    it('an empty room set skips sampling; a getLiveStats error skips the emit', function () {
+      sinon.stub(hooks.fcManager, 'getAllStatus').returns({})
+      sinon.stub(hooks.ntripClient, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.logConversion, 'conStatusLogStr').returns('idle')
+      sinon.stub(hooks.pppConnectionManager, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.vManager, 'getStreamingStatus').returns({ active: false })
+      sinon.stub(hooks.camSwitcher, 'getStatus').returns({ active: 'A' })
+      sinon.stub(hooks.lteModem, 'getStatus').returns({ available: false })
+      sinon.stub(hooks.cellularTuning, 'getStatus').returns({ adaptiveBitrate: false })
+      var liveStub = sinon.stub(hooks.aboutPage, 'getLiveStats').callsFake(function (cb) { cb(null, 'no stats available') })
+      var bwStub = sinon.stub(hooks.networkPriority, 'getBandwidth').returns([])
+      var toSpy = sinon.spy(hooks.io, 'to')
+
+      // systemstatus room non-empty (reaches the getLiveStats error branch);
+      // bandwidth room present but EMPTY (size>0 is false → never sampled)
+      hooks.io.sockets.adapter.rooms.set('systemstatus', new Set(['fake-sid']))
+      hooks.io.sockets.adapter.rooms.set('bandwidth', new Set())
+
+      for (var i = 0; i < 6; i++) { hooks.broadcastStatus() }
+
+      assert.ok(liveStub.called, 'system stats should be sampled while the room is non-empty')
+      assert.ok(toSpy.neverCalledWith('systemstatus'), 'an errored sample must not be emitted')
+      assert.ok(bwStub.notCalled, 'bandwidth must not be sampled for an empty room')
+      assert.ok(toSpy.neverCalledWith('bandwidth'))
+    })
+  })
+
+  // =========================================================================
+  // R12b — the auto-prune tick reads the live binlog through this getter so
+  // the actively-written log is never pruned mid-flight.
+  // =========================================================================
+  describe('flight-log auto-prune wiring (R12b)', function () {
+    it('getActiveBinlog returns the FC manager binlog (null when no FC link)', function () {
+      // no FC connected in the test harness → links empty → null
+      assert.strictEqual(hooks.getActiveBinlog(), null)
+    })
+  })
+
+  // =========================================================================
+  // R9b — null-cloud degradation: broadcast and shutdown must tolerate the
+  // null that safeInit leaves behind when cloudUpload failed to construct.
+  // =========================================================================
+  describe('null cloud degradation (R9b)', function () {
+    afterEach(function () {
+      // put the real cloud singleton back for the rest of the suite
+      hooks.setCloud(hooks.cloud)
+    })
+
+    it('broadcastStatus emits a placeholder CloudBinStatus and every event after it', function () {
+      sinon.stub(hooks.fcManager, 'getAllStatus').returns({})
+      sinon.stub(hooks.ntripClient, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.logConversion, 'conStatusLogStr').returns('idle')
+      sinon.stub(hooks.pppConnectionManager, 'conStatusStr').returns('stopped')
+      sinon.stub(hooks.vManager, 'getStreamingStatus').returns({ active: false })
+      sinon.stub(hooks.camSwitcher, 'getStatus').returns({ active: 'A' })
+      sinon.stub(hooks.lteModem, 'getStatus').returns({ available: false })
+      sinon.stub(hooks.cellularTuning, 'getStatus').returns({ adaptiveBitrate: false })
+      var emitSpy = sinon.spy(hooks.io.sockets, 'emit')
+
+      hooks.setCloud(null)
+      assert.doesNotThrow(function () { hooks.broadcastStatus() })
+
+      var events = emitSpy.getCalls().map(function (c) { return c.args[0] })
+      var cloudCall = emitSpy.getCalls().find(function (c) { return c.args[0] === 'CloudBinStatus' })
+      assert.ok(cloudCall, 'CloudBinStatus should still be emitted')
+      assert.strictEqual(cloudCall.args[1], 'Unavailable (failed to start)')
+      // the events ordered AFTER the cloud emit must not be skipped
+      ;['PPPStatus', 'VideoStreamStatus', 'LTEStatus', 'MAVTelemetry', 'HUDLive', 'DroneCANNodeParams'].forEach(function (ev) {
+        assert.ok(events.indexOf(ev) !== -1, ev + ' should be emitted with a null cloud')
+      })
+    })
+
+    it('gracefulShutdown completes cleanly with a null cloud (exit 0, later quitting() still called)', function (done) {
+      this.timeout(15000)
+      hooks.setIsShuttingDown(false)
+      var processExitStub = sinon.stub(process, 'exit')
+      sinon.stub(hooks.vManager, 'stopCamera')
+      sinon.stub(hooks.pppConnectionManager, 'quitting')
+      var logConvQuitStub = sinon.stub(hooks.logConversion, 'quitting')
+      sinon.stub(hooks.lteModem, 'quitting')
+      sinon.stub(hooks.cellularTuning, 'quitting')
+
+      hooks.setCloud(null)
+      hooks.gracefulShutdown('TEST', 0).then(function () {
+        try {
+          assert.ok(processExitStub.calledWith(0), 'should exit 0, not the error-path exit(1)')
+          assert.ok(logConvQuitStub.called, 'quitting() calls after cloud must still run')
+          hooks.setIsShuttingDown(false)
+          done()
+        } catch (e) { hooks.setIsShuttingDown(false); done(e) }
+      }).catch(function (err) {
+        hooks.setIsShuttingDown(false)
+        done(err)
+      })
     })
   })
 

@@ -132,6 +132,13 @@ class FCDetails {
   }
 
   validMavlinkRouter () {
+    // Cached after the first success: the binary's location doesn't change at
+    // runtime, and the fcLink reconnect loop calls this every second while a
+    // link is down — a blocking spawnSync per second on the Pi otherwise.
+    // A failed probe is NOT cached, so installing the router later is noticed.
+    if (this.mavlinkRouterPath !== null) {
+      return true
+    }
     // check mavlink-router is installed
     const ls = spawnSync('which', ['mavlink-routerd'])
     console.log(ls.stdout.toString())

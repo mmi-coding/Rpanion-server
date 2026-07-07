@@ -171,7 +171,7 @@ describe('Cloud Upload Functions', function () {
         'rsync should be invoked with the .bin-only filter flags'
       )
 
-      // second run: the old pid is killed, the new rsync fails
+      // second run: the previous rsync has exited, so a new one starts and fails
       cloudVar.options.syncDeletions = false
       process.env.FAKE_SCENARIO = 'fail'
       clock.tick(20000)
@@ -189,6 +189,38 @@ describe('Cloud Upload Functions', function () {
 
     // quitting kills the (exited) rsync process handle
     cloudVar.quitting()
+  })
+
+  it('#uploadIntervalSkipsWhileRsyncRunning()', function () {
+    settings.clear()
+    settings.setValue('cloud.doBinUpload', true)
+    settings.setValue('cloud.binUploadLink', 'user@example.com:uploads')
+    const home = tmpHome()
+    fs.mkdirSync(path.join(home, '.ssh'))
+    fs.writeFileSync(path.join(home, '.ssh', 'id_rsa.pub'), 'ssh-rsa KEY')
+
+    const logSpy = sinon.spy(console, 'log')
+    const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    let cloudVar
+    try {
+      cloudVar = new CloudTest(settings)
+      // simulate a transfer still in flight from the previous tick
+      const running = { exitCode: null, kill: sinon.spy() }
+      cloudVar.rsyncPid = running
+
+      clock.tick(20000)
+
+      // a slow upload must be left to finish, not killed and restarted
+      assert.strictEqual(cloudVar.rsyncPid, running, 'in-flight rsync must not be replaced')
+      assert.ok(running.kill.notCalled, 'in-flight rsync must not be killed')
+      assert.ok(
+        logSpy.getCalls().some((c) => String(c.args[0]).includes('skipping this interval')),
+        'the skipped tick should be logged'
+      )
+    } finally {
+      clock.restore()
+      clearInterval(cloudVar.intervalObj)
+    }
   })
 
   it('#setSettingsBinSaveFailure()', function () {

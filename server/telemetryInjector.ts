@@ -111,6 +111,19 @@ class TelemetryInjector {
   _send (buf: any) {
     if (!this.sendSock) {
       this.sendSock = dgram.createSocket('udp4')
+      // R3: without an 'error' listener an async send-socket error (EPERM,
+      // buffer pressure, ...) is an uncaughtException that kills the whole
+      // companion process. Log it, drop the socket, recreate on next send.
+      this.sendSock.on('error', (err: any) => {
+        this.stats.errors++
+        console.log('TelemetryInjector send socket error:', err)
+        try {
+          this.sendSock.close()
+        } catch (e) {
+          // socket already closed
+        }
+        this.sendSock = null
+      })
     }
     this.sendSock.send(buf, ROUTER_PORT, ROUTER_HOST, () => {})
   }

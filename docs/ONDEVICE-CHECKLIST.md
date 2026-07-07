@@ -537,3 +537,36 @@ The self-heal, packaging and interface-bind paths only exist on a real Pi instal
   (never-locked-out). **Note:** MAVLink TCP `5760` still binds all interfaces
   (`mavlink-routerd` has no address flag) — restrict it with a firewall rule and/or
   enable MAVLink2 signing.
+
+## Audit remediation 2026-07-07 (bugs pass)
+
+- [ ] **Sudoers `ip` path (B3).** On the Pi, as the `rpanion` user run
+  `sudo -n ip link set wwan0 down && sudo -n ip link set wwan0 up` and confirm no
+  password prompt/denial. The drop-in now grants both `/usr/bin/ip` and
+  `/usr/sbin/ip` spellings (sudo matches whichever secure_path resolves).
+  Then verify the QMI data path end-to-end from the LTE Modem page
+  (connect → interface up → disconnect → interface down).
+- [ ] **Adhoc WiFi under sudo (B3).** Activate and deactivate adhoc mode from the
+  webUI and confirm the `sudo nmcli/ip/iwconfig/route` chain succeeds (new
+  sudoers entries: `ip addr flush/add`, `iwconfig`, `route add default gw`).
+- [ ] **Cloud upload survives slow syncs (B4).** With a >20 s rsync upload of a
+  large `.bin` over LTE, confirm the transfer completes ("skipping this
+  interval" in the journal instead of a kill/restart every 20 s).
+- [ ] **Mid-flight log pruning (B5).** With flight logging running, confirm the
+  5-minute prune tick deletes oldest logs once the 2 GiB / 500-file cap is
+  crossed and never touches the live binlog.
+- [ ] **Sensor-mode cache (P9).** Load the camera page twice on a Pi with the CSI
+  camera: first load probes Picamera2 and writes
+  `~/.cache/rpanion-server/sensor-modes.json`; second load must list the same
+  resolutions near-instantly (no libcamera pipeline start in the journal). Delete
+  the cache file to force a re-probe after swapping camera modules.
+- [ ] **Hardlink .deb staging (P10).** Run `deploy/build-deb.sh` on the Pi and check
+  disk usage does not double during "Staging production-only node_modules"
+  (`df` before/after); resulting .deb installs and the service starts.
+- [ ] **Video crash → systemd restart (R2).** Start a stream, then unplug the
+  camera (or kill the source). The journal must show "GStreamer ERROR: …" and
+  video-server.py exiting non-zero, and systemd `Restart=on-failure` must
+  restart it (previously a dead pipeline idled forever / exited 0).
+- [ ] **deploy-fork.sh fail-fast (R1).** Sanity-run a redeploy; confirm it still
+  completes end-to-end under `set -e` and the final step now verifies
+  `systemctl is-active rpanion-server` (exits 1 if the service is down).

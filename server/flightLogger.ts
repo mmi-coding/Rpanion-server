@@ -12,6 +12,10 @@ const logpaths = require('./paths')
 // touches the actively-written binlog. Tune these to the target's storage.
 const MAX_LOG_BYTES = 2 * 1024 * 1024 * 1024 // 2 GiB total across all flight logs
 const MAX_LOG_FILES = 500                    // hard cap on flight-log file count
+// R12b: how often the retention cap is re-checked while running. Boot-only
+// enforcement lets a long flight fill the SD card mid-flight — the exact
+// failure the cap exists to prevent.
+const PRUNE_INTERVAL_MS = 5 * 60 * 1000
 
 // Recursively delete a file or directory tree.
 function deleteRecursively (targetPath: string) {
@@ -62,6 +66,7 @@ class flightLogger {
   mediafolder: any
   kmzlogfolder: any
   topfolder: any
+  pruneIntervalObj: any
   constructor () {
     this.topfolder = logpaths.flightsLogsDir
     // this.tlogfolder = path.join(this.topfolder, 'tlogs')
@@ -83,7 +88,35 @@ class flightLogger {
 
     // R12: reclaim disk from previous flights before we start logging again.
     // There is no active binlog yet at construction, so nothing is skipped.
+    this.pruneIntervalObj = null
     this.pruneLogs()
+  }
+
+  // R12b: re-enforce the retention cap on a periodic tick. The caller supplies
+  // a getter for the actively-written binlog (it changes on every FC reconnect)
+  // so the live log is never pruned.
+  startAutoPrune (getCurBinLog: () => string | null, intervalMs: number = PRUNE_INTERVAL_MS) {
+    this.stopAutoPrune()
+    this.pruneIntervalObj = setInterval(() => {
+      try {
+        this.pruneLogs(getCurBinLog() || undefined)
+      } catch (e) {
+        // a prune failure (e.g. folder removed underneath us) must never
+        // become an uncaught exception in the timer
+        console.log('Error pruning flight logs:', e)
+      }
+    }, intervalMs)
+  }
+
+  stopAutoPrune () {
+    if (this.pruneIntervalObj) {
+      clearInterval(this.pruneIntervalObj)
+      this.pruneIntervalObj = null
+    }
+  }
+
+  quitting () {
+    this.stopAutoPrune()
   }
 
   // R12: enforce the retention caps on the flight-logs directory, deleting the

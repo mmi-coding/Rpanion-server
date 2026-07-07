@@ -493,20 +493,43 @@ function getConnections (callback: Callback) {
   }
 
   const allConns = output.toString().split('\n')
+
+  // connection.interface-name is a profile setting, not a list-mode field, so
+  // it needs a `connection show <uuid>` query. Batch every UUID into ONE nmcli
+  // call — the previous one-exec-per-connection loop blocked the event loop N
+  // times per page load on the Pi.
+  const rows: string[][] = allConns
+    .map((item: string) => item.split(':'))
+    .filter((connection: string[]) => connection.length == 4 || connection.length == 3)
+  const ifaceByUuid: { [uuid: string]: string } = {}
+  if (rows.length > 0) {
+    try {
+      const subout = execSync('sudo nmcli -s -t -f connection.uuid,connection.interface-name connection show ' + rows.map((r: string[]) => r[1]).join(' ')).toString()
+      let curUuid = ''
+      subout.split('\n').forEach((line: string) => {
+        const sep = line.indexOf(':')
+        if (sep === -1) {
+          return
+        }
+        const key = line.slice(0, sep)
+        const value = line.slice(sep + 1).trim()
+        if (key === 'connection.uuid') {
+          curUuid = value
+        } else if (key === 'connection.interface-name' && curUuid !== '') {
+          ifaceByUuid[curUuid] = value
+        }
+      })
+    } catch (e) {
+      // degraded: connections are still listed, just without their bound iface
+      console.error('exec error: ' + e)
+    }
+  }
+
   for (let i = 0, len = allConns.length; i < len; i++) {
     const item = allConns[i]
     const connection = item.split(':')
     let curConn = {}
-    let subout = ''
-    if (connection.length == 4 || connection.length == 3) {
-      try {
-        subout = execSync('sudo nmcli -s -t -f connection.interface-name connection show ' + connection[1])
-        subout = subout.toString().split(':')[1].trim()
-      } catch (e) {
-        console.error('exec error: ' + e)
-        // return callback("");
-      }
-    }
+    const subout = (ifaceByUuid[connection[1]] !== undefined) ? ifaceByUuid[connection[1]] : ''
     if (connection[3] === '' || connection[3] === '--') {
       curConn = { value: connection[1], label: '', labelPre: connection[0], type: connection[2], state: '', attachedIface: subout }
       conStatusList.push(curConn)
